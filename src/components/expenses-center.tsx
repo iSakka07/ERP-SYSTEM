@@ -780,10 +780,10 @@ export function ExpensesCenter({
               والصرف عند تسجيل دفعة.
             </p>
           </div>
-          <div className="overflow-hidden rounded-xl border bg-white">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-xs">
-                <thead className="bg-slate-100">
+          <div className="erp-table-shell">
+            <div className="erp-table-scroll">
+              <table className="erp-data-table min-w-[900px]">
+                <thead>
                   <tr>
                     {[
                       "المقاولة / النطاق",
@@ -795,7 +795,7 @@ export function ExpensesCenter({
                       "المتبقي / المديونية / المقدم",
                       "الجوارى",
                     ].map((h) => (
-                      <th key={h} className="p-3 text-right">
+                      <th key={h}>
                         {h}
                       </th>
                     ))}
@@ -811,8 +811,8 @@ export function ExpensesCenter({
                       : newExpenseStatementBlockReason(last);
                     return (
                       <Row key={a.id}>
-                        <tr className="border-t">
-                          <td className="p-3">
+                        <tr>
+                          <td>
                             <p className="font-bold">{a.name}</p>
                             <p className="mt-1 text-[10px] text-slate-400">
                               {a.scope}
@@ -868,17 +868,17 @@ export function ExpensesCenter({
                               </div>
                             )}
                           </td>
-                          <td className="p-3">{a.company.name}</td>
-                          <td className="p-3">{a.project.name}</td>
+                          <td>{a.company.name}</td>
+                          <td>{a.project.name}</td>
                           {[s.grossCents, s.netCents, s.paidCents].map(
                             (v, n) => (
-                              <td className="p-3 font-bold" key={n} dir="ltr">
+                              <td className="font-bold" key={n} dir="ltr">
                                 {money(v)}
                               </td>
                             ),
                           )}
                           <td
-                            className={`p-3 font-bold ${s.advanceCents || s.debtCents ? "text-amber-700" : "text-slate-700"}`}
+                            className={`font-bold ${s.advanceCents || s.debtCents ? "text-amber-700" : "text-slate-700"}`}
                           >
                             <span dir="ltr">
                               {money(s.debtCents || s.advanceCents || s.remainingCents)}
@@ -890,7 +890,7 @@ export function ExpensesCenter({
                               </span>
                             )}
                           </td>
-                          <td className="p-3">
+                          <td>
                             <button
                               aria-expanded={expanded === a.id}
                               className={`${expenseButton} text-blue-700`}
@@ -911,7 +911,7 @@ export function ExpensesCenter({
                           <tr>
                             <td
                               colSpan={8}
-                              className="border-t bg-slate-50 p-4"
+                              className="erp-table-details"
                             >
                               <div className="mb-3 flex items-center justify-between gap-3">
                                 {files("account", a.id)}

@@ -2,6 +2,7 @@
 import { ERPSelect } from "@/components/erp-select";
 import { CurrencyInput } from "@/components/currency-input";
 import { DocumentLayout } from "@/components/document-layout";
+import { UploadBox } from "@/components/upload-box";
 import { useState } from "react";
 import type { DeductionInput, ExpenseItemInput } from "@/lib/expenses";
 import type { ExpenseAccount, ExpenseStatement } from "@/lib/expense-types";
@@ -11,7 +12,7 @@ import {
   correctionDebtAfterApproval,
 } from "@/lib/expenses";
 import { withdrawnKeys } from "@/lib/work-withdrawals";
-import { Plus, Trash2, Save, ArrowRight, Paperclip } from "lucide-react";
+import { Plus, Trash2, Save, ArrowRight } from "lucide-react";
 export const expenseInput =
   "w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100";
 export const expenseButton =
@@ -31,23 +32,11 @@ export const stageName = (key: string) =>
   })[key] ?? key;
 export function ExpenseFileInput({ required = true }: { required?: boolean }) {
   return (
-    <label className="block rounded-xl border border-dashed border-blue-200 bg-blue-50/40 p-3 text-xs font-semibold text-slate-600">
-      <span className="flex items-center gap-2">
-        <Paperclip className="size-4 text-blue-700" />
-        المرفقات {required ? "(إلزامية)" : "— إضافة إثبات جديد (اختياري)"}
-      </span>
-      <input
-        className="mt-2 block w-full text-xs file:ml-3 file:rounded-md file:border-0 file:bg-blue-100 file:px-3 file:py-2 file:text-blue-800"
-        type="file"
-        name="files"
-        multiple
-        required={required}
-        accept=".pdf,.xlsx,.xls,.png,.jpg,.jpeg,.webp"
-      />
-      <span className="mt-2 block text-[10px] text-slate-500">
-        PDF / Excel / صور · حتى 5 ملفات بإجمالي 10 ميجابايت
-      </span>
-    </label>
+    <UploadBox
+      name="files"
+      required={required}
+      label={required ? "المرفقات" : "إضافة إثبات جديد"}
+    />
   );
 }
 export async function sendExpense(payload: unknown, form?: HTMLFormElement) {

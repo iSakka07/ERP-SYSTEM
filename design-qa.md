@@ -21,6 +21,7 @@ In-app browser, local-only `http://localhost:3090`, new-document mode. No public
 - Mobile: CSS viewport 390×844, DPR 1, `qa-artifacts/incoming-mobile.png` returned 375×812 px. Body/scroll width 375 px; data card 343 px at x=16, history card 343 px at x=16 beneath the data. No horizontal page overflow; Excel tables retain their own horizontal scrolling.
 - Source full-screen reference and prototype desktop were emitted together; source currency field and prototype control crop were emitted together. ERP form labels and fields differ intentionally from the military document reference.
 - Open select state compared against `C:/Users/Administrator/Desktop/xsxsx.png` in the in-app browser at 1280×720, DPR 1. The implementation uses the shared ERPSelect popup: white panel, 8px radius, light blue selected/highlight state, subtle elevation, circular selected indicator, and a short slide/fade animation. The browser QA environment reports `prefers-reduced-motion: reduce`, so computed animation is correctly disabled there while the normal-motion CSS remains present.
+- Attachment upload state and outer data-table styling were checked in the in-app browser against the Technical Hub direction from the supplied references. The incoming contract form now shows upload boxes instead of raw browser file inputs, the estimate helper sentence is removed, and both Incoming and Subcontractor Works outer tables use the shared ERP table shell.
 - Captures are local ignored artifacts, not public assets. Temporary viewport overrides are reset after testing.
 
 ## Findings and iterations
@@ -31,6 +32,7 @@ In-app browser, local-only `http://localhost:3090`, new-document mode. No public
 4. Combined attachment count/size limits apply across contract and estimate files. Financial effects, approval order and RBAC stay unchanged.
 5. Standardized document additions, master-data creation and account creation; actual payment creation is focused rather than embedded amongst the statement's summary cards. New-document tracker is genuinely empty. Existing incoming audit and statement approvals populate history without invented events.
 6. The shared select popup originally matched the control color but still used a plain checked indicator and had limited motion polish. Fixed ERPSelect and global styles so all dropdowns share the Technical Hub-like open state, circular indicator, hover/selected transitions, scrollbar styling and reduced-motion fallback.
+7. Raw attachment file inputs and softer table framing made the ERP screens feel less like the Technical Hub reference. Fixed with a shared UploadBox, removed the estimate explanatory sentence, and introduced shared outer-table styles for the main Incoming and Subcontractor Works lists.
 
 No unresolved P0/P1/P2 in the requested pattern. Intentional adaptations: retained ERP sidebar/branding, different business fields, responsive stacking below 800px, and grouped editing values only finalize two decimals on blur. Native file chooser text follows browser locale (P3 cosmetic); labels and instructions remain Arabic.
 
@@ -39,6 +41,7 @@ No unresolved P0/P1/P2 in the requested pattern. Intentional adaptations: retain
 - `pnpm lint` — passed without warnings.
 - `pnpm build` — passed, including TypeScript.
 - Browser QA of the open select state — passed; dropdown opens from the shared control, selected option is visibly highlighted, and reduced-motion settings are respected.
+- Browser QA of incoming contract creation and subcontractor outer table — passed; upload boxes render as designed, the estimate explanation is absent, and outer tables keep readable rows, sticky header styling and horizontal scroll.
 - `pnpm test:incoming` and `pnpm test:expenses` — passed calculations and historical/cumulative rules.
 - `pnpm test:design-inputs` — passed formatting, exact stored cents, estimate proof requirements, archive retention, legacy preservation, combined limits and forbidden-role access.
 - `pnpm test:expenses-api` and `pnpm test:expense-corrections-api` — passed unchanged approval/payment, withdrawal/reassignment, price version and correction/debt rules.

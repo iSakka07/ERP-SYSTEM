@@ -2,6 +2,7 @@
 import { ERPSelect } from "@/components/erp-select";
 import { CurrencyInput } from "@/components/currency-input";
 import { DocumentLayout, type Movement } from "@/components/document-layout";
+import { UploadBox } from "@/components/upload-box";
 
 import { Fragment, FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -334,10 +335,10 @@ export function IncomingCenter({
               فقط.
             </p>
           </section>
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="max-h-[720px] overflow-auto">
-              <table className="w-full min-w-[1120px] text-right text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-100 text-slate-800">
+          <section className="erp-table-shell">
+            <div className="erp-table-scroll">
+              <table className="erp-data-table min-w-[1120px]">
+                <thead>
                   <tr>
                     {[
                       "العقد",
@@ -350,10 +351,7 @@ export function IncomingCenter({
                       "المتبقي",
                       "الإجراءات",
                     ].map((h) => (
-                      <th
-                        key={h}
-                        className="whitespace-nowrap px-3 py-3 font-extrabold"
-                      >
+                      <th key={h}>
                         {h}
                       </th>
                     ))}
@@ -375,8 +373,8 @@ export function IncomingCenter({
                     const show = expanded === c.id;
                     return (
                       <Fragment key={c.id}>
-                        <tr className="border-t border-slate-200 hover:bg-blue-50/30">
-                          <td className="max-w-[220px] px-3 py-4">
+                        <tr>
+                          <td className="max-w-[220px]">
                             <button
                               onClick={() => setExpanded(show ? "" : c.id)}
                               aria-expanded={show}
@@ -388,19 +386,19 @@ export function IncomingCenter({
                               {c.number}
                             </p>
                           </td>
-                          <td className="px-3 py-4">
+                          <td>
                             {c.project.name}
                             <p className="mt-1 text-[10px] text-slate-400">
                               {c.project.sector?.name || "—"}
                             </p>
                           </td>
-                          <td className="px-3 py-4">
+                          <td>
                             {c.project.company.name}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 font-bold text-blue-700">
+                          <td className="whitespace-nowrap font-bold text-blue-700">
                             {money(f.value)}
                           </td>
-                          <td className="px-3 py-4">
+                          <td>
                             <button
                               className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1.5 text-blue-800"
                               onClick={() => setExpanded(show ? "" : c.id)}
@@ -412,21 +410,21 @@ export function IncomingCenter({
                               />
                             </button>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 font-bold">
+                          <td className="whitespace-nowrap font-bold">
                             {money(f.gross)}
                             <p className="mt-1 text-[9px] font-normal text-slate-400">
                               قبل خصم الخامات
                             </p>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4">
+                          <td className="whitespace-nowrap">
                             <span className="rounded bg-amber-50 px-2 py-1 text-amber-800">
                               {money(f.materials)}
                             </span>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 font-bold">
+                          <td className="whitespace-nowrap font-bold">
                             {money(f.remaining)}
                           </td>
-                          <td className="px-3 py-4">
+                          <td>
                             <details>
                               <summary className="cursor-pointer text-blue-700">
                                 إجراءات
@@ -473,7 +471,7 @@ export function IncomingCenter({
                           <tr>
                             <td
                               colSpan={9}
-                              className="border-t border-slate-200 bg-slate-50 p-4"
+                              className="erp-table-details"
                             >
                               <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -710,7 +708,7 @@ export function IncomingCenter({
                 </tbody>
               </table>
             </div>
-            <div className="flex flex-wrap gap-6 border-t border-slate-200 bg-blue-50/50 px-4 py-3 text-xs font-bold">
+            <div className="erp-table-summary">
               <span>{filtered.length} عقد</span>
               <span>القيمة: {money(totals.value)}</span>
               <span>الوارد قبل الخامات: {money(totals.gross)}</span>
@@ -904,11 +902,12 @@ function IncomingEditor({
             </div>
             <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <Field label="قيمة المقايسة — اختياري" name="estimateValue" type="number" value={estimateValue} onChange={setEstimateValue} required={false} />
-              <p className="text-xs text-slate-500">للمقارنة بقيمة العقد فقط؛ لا تؤثر على الوارد أو المستحقات.</p>
               {estimateValue && <p className="text-xs text-blue-700">الفرق (العقد − المقايسة): <b dir="ltr">{money(Math.round((Number(value || 0) - Number(estimateValue)) * 100))}</b></p>}
-              <label className="block text-xs text-slate-600">إرفاق المقايسة — أرشيف للمراجعة
-                <input type="file" multiple accept=".pdf,.xls,.xlsx,.png,.jpg,.jpeg,.webp" required={Boolean(estimateValue) && Math.round(Number(estimateValue) * 100) !== c?.estimateCents} onChange={ev => setEstimateFiles(Array.from(ev.target.files || []))} className="mt-2 block w-full text-xs" />
-              </label>
+              <UploadBox
+                label="إرفاق المقايسة — أرشيف للمراجعة"
+                required={Boolean(estimateValue) && Math.round(Number(estimateValue) * 100) !== c?.estimateCents}
+                onFilesChange={setEstimateFiles}
+              />
               <Files files={attachments.filter(f => f.entityId === c?.id && f.entityType === "estimate")} />
               {c?.estimateReference && <p className="text-xs text-slate-500">المرجع النصي السابق (محفوظ): {c.estimateReference}</p>}
             </div>
@@ -1233,24 +1232,11 @@ function IncomingEditor({
             />
           </label>
         )}
-        <label className="block rounded-lg border border-dashed border-slate-300 p-4">
-          <Label>
-            {e.action === "stage" && stage === "PAID"
-              ? "إثبات الصرف — إلزامي"
-              : `المرفقات ${needsFile ? "— إلزامية" : "— اختياري"}`}
-          </Label>
-          <input
-            type="file"
-            multiple
-            required={needsFile}
-            accept=".pdf,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
-            onChange={(ev) => setFiles(Array.from(ev.target.files || []))}
-            className="mt-2 w-full text-xs"
-          />
-          <p className="mt-2 text-[10px] text-slate-400">
-            PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت
-          </p>
-        </label>
+        <UploadBox
+          label={e.action === "stage" && stage === "PAID" ? "إثبات الصرف" : "المرفقات"}
+          required={needsFile}
+          onFilesChange={setFiles}
+        />
         {e.edit && <Files files={existingFiles.filter(f => f.entityType !== "estimate")} />}
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
           <button
