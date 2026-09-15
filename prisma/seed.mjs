@@ -11,13 +11,14 @@ const permissions = [
   ["salaries.view", "عرض المرتبات", "salaries"], ["salaries.manage", "إدارة المرتبات", "salaries"],
   ["treasury.view", "عرض الخزنة", "treasury"], ["treasury.manage", "إدارة الخزنة", "treasury"],
   ["accounts.manage", "إدارة الحسابات والصلاحيات", "accounts"],
+  ["masterdata.view", "عرض البيانات الأساسية", "masterdata"], ["masterdata.manage", "إدارة البيانات الأساسية", "masterdata"],
 ];
 
 const roles = [["admin", "مدير النظام"], ["accountant", "محاسب"], ["storekeeper", "أمين مخزن"], ["sales", "مبيعات"]];
 const grants = /** @type {Record<string, string[]>} */ ({
   admin: permissions.map(([key]) => key),
-  accountant: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage"),
-  storekeeper: ["dashboard.view", "purchases.view", "purchases.manage"],
+  accountant: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage" && key !== "masterdata.manage"),
+  storekeeper: ["dashboard.view", "purchases.view", "purchases.manage", "masterdata.view"],
   sales: ["dashboard.view"],
 });
 
@@ -41,7 +42,14 @@ try {
     const role = await prisma.role.findUniqueOrThrow({ where: { key: roleKey } });
     await prisma.user.upsert({ where: { email }, update: { name, passwordHash, active: true, roleId: role.id }, create: { name, email, passwordHash, roleId: role.id } });
   }
-  console.log("Phase 2 roles, permissions, and demo users are ready.");
+  const company = await prisma.company.upsert({ where: { name: "إدارة الأشغال العسكرية" }, update: { active: true }, create: { name: "إدارة الأشغال العسكرية", type: "OWNER" } });
+  let sector = await prisma.sector.findFirst({ where: { name: "القيادة الاستراتيجية", companyId: company.id } });
+  sector ??= await prisma.sector.create({ data: { name: "القيادة الاستراتيجية", companyId: company.id } });
+  const project = await prisma.project.upsert({ where: { code: "MAYAN-27" }, update: { companyId: company.id, sectorId: sector.id }, create: { code: "MAYAN-27", name: "عمارة 27 - كمبوند مايان", companyId: company.id, sectorId: sector.id } });
+  const engineer = await prisma.employee.upsert({ where: { employeeCode: "ENG-001" }, update: { active: true }, create: { employeeCode: "ENG-001", name: "أحمد محمد", jobTitle: "مهندس موقع" } });
+  const assignment = await prisma.projectEngineerAssignment.findFirst({ where: { projectId: project.id, employeeId: engineer.id, active: true } });
+  if (!assignment) await prisma.projectEngineerAssignment.create({ data: { projectId: project.id, employeeId: engineer.id } });
+  console.log("Phase 3 roles and master-data demo records are ready.");
 } finally {
   await prisma.$disconnect();
 }
