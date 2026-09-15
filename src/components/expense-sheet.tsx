@@ -144,7 +144,7 @@ export function ExpenseSheet({
             onClick={onClose}
           >
             <ArrowRight className="size-3" />
-            الرجوع لملفات المقاولين
+            الرجوع لأعمال المقاولين
           </button>
           <h1 className="text-xl font-extrabold">
             {statement
@@ -496,7 +496,7 @@ export function ExpenseSheet({
               ["أعمال الجاري الحالي", gross - (previous?.grossCents ?? 0)],
               ["إجمالي الخصومات", discount],
               ["صافي المستحق التراكمي", net],
-              ["سابق الصرف الفعلي للملف", paid],
+              ["سابق الصرف الفعلي لأعمال المقاول", paid],
               [
                 net >= paid ? "المتبقي للمقاول" : "رصيد مقدم للمقاول",
                 Math.abs(net - paid),

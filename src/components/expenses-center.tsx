@@ -421,7 +421,7 @@ export function ExpensesCenter({
               </div>
             ))}
             <p className="pt-2 text-[10px] text-slate-500">
-              هذه لقطة محفوظة لهذا الجاري؛ إجمالي الملف يعتمد آخر جاري معتمد
+              هذه لقطة محفوظة لهذا الجاري؛ إجمالي أعمال المقاول يعتمد آخر جاري معتمد
               فقط.
             </p>
           </div>
@@ -446,8 +446,8 @@ export function ExpensesCenter({
         </div>
         <div className="grid gap-3 sm:grid-cols-4">
           {[
-            ["إجمالي تكلفة الأعمال للملف", summary.grossCents],
-            ["المدفوع فعليًا للملف", summary.paidCents],
+            ["إجمالي تكلفة أعمال المقاول", summary.grossCents],
+            ["المدفوع فعليًا لأعمال المقاول", summary.paidCents],
             ["المتبقي للمقاول", summary.remainingCents],
             ["رصيد مقدم للمقاول", summary.advanceCents],
           ].map(([label, value]) => (
@@ -464,7 +464,7 @@ export function ExpensesCenter({
         </div>
         {paymentId === st.id && paymentForm(st)}
         <section className="space-y-3 rounded-xl border bg-white p-4">
-          <h3 className="text-sm font-bold">دفعات الملف — جميع الجوارى</h3>
+          <h3 className="text-sm font-bold">دفعات أعمال المقاول — جميع الجوارى</h3>
           {account.statements.flatMap((s) =>
             s.payments.map((p) => (
               <div
@@ -545,7 +545,7 @@ export function ExpensesCenter({
             }}
           >
             <ArrowRight className="size-4" />
-            الرجوع لملفات المقاولين
+            الرجوع لأعمال المقاولين
           </button>
           {statementDetail(detail, detailAccount)}
         </>
@@ -650,7 +650,7 @@ export function ExpensesCenter({
                   disabled={busy}
                   className={`${expenseButton} text-blue-700`}
                 >
-                  حفظ ملف الأعمال
+                  حفظ أعمال المقاول وفتح الشيت
                 </button>
                 <button
                   type="button"
@@ -702,7 +702,7 @@ export function ExpensesCenter({
           </div>
           <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-[2fr_1fr_1fr]">
             <input
-              aria-label="بحث ملفات المقاولين"
+              aria-label="بحث أعمال المقاولين"
               className={expenseInput}
               placeholder="ابحث بالمقاول أو المشروع أو نطاق الأعمال…"
               value={search}
@@ -735,7 +735,7 @@ export function ExpensesCenter({
               ))}
             </select>
             <p className="text-[11px] text-slate-400 sm:col-span-3">
-              {visible.length} ملف · التكلفة تظهر عند اعتماد المدير التنفيذي،
+              {visible.length} مقاولة · التكلفة تظهر عند اعتماد المدير التنفيذي،
               والصرف عند تسجيل دفعة.
             </p>
           </div>

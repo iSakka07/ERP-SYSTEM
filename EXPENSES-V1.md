@@ -1,5 +1,7 @@
 # Expenses V1 — Phase 5A
 
+Client-facing terminology: «أعمال المقاولين» (collection) and «أعمال المقاول» (individual work account). Never label contractor work as «ملفات المقاولين» or «ملف المقاول»; uploaded attachment files remain files.
+
 Usability update: main action «إضافة مقاولة جديدة». Saving a work account opens its first statement sheet automatically. Each collapsed account row has a direct «إضافة مستخلص» action, with visible blocking explanation for pending/final statements, and direct draft-sheet access. All existing approval and access rules remain unchanged.
 
 - Contractor work account linked to project and execution scope; no financial ceiling.

@@ -143,7 +143,7 @@ export async function POST(request: Request) {
           )
             throw new Error("اختر مقاول باطن ومشروعًا نشطين.");
           if (!files.length)
-            throw new Error("ملف الأعمال يحتاج مرفق إسناد أو حصر.");
+            throw new Error("أعمال المقاول تحتاج مرفق إسناد أو حصر.");
           const account = await tx.subcontractAccount.create({
             data: {
               name: data.name,
@@ -165,7 +165,7 @@ export async function POST(request: Request) {
             },
           });
           if (!account || !account.company.active || !account.project.active)
-            throw new Error("ملف الأعمال أو المشروع غير نشط.");
+            throw new Error("أعمال المقاول أو المشروع غير نشط.");
           const current = data.id
             ? account.statements.find((s) => s.id === data.id)
             : undefined;
@@ -353,7 +353,7 @@ export async function POST(request: Request) {
               throw new Error("كل دفعة تحتاج فاتورة أو إثبات صرف.");
             const summary = expenseSummary(st.account.statements);
             if (summary.latest?.id !== st.id)
-              throw new Error("سجل الدفعة على آخر مستخلص معتمد في الملف.");
+              throw new Error("سجل الدفعة على آخر مستخلص معتمد لأعمال المقاول.");
             const amountCents = safeCents(Math.round(data.amount * 100));
             if (!amountCents) throw new Error("قيمة الدفعة أصغر من قرش.");
             if (
