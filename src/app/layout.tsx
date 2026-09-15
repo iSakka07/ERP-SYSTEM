@@ -5,7 +5,6 @@ import "@fontsource/cairo/600.css";
 import "@fontsource/cairo/700.css";
 import "@fontsource/cairo/800.css";
 import "./globals.css";
-import { AppShell } from "@/components/app-shell";
 
 export const metadata: Metadata = {
   title: "ERP-SYSTEM V1",
@@ -16,7 +15,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="ar" dir="rtl" className="h-full antialiased">
       <body className="min-h-full bg-slate-50 text-slate-950">
-        <AppShell>{children}</AppShell>
+        {children}
       </body>
     </html>
   );

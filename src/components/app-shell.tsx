@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { BanknoteArrowUp, Building2, FileSpreadsheet, LayoutDashboard, LockKeyhole, Menu, Paperclip, ReceiptText, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
+import { LogoutButton } from "@/components/logout-button";
 
 const navItems = [
   { label: "الرئيسية", icon: LayoutDashboard, href: "/", active: true },
@@ -17,7 +18,7 @@ const navItems = [
   { label: "الإدارة", icon: Settings2, href: "/#modules" },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, user }: { children: React.ReactNode; user: { name?: string | null; email?: string | null } }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="min-h-screen">
@@ -25,11 +26,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex h-full items-center justify-between px-4 lg:pr-[294px] lg:pl-6">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setOpen(true)} className="grid size-10 place-items-center rounded-lg text-slate-200 hover:bg-white/10 lg:hidden" aria-label="فتح القائمة"><Menu className="size-5" /></button>
-            <div><p className="text-sm font-bold">لوحة الإدارة</p><p className="text-[10px] text-slate-400">Phase 0 · Setup</p></div>
+            <div><p className="text-sm font-bold">لوحة الإدارة</p><p className="text-[10px] text-slate-400">Phase 1 · Auth</p></div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden text-left sm:block"><p className="text-xs font-bold">مدير النظام</p><p className="text-[10px] text-slate-400">نسخة تجريبية</p></div>
-            <span className="grid size-9 place-items-center rounded-full bg-blue-600 text-xs font-extrabold ring-2 ring-white/15">م</span>
+            <div className="hidden text-left sm:block"><p className="text-xs font-bold">{user.name}</p><p className="text-[10px] text-slate-400">{user.email}</p></div>
+            <span className="grid size-9 place-items-center rounded-full bg-blue-600 text-xs font-extrabold ring-2 ring-white/15">{user.name?.charAt(0) ?? "م"}</span>
           </div>
         </div>
       </header>
@@ -50,8 +51,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="absolute inset-x-3 bottom-4 rounded-xl border border-white/10 bg-white/5 p-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-200"><LockKeyhole className="size-3.5 text-blue-400" />تسجيل الدخول في Phase 1</div>
-          <p className="mt-1 text-[10px] leading-5 text-slate-500">الهيكل الحالي مخصص لمراجعة الشكل والتأسيس.</p>
+          <div className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-200"><LockKeyhole className="size-3.5 text-emerald-400" />جلسة دخول آمنة</div>
+          <LogoutButton />
         </div>
       </aside>
       <main className="min-h-screen pt-16 lg:pr-[270px]"><div className="mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-8">{children}</div></main>

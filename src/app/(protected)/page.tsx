@@ -27,7 +27,7 @@ export default function Home() {
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 lg:text-base">ERP-SYSTEM V1 يجمع مستخلصات المالك، مقاولي الباطن، المشتريات، النثريات، المرتبات والخزنة في ملف مالي واحد لكل مشروع.</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <a href="#modules" className="inline-flex h-11 items-center gap-2 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">استعرض الموديولات<ArrowLeft className="size-4" /></a>
-              <div className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600"><CircleCheckBig className="size-4 text-emerald-600" />Phase 0 قيد المراجعة</div>
+              <div className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600"><CircleCheckBig className="size-4 text-emerald-600" />Phase 1 جاهزة للمراجعة</div>
             </div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
@@ -36,7 +36,7 @@ export default function Home() {
               <span className="grid size-10 place-items-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"><CircleCheckBig className="size-5" /></span>
             </div>
             <div className="space-y-3">
-              {[["واجهة RTL والطابع البصري", "مكتمل"], ["Next.js + TypeScript", "مكتمل"], ["Prisma + SQLite", "مكتمل"], ["تسجيل الدخول والصلاحيات", "المرحلة القادمة"]].map(([label, value], index) => <div key={label} className="flex items-center justify-between gap-4 border-b border-slate-200 pb-3 last:border-0 last:pb-0"><span className="text-sm font-medium text-slate-700">{label}</span><span className={index < 3 ? "text-xs font-bold text-emerald-700" : "text-xs font-bold text-slate-500"}>{value}</span></div>)}
+              {[["واجهة RTL والطابع البصري", "مكتمل"], ["Next.js + TypeScript", "مكتمل"], ["Prisma + SQLite", "مكتمل"], ["تسجيل الدخول وحماية الصفحات", "مكتمل"]].map(([label, value]) => <div key={label} className="flex items-center justify-between gap-4 border-b border-slate-200 pb-3 last:border-0 last:pb-0"><span className="text-sm font-medium text-slate-700">{label}</span><span className="text-xs font-bold text-emerald-700">{value}</span></div>)}
             </div>
           </div>
         </div>
@@ -48,7 +48,7 @@ export default function Home() {
 
       <section id="modules" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 lg:p-6">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div><p className="text-xs font-bold text-blue-700">خريطة النظام</p><h2 className="mt-1 text-xl font-extrabold text-slate-950">الموديولات الرئيسية</h2><p className="mt-1 text-sm text-slate-500">روابط مؤقتة للتصميم والتخطيط خلال Phase 0.</p></div>
+          <div><p className="text-xs font-bold text-blue-700">خريطة النظام</p><h2 className="mt-1 text-xl font-extrabold text-slate-950">الموديولات الرئيسية</h2><p className="mt-1 text-sm text-slate-500">روابط مؤقتة حتى نبدأ موديولات البيانات بعد اعتماد كل مرحلة.</p></div>
           <div className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"><Clock3 className="size-3.5" />التنفيذ يتم مرحلة بمرحلة</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
