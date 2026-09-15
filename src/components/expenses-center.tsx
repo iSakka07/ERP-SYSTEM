@@ -14,6 +14,7 @@ import {
   approvalPermissions,
   expenseStages,
   expenseSummary,
+  newExpenseStatementBlockReason,
 } from "@/lib/expenses";
 import type {
   ExpenseAccount,
@@ -78,13 +79,18 @@ export function ExpensesCenter({
     setNotice("تم حفظ العملية وتسجيلها في سجل المراجعة.");
     router.refresh();
   }
-  async function perform(payload: unknown, form?: HTMLFormElement) {
+  async function perform(
+    payload: unknown,
+    form?: HTMLFormElement,
+    openSheet = false,
+  ) {
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      await sendExpense(payload, form);
+      const result = await sendExpense(payload, form);
       saved();
+      if (openSheet) setEditor({ accountId: result.id });
     } catch (err) {
       setError(err instanceof Error ? err.message : "تعذر الحفظ.");
     } finally {
@@ -507,7 +513,7 @@ export function ExpensesCenter({
             }}
           >
             <Plus className="size-4" />
-            إضافة ملف أعمال مقاول
+            إضافة مقاولة جديدة
           </button>
         )}
       </div>
@@ -561,15 +567,20 @@ export function ExpensesCenter({
                     notes: f.get("notes"),
                   },
                   e.currentTarget,
+                  true,
                 );
               }}
             >
               <h2 className="text-sm font-bold">
-                ملف أعمال جديد — بدون سقف قيمة
+                إضافة مقاولة جديدة — بدون سقف قيمة
               </h2>
+              <p className="text-xs leading-6 text-slate-500">
+                اختر المقاول والمشروع وحدد نطاق الأعمال. بعد الحفظ سيفتح شيت أول
+                مستخلص مباشرة لإدخال البنود والكميات ونسب الاستحقاق.
+              </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-xs">
-                  اسم ملف الأعمال
+                  اسم المقاولة / الأعمال
                   <input
                     name="name"
                     required
@@ -734,7 +745,7 @@ export function ExpensesCenter({
                 <thead className="bg-slate-100">
                   <tr>
                     {[
-                      "ملف الأعمال / النطاق",
+                      "المقاولة / النطاق",
                       "المقاول",
                       "المشروع",
                       "تكلفة الأعمال",
@@ -753,6 +764,7 @@ export function ExpensesCenter({
                   {visible.map((a) => {
                     const s = expenseSummary(a.statements);
                     const last = a.statements.at(-1);
+                    const blockReason = newExpenseStatementBlockReason(last);
                     return (
                       <Row key={a.id}>
                         <tr className="border-t">
@@ -761,6 +773,51 @@ export function ExpensesCenter({
                             <p className="mt-1 text-[10px] text-slate-400">
                               {a.scope}
                             </p>
+                            {allowed("expenses.manage") && (
+                              <div className="mt-2 space-y-2">
+                                <button
+                                  type="button"
+                                  disabled={Boolean(blockReason)}
+                                  title={blockReason || "فتح شيت مستخلص جديد"}
+                                  className={`${expenseButton} border-blue-200 text-blue-700 whitespace-nowrap`}
+                                  onClick={() => setEditor({ accountId: a.id })}
+                                >
+                                  <Plus className="size-3" />
+                                  إضافة مستخلص
+                                </button>
+                                {blockReason && (
+                                  <p className="max-w-56 text-[10px] leading-5 text-slate-500">
+                                    {blockReason}
+                                  </p>
+                                )}
+                                {last && last.stage === "DRAFT" && (
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1 text-[11px] font-bold text-blue-700 underline underline-offset-4"
+                                    onClick={() =>
+                                      setEditor({
+                                        accountId: a.id,
+                                        statementId: last.id,
+                                      })
+                                    }
+                                  >
+                                    <FileSpreadsheet className="size-3" />
+                                    فتح شيت جاري {last.sequence}
+                                  </button>
+                                )}
+                                {last &&
+                                  last.stage !== "DRAFT" &&
+                                  blockReason && (
+                                    <button
+                                      type="button"
+                                      className="text-[11px] font-bold text-blue-700 underline underline-offset-4"
+                                      onClick={() => setSelected(last.id)}
+                                    >
+                                      متابعة المستخلص السابق
+                                    </button>
+                                  )}
+                              </div>
+                            )}
                           </td>
                           <td className="p-3">{a.company.name}</td>
                           <td className="p-3">{a.project.name}</td>
@@ -808,22 +865,6 @@ export function ExpensesCenter({
                             >
                               <div className="mb-3 flex items-center justify-between gap-3">
                                 {files("account", a.id)}
-                                {allowed("expenses.manage") &&
-                                  (!last ||
-                                    (["EXECUTIVE", "ACCOUNTING"].includes(
-                                      last.stage,
-                                    ) &&
-                                      last.kind !== "FINAL")) && (
-                                    <button
-                                      className={`${expenseButton} text-blue-700`}
-                                      onClick={() =>
-                                        setEditor({ accountId: a.id })
-                                      }
-                                    >
-                                      <Plus className="size-3" />
-                                      إضافة مستخلص
-                                    </button>
-                                  )}
                               </div>
                               <div className="flex gap-3 overflow-x-auto pb-2">
                                 {a.statements.map((st) => (
@@ -869,7 +910,7 @@ export function ExpensesCenter({
               <div className="grid place-items-center gap-2 p-12 text-slate-400">
                 <FileSpreadsheet className="size-8" />
                 <p className="text-sm">
-                  لا توجد ملفات أعمال مطابقة. أضف ملف مقاول للبدء.
+                  لا توجد مقاولات مطابقة. اضغط «إضافة مقاولة جديدة» للبدء.
                 </p>
               </div>
             )}

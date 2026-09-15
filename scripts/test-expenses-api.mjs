@@ -357,7 +357,7 @@ try {
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.ok(html.includes("مستخلصات مقاولي الباطن"));
-  assert.ok(!html.includes("إضافة ملف أعمال مقاول</button>"));
+  assert.ok(!html.includes("إضافة مقاولة جديدة</button>"));
   console.log(
     "API passed: isolated approval permissions, ordering, mandatory evidence, executive financial effect, cumulative Jari2, stale writes, actual payment, advance, attachment protection, restricted UI.",
   );

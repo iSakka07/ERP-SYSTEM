@@ -1,5 +1,7 @@
 # Phase 5A verification — 15 September 2026
 
+Access simplification verified: renamed creation action and form, direct enabled «إضافة مستخلص» in collapsed empty account row opens Jari1 sheet without expanding; pending demo row shows disabled create with visible reason and direct «فتح شيت جاري2». Existing user account inspected only, cancelled without saving. New account save wired to open first sheet after refresh. Helper tests cover empty, pending, executive/accounting and final states; lint, typecheck and production build passed. No permission or financial rule changed.
+
 Passed:
 
 - Calculation tests: Jari1 52,000 gross /49,400 net; Jari2 120,000 gross /114,000 net; actual30,000 leaves84,000. Percentage and fixed deductions, no deductions, advances, invalid quantities/percentages, missing/duplicate prior items, price-change rejection and large monetary values.

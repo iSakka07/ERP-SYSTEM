@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { calculateExpense, expenseSummary } from "../src/lib/expenses.ts";
+import { calculateExpense, expenseSummary, newExpenseStatementBlockReason } from "../src/lib/expenses.ts";
+assert.equal(newExpenseStatementBlockReason(), "");
+for (const stage of ["DRAFT", "TECHNICAL", "SITE"]) assert.ok(newExpenseStatementBlockReason({ stage, kind: "CURRENT" }));
+for (const stage of ["EXECUTIVE", "ACCOUNTING"]) assert.equal(newExpenseStatementBlockReason({ stage, kind: "CURRENT" }), "");
+assert.ok(newExpenseStatementBlockReason({ stage: "ACCOUNTING", kind: "FINAL" }));
 const item = {
   itemKey: "paint",
   name: "نقاشة",

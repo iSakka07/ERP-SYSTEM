@@ -11,6 +11,17 @@ export const approvalPermissions: Record<string, string> = {
   EXECUTIVE: "expenses.approve_executive",
   ACCOUNTING: "expenses.pay",
 };
+export function newExpenseStatementBlockReason(last?: {
+  stage: string;
+  kind: string;
+}) {
+  if (!last) return "";
+  if (!["EXECUTIVE", "ACCOUNTING"].includes(last.stage))
+    return "اعتمد الجاري السابق من المدير التنفيذي أولًا.";
+  if (last.kind === "FINAL")
+    return "المقاولة لها مستخلص ختامي؛ لا يمكن إضافة جاري جديد.";
+  return "";
+}
 export type ExpenseItemInput = {
   itemKey: string;
   name: string;
