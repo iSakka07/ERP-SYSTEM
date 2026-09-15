@@ -6,6 +6,11 @@ const permissions = [
   ["dashboard.view", "عرض لوحة الإدارة", "dashboard"],
   ["incoming.view", "عرض الوارد", "incoming"], ["incoming.manage", "إدارة الوارد", "incoming"],
   ["expenses.view", "عرض مستخلصات المقاولين", "expenses"], ["expenses.manage", "إدارة مستخلصات المقاولين", "expenses"],
+  ["expenses.approve_technical", "اعتماد حصر المكتب الفني", "expenses"],
+  ["expenses.approve_site", "اعتماد مهندس الموقع", "expenses"],
+  ["expenses.approve_executive", "اعتماد المدير التنفيذي", "expenses"],
+  ["expenses.pay", "استلام الحسابات وتسجيل دفعات المقاولين", "expenses"],
+  ["expenses.return", "رد مستخلص للمراجعة", "expenses"],
   ["purchases.view", "عرض المشتريات", "purchases"], ["purchases.manage", "إدارة المشتريات", "purchases"],
   ["prose.view", "عرض النثريات", "prose"], ["prose.manage", "إدارة النثريات", "prose"],
   ["salaries.view", "عرض المرتبات", "salaries"], ["salaries.manage", "إدارة المرتبات", "salaries"],
@@ -17,7 +22,7 @@ const permissions = [
 const roles = [["admin", "مدير النظام"], ["accountant", "محاسب"], ["storekeeper", "أمين مخزن"], ["sales", "مبيعات"]];
 const grants = /** @type {Record<string, string[]>} */ ({
   admin: permissions.map(([key]) => key),
-  accountant: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage" && key !== "masterdata.manage"),
+  accountant: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage" && key !== "masterdata.manage" && !key.startsWith("expenses.approve_") && key !== "expenses.return"),
   storekeeper: ["dashboard.view", "purchases.view", "purchases.manage", "masterdata.view"],
   sales: ["dashboard.view"],
 });

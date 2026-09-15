@@ -63,16 +63,17 @@ model AuditLog {
 }
 
 model Company {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  type      String
-  taxNumber String?
-  phone     String?
-  active    Boolean   @default(true)
-  sectors   Sector[]
-  projects  Project[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                  String               @id @default(cuid())
+  name                String               @unique
+  type                String
+  taxNumber           String?
+  phone               String?
+  active              Boolean              @default(true)
+  sectors             Sector[]
+  projects            Project[]
+  subcontractAccounts SubcontractAccount[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 model Sector {
@@ -89,19 +90,20 @@ model Sector {
 }
 
 model Project {
-  id                String                      @id @default(cuid())
-  code              String                      @unique
-  name              String
-  companyId         String
-  company           Company                     @relation(fields: [companyId], references: [id])
-  sectorId          String?
-  sector            Sector?                     @relation(fields: [sectorId], references: [id])
-  status            String                      @default("ACTIVE")
-  active            Boolean                     @default(true)
-  supervisors       ProjectEngineerAssignment[]
-  incomingContracts IncomingContract[]
-  createdAt         DateTime                    @default(now())
-  updatedAt         DateTime                    @updatedAt
+  id                  String                      @id @default(cuid())
+  code                String                      @unique
+  name                String
+  companyId           String
+  company             Company                     @relation(fields: [companyId], references: [id])
+  sectorId            String?
+  sector              Sector?                     @relation(fields: [sectorId], references: [id])
+  status              String                      @default("ACTIVE")
+  active              Boolean                     @default(true)
+  supervisors         ProjectEngineerAssignment[]
+  incomingContracts   IncomingContract[]
+  subcontractAccounts SubcontractAccount[]
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
 }
 
 model IncomingContract {
@@ -210,4 +212,111 @@ model ProjectEngineerAssignment {
   createdAt  DateTime  @default(now())
 
   @@unique([projectId, employeeId, startDate])
+}
+
+model SubcontractAccount {
+  id         String                 @id @default(cuid())
+  name       String
+  companyId  String
+  company    Company                @relation(fields: [companyId], references: [id])
+  projectId  String
+  project    Project                @relation(fields: [projectId], references: [id])
+  scope      String
+  notes      String?
+  statements SubcontractStatement[]
+  createdAt  DateTime               @default(now())
+}
+
+model SubcontractStatement {
+  id                  String                 @id @default(cuid())
+  accountId           String
+  account             SubcontractAccount     @relation(fields: [accountId], references: [id])
+  sequence            Int
+  kind                String                 @default("CURRENT")
+  stage               String                 @default("DRAFT")
+  revision            Int                    @default(1)
+  statementDate       DateTime
+  notes               String?
+  grossCents          Float
+  deductionCents      Float
+  netCents            Float
+  previousGrossCents  Float
+  executiveApprovedAt DateTime?
+  items               SubcontractItem[]
+  deductions          SubcontractDeduction[]
+  payments            SubcontractPayment[]
+  approvals           SubcontractApproval[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@unique([accountId, sequence])
+}
+
+model SubcontractItem {
+  id                 String               @id @default(cuid())
+  statementId        String
+  statement          SubcontractStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  itemKey            String
+  position           Int
+  name               String
+  unit               String
+  previousQuantity   Float
+  currentQuantity    Float
+  entitlementPercent Float
+  unitPriceCents     Float
+  previousValueCents Float
+  totalCents         Float
+
+  @@unique([statementId, itemKey])
+}
+
+model SubcontractDeduction {
+  id          String               @id @default(cuid())
+  statementId String
+  statement   SubcontractStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  name        String
+  kind        String
+  value       Float
+  amountCents Float
+  position    Int
+}
+
+model SubcontractPayment {
+  id          String               @id @default(cuid())
+  statementId String
+  statement   SubcontractStatement @relation(fields: [statementId], references: [id])
+  amountCents Float
+  paymentDate DateTime
+  method      String
+  reference   String
+  notes       String?
+  actorId     String
+  createdAt   DateTime             @default(now())
+}
+
+model SubcontractApproval {
+  id          String               @id @default(cuid())
+  statementId String
+  statement   SubcontractStatement @relation(fields: [statementId], references: [id])
+  fromStage   String
+  toStage     String
+  reason      String?
+  actorId     String
+  actorName   String
+  revision    Int
+  createdAt   DateTime             @default(now())
+}
+
+model ExpenseAttachment {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  name       String
+  mime       String
+  size       Int
+  data       Bytes
+  actorId    String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
 }

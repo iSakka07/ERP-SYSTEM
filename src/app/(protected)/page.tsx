@@ -31,6 +31,7 @@ export default async function Home() {
             <div className="mt-6 flex flex-wrap gap-3">
               <a href="#modules" className="inline-flex h-11 items-center gap-2 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">استعرض الموديولات<ArrowLeft className="size-4" /></a>
               {can(session?.user, "incoming.view") && <a href="/incoming" className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-blue-700"><CircleCheckBig className="size-4 text-emerald-600" />جرّب العقود والوارد</a>}
+              {can(session?.user, "expenses.view") && <a href="/expenses" className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-blue-700"><FileSpreadsheet className="size-4" />جرّب مستخلصات المقاولين</a>}
             </div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
