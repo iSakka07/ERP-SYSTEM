@@ -1,0 +1,8 @@
+CREATE TABLE "AuditLog" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "actorId" TEXT NOT NULL,
+  "action" TEXT NOT NULL,
+  "target" TEXT NOT NULL,
+  "details" TEXT,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

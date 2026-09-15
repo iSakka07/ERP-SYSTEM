@@ -2,34 +2,37 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { BanknoteArrowUp, Building2, FileSpreadsheet, LayoutDashboard, LockKeyhole, Menu, Paperclip, ReceiptText, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
+import { can } from "@/lib/permissions";
 
 const navItems = [
-  { label: "الرئيسية", icon: LayoutDashboard, href: "/", active: true },
-  { label: "المشروعات", icon: Building2, href: "/#modules" },
-  { label: "الوارد", icon: BanknoteArrowUp, href: "/#modules" },
-  { label: "مستخلصات المقاولين", icon: FileSpreadsheet, href: "/#modules" },
-  { label: "المشتريات", icon: ShoppingCart, href: "/#modules" },
-  { label: "النثريات", icon: ReceiptText, href: "/#modules" },
-  { label: "المرتبات", icon: UsersRound, href: "/#modules" },
-  { label: "الخزنة", icon: Vault, href: "/#modules" },
-  { label: "المرفقات", icon: Paperclip, href: "/#modules" },
-  { label: "الإدارة", icon: Settings2, href: "/#modules" },
+  { label: "الرئيسية", icon: LayoutDashboard, href: "/", permission: "dashboard.view" },
+  { label: "المشروعات", icon: Building2, href: "/#modules", permission: "dashboard.view" },
+  { label: "الوارد", icon: BanknoteArrowUp, href: "/#modules", permission: "incoming.view" },
+  { label: "مستخلصات المقاولين", icon: FileSpreadsheet, href: "/#modules", permission: "expenses.view" },
+  { label: "المشتريات", icon: ShoppingCart, href: "/#modules", permission: "purchases.view" },
+  { label: "النثريات", icon: ReceiptText, href: "/#modules", permission: "prose.view" },
+  { label: "المرتبات", icon: UsersRound, href: "/#modules", permission: "salaries.view" },
+  { label: "الخزنة", icon: Vault, href: "/#modules", permission: "treasury.view" },
+  { label: "المرفقات", icon: Paperclip, href: "/#modules", permission: "dashboard.view" },
+  { label: "إدارة الحسابات", icon: Settings2, href: "/admin/accounts", permission: "accounts.manage" },
 ];
 
-export function AppShell({ children, user }: { children: React.ReactNode; user: { name?: string | null; email?: string | null } }) {
+export function AppShell({ children, user }: { children: React.ReactNode; user: { name?: string | null; email?: string | null; roleName: string; permissions: string[] } }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
   return (
     <div className="min-h-screen">
       <header className="fixed inset-x-0 top-0 z-40 h-16 border-b border-white/10 bg-[#10192d] text-white shadow-sm">
         <div className="flex h-full items-center justify-between px-4 lg:pr-[294px] lg:pl-6">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setOpen(true)} className="grid size-10 place-items-center rounded-lg text-slate-200 hover:bg-white/10 lg:hidden" aria-label="فتح القائمة"><Menu className="size-5" /></button>
-            <div><p className="text-sm font-bold">لوحة الإدارة</p><p className="text-[10px] text-slate-400">Phase 1 · Auth</p></div>
+            <div><p className="text-sm font-bold">لوحة الإدارة</p><p className="text-[10px] text-slate-400">Phase 2 · Roles & Permissions</p></div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden text-left sm:block"><p className="text-xs font-bold">{user.name}</p><p className="text-[10px] text-slate-400">{user.email}</p></div>
+            <div className="hidden text-left sm:block"><p className="text-xs font-bold">{user.name}</p><p className="text-[10px] text-slate-400">{user.roleName} · {user.email}</p></div>
             <span className="grid size-9 place-items-center rounded-full bg-blue-600 text-xs font-extrabold ring-2 ring-white/15">{user.name?.charAt(0) ?? "م"}</span>
           </div>
         </div>
@@ -45,9 +48,10 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
         </div>
         <nav className="space-y-1 overflow-y-auto px-3 py-5">
           <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">التنقل الرئيسي</p>
-          {navItems.map((item) => {
+          {navItems.filter((item) => can(user, item.permission)).map((item) => {
             const Icon = item.icon;
-            return <Link key={item.label} href={item.href} onClick={() => setOpen(false)} className={`flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition ${item.active ? "bg-blue-600 text-white shadow-md shadow-blue-950/20" : "text-slate-300 hover:bg-white/7 hover:text-white"}`}><Icon className="size-4.5" /><span className="flex-1">{item.label}</span>{!item.active && <span className="rounded bg-white/6 px-1.5 py-0.5 text-[9px] text-slate-500">قريبًا</span>}</Link>;
+            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            return <Link key={item.label} href={item.href} onClick={() => setOpen(false)} className={`flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition ${active ? "bg-blue-600 text-white shadow-md shadow-blue-950/20" : "text-slate-300 hover:bg-white/7 hover:text-white"}`}><Icon className="size-4.5" /><span className="flex-1">{item.label}</span>{item.href === "/#modules" && <span className="rounded bg-white/6 px-1.5 py-0.5 text-[9px] text-slate-500">قريبًا</span>}</Link>;
           })}
         </nav>
         <div className="absolute inset-x-3 bottom-4 rounded-xl border border-white/10 bg-white/5 p-3">

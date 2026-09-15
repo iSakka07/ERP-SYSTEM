@@ -18,7 +18,7 @@ export default function LoginPage() {
             <p className="flex items-center gap-3"><CheckCircle2 className="size-5 text-emerald-400" />الصفحات الداخلية محمية بالكامل.</p>
           </div>
         </div>
-        <p className="relative text-xs text-slate-500">نسخة تجريبية داخلية · Phase 1</p>
+        <p className="relative text-xs text-slate-500">نسخة تجريبية داخلية · Phase 2</p>
       </section>
       <section className="flex items-center justify-center p-5 sm:p-10">
         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-300/30 sm:p-9">

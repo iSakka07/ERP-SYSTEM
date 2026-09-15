@@ -27,7 +27,7 @@ export default function Home() {
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 lg:text-base">ERP-SYSTEM V1 يجمع مستخلصات المالك، مقاولي الباطن، المشتريات، النثريات، المرتبات والخزنة في ملف مالي واحد لكل مشروع.</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <a href="#modules" className="inline-flex h-11 items-center gap-2 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">استعرض الموديولات<ArrowLeft className="size-4" /></a>
-              <div className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600"><CircleCheckBig className="size-4 text-emerald-600" />Phase 1 جاهزة للمراجعة</div>
+              <div className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600"><CircleCheckBig className="size-4 text-emerald-600" />Phase 2 جاهزة للمراجعة</div>
             </div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
@@ -36,7 +36,7 @@ export default function Home() {
               <span className="grid size-10 place-items-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"><CircleCheckBig className="size-5" /></span>
             </div>
             <div className="space-y-3">
-              {[["واجهة RTL والطابع البصري", "مكتمل"], ["Next.js + TypeScript", "مكتمل"], ["Prisma + SQLite", "مكتمل"], ["تسجيل الدخول وحماية الصفحات", "مكتمل"]].map(([label, value]) => <div key={label} className="flex items-center justify-between gap-4 border-b border-slate-200 pb-3 last:border-0 last:pb-0"><span className="text-sm font-medium text-slate-700">{label}</span><span className="text-xs font-bold text-emerald-700">{value}</span></div>)}
+              {[["واجهة RTL والطابع البصري", "مكتمل"], ["Prisma + SQLite", "مكتمل"], ["تسجيل الدخول وحماية الصفحات", "مكتمل"], ["الحسابات والأدوار والصلاحيات", "مكتمل"]].map(([label, value]) => <div key={label} className="flex items-center justify-between gap-4 border-b border-slate-200 pb-3 last:border-0 last:pb-0"><span className="text-sm font-medium text-slate-700">{label}</span><span className="text-xs font-bold text-emerald-700">{value}</span></div>)}
             </div>
           </div>
         </div>
