@@ -6,6 +6,8 @@ Client-facing terminology: «أعمال المقاولين» (collection) and «
 
 Usability update: main action «إضافة مقاولة جديدة». Saving a work account opens its first statement sheet automatically. Each collapsed account row has a direct «إضافة مستخلص» action, with visible blocking explanation for pending/final statements, and direct draft-sheet access. All existing approval and access rules remain unchanged.
 
+Focused creation: new work-account creation shows only its form, without the overview header, summary cards, filters or account table. Cancel restores the overview. Statement creation/editing likewise shows only its sheet and its own calculation totals, not the overview.
+
 - Contractor work account linked to project and execution scope; no financial ceiling.
 - Unlimited cumulative Jari plus final. Previous quantities and values copied from latest executive-approved snapshot; current quantities entered; entitlement percentage can increase.
 - Gross = cumulative quantity × fixed unit price × entitlement percentage. Gross project cost and net contractor entitlement effective at executive approval; never sum cumulative Jaris.

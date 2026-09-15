@@ -506,6 +506,7 @@ export function ExpensesCenter({
   }
   return (
     <div className="space-y-5">
+      {!newAccount && (
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">مستخلصات مقاولي الباطن</h1>
@@ -519,6 +520,7 @@ export function ExpensesCenter({
             onClick={() => {
               setNewAccount(true);
               setError("");
+              setNotice("");
             }}
           >
             <Plus className="size-4" />
@@ -526,6 +528,7 @@ export function ExpensesCenter({
           </button>
         )}
       </div>
+      )}
       {error && (
         <p
           role="alert"
@@ -560,7 +563,7 @@ export function ExpensesCenter({
         </>
       ) : (
         <>
-          {newAccount && (
+          {newAccount ? (
             <form
               className="space-y-3 rounded-xl border border-blue-200 bg-white p-4"
               onSubmit={(e) => {
@@ -664,7 +667,10 @@ export function ExpensesCenter({
                 <button
                   type="button"
                   className={expenseButton}
-                  onClick={() => setNewAccount(false)}
+                  onClick={() => {
+                    setNewAccount(false);
+                    setError("");
+                  }}
                 >
                   إلغاء
                 </button>
@@ -675,7 +681,8 @@ export function ExpensesCenter({
                 </p>
               )}
             </form>
-          )}
+          ) : (
+          <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               [
@@ -924,6 +931,8 @@ export function ExpensesCenter({
               </div>
             )}
           </div>
+          </>
+          )}
         </>
       )}
     </div>
