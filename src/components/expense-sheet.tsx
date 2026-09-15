@@ -2,7 +2,11 @@
 import { useState } from "react";
 import type { DeductionInput, ExpenseItemInput } from "@/lib/expenses";
 import type { ExpenseAccount, ExpenseStatement } from "@/lib/expense-types";
-import { expenseSummary } from "@/lib/expenses";
+import {
+  expenseSummary,
+  expenseCumulativeQuantity,
+  correctionDebtAfterApproval,
+} from "@/lib/expenses";
 import { withdrawnKeys } from "@/lib/work-withdrawals";
 import { Plus, Trash2, Save, ArrowRight, Paperclip } from "lucide-react";
 export const expenseInput =
@@ -89,6 +93,8 @@ export function ExpenseSheet({
           entitlementPercent: i.entitlementPercent,
           sourceItemKey: i.sourceItemKey,
           priceChangeReason: i.priceChangeReason,
+          correctionQuantity: i.correctionQuantity ?? 0,
+          correctionReason: i.correctionReason,
         }))
       : previousItems.length
         ? [
@@ -141,16 +147,29 @@ export function ExpenseSheet({
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showCorrections, setShowCorrections] = useState(
+    statement?.items.some((i) => (i.correctionQuantity ?? 0) > 0) ?? false,
+  );
+  const hasCorrections = rows.some((i) => (i.correctionQuantity ?? 0) > 0);
+  const correctionChanged = rows.some((i) => {
+    const saved = statement?.items.find((x) => x.itemKey === i.itemKey);
+    return (
+      (i.correctionQuantity ?? 0) !== (saved?.correctionQuantity ?? 0) ||
+      ((i.correctionQuantity ?? 0) > 0
+        ? i.correctionReason?.trim() || null
+        : null) !== (saved?.correctionReason ?? null)
+    );
+  });
   const computed = rows.map((i) => {
     const old = previousItems.find((p) => p.itemKey === i.itemKey);
-    const previousQuantity = old
-      ? old.previousQuantity + old.currentQuantity
-      : 0;
+    const previousQuantity = old ? expenseCumulativeQuantity(old) : 0;
     return {
       previousQuantity,
-      quantity: previousQuantity + i.currentQuantity,
+      quantity: expenseCumulativeQuantity({ ...i, previousQuantity }),
       total: Math.round(
-        (previousQuantity + i.currentQuantity) * i.price * i.entitlementPercent,
+        expenseCumulativeQuantity({ ...i, previousQuantity }) *
+          i.price *
+          i.entitlementPercent,
       ),
       old,
     };
@@ -160,8 +179,12 @@ export function ExpenseSheet({
     Math.round(d.kind === "PERCENT" ? (gross * d.value) / 100 : d.value * 100),
   );
   const discount = discountAmounts.reduce((s, d) => s + d, 0);
-  const paid = expenseSummary(account.statements).paidCents;
+  const summary = expenseSummary(account.statements);
+  const paid = summary.paidCents;
   const net = gross - discount;
+  const previewDebt =
+    net >= 0 ? correctionDebtAfterApproval(summary, net, hasCorrections) : 0;
+  const previewAdvance = Math.max(0, paid - net) - previewDebt;
   function updateRow(index: number, patch: Partial<ExpenseItemInput>) {
     setRows(rows.map((r, n) => (n === index ? { ...r, ...patch } : r)));
   }
@@ -257,20 +280,41 @@ export function ExpenseSheet({
             السابق يبقى بسعره القديم، وأدخل السعر والكمية الجديدة وسبب التغيير
             في السطر الجديد، مع إرفاق إثبات.
           </p>
-          <div className="flex items-center justify-between gap-3 border-b p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
             <h2 className="text-sm font-extrabold">شيت حصر الأعمال</h2>
+            {previousItems.some((i) => expenseCumulativeQuantity(i) > 0) &&
+              !showCorrections && (
+                <button
+                  type="button"
+                  className={`${expenseButton} text-amber-800`}
+                  onClick={() => setShowCorrections(true)}
+                >
+                  تصحيح كميات الحصر السابق
+                </button>
+              )}
             <span className="text-[11px] text-slate-500">
               اسحب الجدول أفقيًا لاستعراض كل الأعمدة
             </span>
           </div>
+          {showCorrections && (
+            <p className="border-b bg-amber-50 p-3 text-xs leading-6 text-amber-900">
+              أدخل كمية موجبة في «تصحيح (-)» لتخصم من السابق بسعره الأصلي، وليس
+              من الشغل الجديد. السبب والإثبات الجديد إلزاميان. الأثر المالي بعد
+              الاعتماد التنفيذي؛ أي صرف زائد ينتج عن التصحيح يسجل مديونية على
+              المقاول ويتسوى في الجوارى القادمة.
+            </p>
+          )}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1060px] table-fixed text-xs">
+            <table
+              className={`w-full ${showCorrections ? "min-w-[1260px]" : "min-w-[1060px]"} table-fixed text-xs`}
+            >
               <colgroup>
                 <col className="w-10" />
                 <col className="w-64" />
                 <col className="w-20" />
                 <col className="w-24" />
                 <col className="w-24" />
+                {showCorrections && <col className="w-48" />}
                 <col className="w-24" />
                 <col className="w-28" />
                 <col className="w-28" />
@@ -285,6 +329,7 @@ export function ExpenseSheet({
                     "الوحدة",
                     "سابق",
                     "حالي",
+                    ...(showCorrections ? ["تصحيح (-)"] : []),
                     "تراكمي",
                     "سعر الوحدة",
                     "الاستحقاق %",
@@ -397,6 +442,53 @@ export function ExpenseSheet({
                         }
                       />
                     </td>
+                    {showCorrections && (
+                      <td className="bg-amber-50/30 p-2 align-top">
+                        {computed[n].old && computed[n].previousQuantity > 0 ? (
+                          <>
+                            <input
+                              aria-label={`كمية التصحيح ${n + 1}`}
+                              type="number"
+                              min="0"
+                              max={computed[n].previousQuantity}
+                              step="0.000001"
+                              required
+                              className={expenseInput}
+                              value={r.correctionQuantity ?? 0}
+                              onChange={(e) =>
+                                updateRow(n, {
+                                  correctionQuantity: Number(e.target.value),
+                                  correctionReason:
+                                    Number(e.target.value) > 0
+                                      ? r.correctionReason
+                                      : null,
+                                })
+                              }
+                            />
+                            {(r.correctionQuantity ?? 0) > 0 && (
+                              <textarea
+                                aria-label={`سبب تصحيح الكمية ${n + 1}`}
+                                required
+                                maxLength={1000}
+                                rows={2}
+                                placeholder="سبب تصحيح الحصر (إلزامي)"
+                                className={`${expenseInput} mt-2`}
+                                value={r.correctionReason ?? ""}
+                                onChange={(e) =>
+                                  updateRow(n, {
+                                    correctionReason: e.target.value,
+                                  })
+                                }
+                              />
+                            )}
+                          </>
+                        ) : (
+                          <span className="block text-center text-slate-400">
+                            — لا كمية سابقة
+                          </span>
+                        )}
+                      </td>
+                    )}
                     <td className="bg-blue-50/40 p-2 text-center font-bold tabular-nums">
                       {computed[n].quantity.toLocaleString("en-US")}
                     </td>
@@ -589,10 +681,13 @@ export function ExpenseSheet({
               ["إجمالي الخصومات", discount],
               ["صافي المستحق التراكمي", net],
               ["سابق الصرف الفعلي لأعمال المقاول", paid],
-              [
-                net >= paid ? "المتبقي للمقاول" : "رصيد مقدم للمقاول",
-                Math.abs(net - paid),
-              ],
+              ["المتبقي للمقاول", Math.max(0, net - paid)],
+              ...(previewDebt > 0
+                ? [["مديونية على المقاول — بعد الاعتماد", previewDebt]]
+                : []),
+              ...(previewAdvance > 0
+                ? [["رصيد مقدم للمقاول", previewAdvance]]
+                : []),
             ].map(([label, value]) => (
               <div
                 key={String(label)}
@@ -622,7 +717,12 @@ export function ExpenseSheet({
             rows={2}
           />
         </label>
-        <ExpenseFileInput required={!statement} />
+        {correctionChanged && (
+          <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
+            تغيير تصحيح الحصر يحتاج مرفقًا جديدًا، حتى لو للمسودة مرفقات سابقة.
+          </p>
+        )}
+        <ExpenseFileInput required={!statement || correctionChanged} />
         {error && (
           <p
             role="alert"

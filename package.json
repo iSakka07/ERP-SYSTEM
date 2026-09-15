@@ -15,6 +15,7 @@
     "test:incoming-api": "node scripts/test-incoming-api.mjs",
     "test:expenses": "node scripts/test-expenses.mjs",
     "test:expenses-api": "node scripts/test-expenses-api.mjs",
+    "test:expense-corrections-api": "node scripts/test-expense-corrections-api.mjs",
     "db:expenses-permissions": "node scripts/expenses-permissions.mjs",
     "db:demo-expenses": "node scripts/seed-expenses-demo.mjs",
     "db:setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed"

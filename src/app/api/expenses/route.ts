@@ -15,6 +15,7 @@ import {
   expenseStages,
   expenseSummary,
   safeCents,
+  correctionDebtAfterApproval,
 } from "@/lib/expenses";
 
 const text = z.string().trim().min(1).max(300);
@@ -57,6 +58,13 @@ const schema = z.discriminatedUnion("action", [
           entitlementPercent: z.number().finite().min(0).max(100),
           sourceItemKey: text.nullish(),
           priceChangeReason: z.string().trim().max(1000).nullish(),
+          correctionQuantity: z
+            .number()
+            .finite()
+            .nonnegative()
+            .max(1e9)
+            .optional(),
+          correctionReason: z.string().trim().max(1000).nullish(),
         }),
       )
       .min(1)
@@ -511,6 +519,31 @@ export async function POST(request: Request) {
               !previous?.items.some((p) => p.itemKey === i.itemKey),
           );
           if (
+            calc.items.some((item) => (item.correctionQuantity ?? 0) > 0) &&
+            (!previous ||
+              data.statementDate <
+                previous.statementDate.toISOString().slice(0, 10) ||
+              data.statementDate > new Date().toISOString().slice(0, 10))
+          )
+            throw new Error(
+              "تاريخ تصحيح الحصر من تاريخ الجاري السابق المعتمد حتى اليوم؛ لا يطبق بأثر رجعي.",
+            );
+          const correctionChanged = calc.items.some((item) => {
+            const saved = current?.items.find(
+              (i) => i.itemKey === item.itemKey,
+            );
+            return (
+              (item.correctionQuantity ?? 0) !==
+                (saved?.correctionQuantity ?? 0) ||
+              (item.correctionReason ?? null) !==
+                (saved?.correctionReason ?? null)
+            );
+          });
+          if (correctionChanged && !files.length)
+            throw new Error(
+              "إضافة أو تعديل أو إلغاء تصحيح الكمية يحتاج إثباتًا جديدًا، حتى لو للمسودة مرفقات سابقة.",
+            );
+          if (
             !files.length &&
             priceVersions.some(
               (v) =>
@@ -578,6 +611,8 @@ export async function POST(request: Request) {
               name: item.name,
               unit: item.unit,
               currentQuantity: item.currentQuantity,
+              correctionQuantity: item.correctionQuantity ?? 0,
+              correctionReason: item.correctionReason,
               previousQuantity: item.previousQuantity,
               unitPriceCents: item.unitPriceCents,
               entitlementPercent: item.entitlementPercent,
@@ -658,6 +693,16 @@ export async function POST(request: Request) {
               where: { id: st.id, revision: data.revision, stage: st.stage },
               data: {
                 stage: data.stage,
+                correctionDebtCents:
+                  data.stage === "EXECUTIVE"
+                    ? correctionDebtAfterApproval(
+                        expenseSummary(st.account.statements),
+                        st.netCents,
+                        st.items.some((i) => i.correctionQuantity > 0),
+                      )
+                    : data.stage === "DRAFT"
+                      ? 0
+                      : st.correctionDebtCents,
                 revision: { increment: 1 },
                 executiveApprovedAt:
                   data.stage === "EXECUTIVE"

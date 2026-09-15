@@ -770,6 +770,26 @@ try {
     16500000,
     "later reassignment never changes source finances",
   );
+  r = await post(
+    {
+      ...fourth,
+      items: fourth.items.map((i) => ({
+        ...i,
+        currentQuantity: 0,
+        correctionQuantity: i.itemKey === "paint" ? 1 : 0,
+        correctionReason:
+          i.itemKey === "paint" ? "تصحيح حصر سابق رغم سحب النطاق الجديد" : null,
+      })),
+    },
+    jars.manager,
+  );
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.equal((await read(r.id)).grossCents, 16460000);
+  assert.equal(
+    (await read(fourthId)).grossCents,
+    16500000,
+    "correction of withdrawn measurement is forward-only",
+  );
   const page = await fetch(`${base}/expenses`, {
     headers: headers(jars.accounting),
   });

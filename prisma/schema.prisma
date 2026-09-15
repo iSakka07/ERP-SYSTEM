@@ -243,6 +243,7 @@ model SubcontractStatement {
   deductionCents      Float
   netCents            Float
   previousGrossCents  Float
+  correctionDebtCents Float                  @default(0)
   executiveApprovedAt DateTime?
   items               SubcontractItem[]
   deductions          SubcontractDeduction[]
@@ -265,6 +266,8 @@ model SubcontractItem {
   unit               String
   previousQuantity   Float
   currentQuantity    Float
+  correctionQuantity Float                @default(0)
+  correctionReason   String?
   entitlementPercent Float
   unitPriceCents     Float
   previousValueCents Float

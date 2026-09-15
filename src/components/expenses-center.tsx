@@ -16,6 +16,7 @@ import {
   expenseStages,
   expenseSummary,
   newExpenseStatementBlockReason,
+  expenseCumulativeQuantity,
 } from "@/lib/expenses";
 import type {
   ExpenseAccount,
@@ -374,6 +375,7 @@ export function ExpensesCenter({
                   "الوحدة",
                   "سابق",
                   "حالي",
+                  ...(st.items.some(i => (i.correctionQuantity ?? 0) > 0) ? ["تصحيح (-)"] : []),
                   "تراكمي",
                   "سعر الوحدة",
                   "استحقاق %",
@@ -396,12 +398,15 @@ export function ExpensesCenter({
                         إصدار سعر جديد للكميات الجديدة · {i.priceChangeReason}
                       </p>
                     )}
+                    {(i.correctionQuantity ?? 0) > 0 && <p className="mt-1 text-[10px] text-amber-800">تصحيح الحصر: {i.correctionReason}</p>}
                   </td>
                   <td className="p-3">{i.unit}</td>
                   <td className="p-3">{i.previousQuantity}</td>
                   <td className="p-3">{i.currentQuantity}</td>
+                  {st.items.some(item => (item.correctionQuantity ?? 0) > 0) &&
+                    <td className="p-3 text-amber-800" dir="ltr">{i.correctionQuantity ? `−${i.correctionQuantity}` : "—"}</td>}
                   <td className="p-3 font-bold">
-                    {i.previousQuantity + i.currentQuantity}
+                    {expenseCumulativeQuantity(i)}
                   </td>
                   <td className="p-3" dir="ltr">
                     {money(i.unitPriceCents)}
@@ -466,6 +471,7 @@ export function ExpensesCenter({
             ["المدفوع فعليًا لأعمال المقاول", summary.paidCents],
             ["المتبقي للمقاول", summary.remainingCents],
             ["رصيد مقدم للمقاول", summary.advanceCents],
+            ["مديونية على المقاول", summary.debtCents],
           ].map(([label, value]) => (
             <div key={String(label)} className="rounded-xl border bg-white p-4">
               <p className="text-[11px] text-slate-500">{label}</p>
@@ -707,6 +713,7 @@ export function ExpensesCenter({
                 "المتبقي للمقاولين",
                 totals.reduce((s, t) => s + t.remainingCents, 0),
               ],
+              ...(totals.some(t => t.debtCents > 0) ? [["مديونية على المقاولين", totals.reduce((s,t) => s + t.debtCents,0)]] : []),
             ].map(([label, value]) => (
               <article
                 key={String(label)}
@@ -776,7 +783,7 @@ export function ExpensesCenter({
                       "تكلفة الأعمال",
                       "صافي المستحق",
                       "المدفوع",
-                      "المتبقي / المقدم",
+                      "المتبقي / المديونية / المقدم",
                       "الجوارى",
                     ].map((h) => (
                       <th key={h} className="p-3 text-right">
@@ -862,14 +869,15 @@ export function ExpensesCenter({
                             ),
                           )}
                           <td
-                            className={`p-3 font-bold ${s.advanceCents ? "text-amber-700" : "text-slate-700"}`}
+                            className={`p-3 font-bold ${s.advanceCents || s.debtCents ? "text-amber-700" : "text-slate-700"}`}
                           >
                             <span dir="ltr">
-                              {money(s.advanceCents || s.remainingCents)}
+                              {money(s.debtCents || s.advanceCents || s.remainingCents)}
                             </span>
+                            {s.debtCents > 0 && <span className="block text-[10px]">مديونية على المقاول</span>}
                             {s.advanceCents > 0 && (
                               <span className="block text-[10px]">
-                                رصيد مقدم
+                                رصيد مقدم {s.debtCents > 0 && money(s.advanceCents)}
                               </span>
                             )}
                           </td>

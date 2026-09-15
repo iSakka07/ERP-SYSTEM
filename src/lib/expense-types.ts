@@ -13,6 +13,7 @@ export type ExpenseStatement = {
   deductionCents: number;
   netCents: number;
   previousGrossCents: number;
+  correctionDebtCents: number;
   items: PreviousItem[];
   deductions: (DeductionInput & { amountCents: number })[];
   payments: {

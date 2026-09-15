@@ -3,6 +3,8 @@ import {
   calculateExpense,
   expenseSummary,
   newExpenseStatementBlockReason,
+  expenseCumulativeQuantity,
+  correctionDebtAfterApproval,
 } from "../src/lib/expenses.ts";
 assert.equal(newExpenseStatementBlockReason(), "");
 for (const stage of ["DRAFT", "TECHNICAL", "SITE"])
@@ -170,4 +172,130 @@ const progress = calculateExpense(
 assert.equal(progress.grossCents, 12500000); // entitlement advances on old quantities at400
 console.log(
   "Prospective prices, historic values, later quantities and entitlement progression passed.",
+);
+
+const correctionRows = [
+  {
+    ...item,
+    currentQuantity: 0,
+    entitlementPercent: 100,
+    correctionQuantity: 50,
+    correctionReason: "حصر زائد بالسعر الأصلي",
+  },
+  {
+    ...version,
+    currentQuantity: 0,
+    correctionQuantity: 20,
+    correctionReason: "تصحيح الكمية بإصدار سعر450",
+  },
+];
+const corrected = calculateExpense(correctionRows, retention, atNewPrice.items);
+assert.equal(corrected.grossCents, 9600000); //150*400 +80*450
+assert.equal(corrected.netCents, 9120000);
+assert.equal(corrected.items[0].previousQuantity, 200);
+assert.equal(expenseCumulativeQuantity(corrected.items[0]), 150);
+assert.equal(
+  atNewPrice.grossCents,
+  12500000,
+  "historical snapshot never altered",
+);
+const afterCorrection = calculateExpense(
+  [
+    { ...item, currentQuantity: 0, entitlementPercent: 100 },
+    { ...version, currentQuantity: 10 },
+  ],
+  [],
+  corrected.items,
+);
+assert.equal(afterCorrection.items[0].previousQuantity, 150);
+assert.equal(afterCorrection.items[1].previousQuantity, 80);
+assert.equal(
+  afterCorrection.grossCents,
+  10050000,
+  "correction is not subtracted twice",
+);
+for (const patch of [
+  { correctionQuantity: -1 },
+  { correctionQuantity: 201 },
+  { correctionReason: " " },
+  { correctionQuantity: 0.0000001 },
+])
+  assert.throws(() =>
+    calculateExpense(
+      [{ ...correctionRows[0], ...patch }, correctionRows[1]],
+      [],
+      atNewPrice.items,
+    ),
+  );
+assert.throws(() =>
+  calculateExpense(
+    [{ ...item, correctionQuantity: 1, correctionReason: "لا يوجد سابق" }],
+    [],
+  ),
+);
+assert.throws(() =>
+  calculateExpense(
+    [{ ...correctionRows[0], entitlementPercent: 99 }, correctionRows[1]],
+    [],
+    atNewPrice.items,
+  ),
+);
+const cancelledMeasurement = calculateExpense(
+  [
+    { ...correctionRows[0], correctionQuantity: 200 },
+    { ...correctionRows[1], correctionQuantity: 100 },
+  ],
+  retention,
+  atNewPrice.items,
+);
+assert.equal(cancelledMeasurement.grossCents, 0);
+assert.equal(cancelledMeasurement.netCents, 0);
+const previousBalance = {
+  netCents: 11400000,
+  paidCents: 9000000,
+  debtCents: 0,
+};
+const debt = correctionDebtAfterApproval(previousBalance, 7600000, true);
+assert.equal(debt, 1400000);
+const debtStatement = {
+  sequence: 2,
+  stage: "DRAFT",
+  grossCents: 8000000,
+  netCents: 7600000,
+  correctionDebtCents: debt,
+  payments: [],
+};
+const debtStatements = [
+  {
+    sequence: 1,
+    stage: "ACCOUNTING",
+    grossCents: 12000000,
+    netCents: 11400000,
+    payments: [{ amountCents: 9000000 }],
+  },
+  debtStatement,
+];
+assert.equal(expenseSummary(debtStatements).debtCents, 0);
+debtStatement.stage = "SITE";
+assert.equal(expenseSummary(debtStatements).debtCents, 0);
+debtStatement.stage = "EXECUTIVE";
+assert.equal(expenseSummary(debtStatements).debtCents, debt);
+assert.equal(expenseSummary(debtStatements).advanceCents, 0);
+assert.equal(
+  correctionDebtAfterApproval(expenseSummary(debtStatements), 8000000, false),
+  1000000,
+);
+assert.equal(
+  correctionDebtAfterApproval(expenseSummary(debtStatements), 9500000, false),
+  0,
+);
+const withAdvance = { netCents: 11400000, paidCents: 12000000, debtCents: 0 };
+assert.equal(
+  correctionDebtAfterApproval(withAdvance, 7600000, true),
+  3800000,
+  "original6000 advance remains separately classified",
+);
+assert.equal(correctionDebtAfterApproval(previousBalance, 0, true), 9000000);
+console.log(
+  "Documented corrections, original price versions, zero measurement, forward carry, executive-only debt and settlement passed.",
 );

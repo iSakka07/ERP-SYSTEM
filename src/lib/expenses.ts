@@ -31,6 +31,8 @@ export type ExpenseItemInput = {
   entitlementPercent: number;
   sourceItemKey?: string | null;
   priceChangeReason?: string | null;
+  correctionQuantity?: number;
+  correctionReason?: string | null;
 };
 export type ExpenseItem = ExpenseItemInput & {
   previousQuantity: number;
@@ -52,7 +54,23 @@ export type PreviousItem = {
   totalCents: number;
   sourceItemKey?: string | null;
   priceChangeReason?: string | null;
+  correctionQuantity?: number;
+  correctionReason?: string | null;
 };
+export function expenseCumulativeQuantity(item: {
+  previousQuantity: number;
+  currentQuantity: number;
+  correctionQuantity?: number;
+}) {
+  return (
+    Math.round(
+      (item.previousQuantity +
+        item.currentQuantity -
+        (item.correctionQuantity ?? 0)) *
+        1e6,
+    ) / 1e6
+  );
+}
 export type DeductionInput = {
   name: string;
   kind: "PERCENT" | "FIXED";
@@ -89,6 +107,21 @@ export function calculateExpense(
     )
       throw new Error("راجع الاسم والوحدة والكمية والسعر ونسبة الاستحقاق.");
     const old = previous.find((p) => p.itemKey === i.itemKey);
+    const correctionQuantity = i.correctionQuantity ?? 0;
+    const previousQuantity = old ? expenseCumulativeQuantity(old) : 0;
+    if (
+      !Number.isFinite(correctionQuantity) ||
+      correctionQuantity < 0 ||
+      correctionQuantity > previousQuantity ||
+      (correctionQuantity > 0 &&
+        (!old ||
+          !i.correctionReason?.trim() ||
+          Math.round(correctionQuantity * 1e6) === 0)) ||
+      (i.correctionReason?.length ?? 0) > 1000
+    )
+      throw new Error(
+        "تصحيح الكمية يحتاج بندًا سابقًا وسببًا، ولا يتجاوز الكمية السابقة. الدقة حتى 6 منازل عشرية.",
+      );
     if (
       old &&
       i.currentQuantity > 0 &&
@@ -135,24 +168,27 @@ export function calculateExpense(
       throw new Error(
         "اسم ووحدة وسعر البند السابق ثابتة؛ تعديلها له دورة مستقلة لاحقًا.",
       );
-    const previousQuantity = old
-      ? Math.round((old.previousQuantity + old.currentQuantity) * 1e6) / 1e6
-      : 0;
-    const quantity =
-      Math.round((previousQuantity + i.currentQuantity) * 1e6) / 1e6;
+    const quantity = expenseCumulativeQuantity({
+      previousQuantity,
+      currentQuantity: i.currentQuantity,
+      correctionQuantity,
+    });
     const totalCents = safeCents(
       Math.round((quantity * unitPriceCents * i.entitlementPercent) / 100),
     );
     if (
       old &&
       (i.entitlementPercent < old.entitlementPercent ||
-        totalCents < old.totalCents)
+        (totalCents < old.totalCents && correctionQuantity === 0))
     )
       throw new Error(
-        "تخفيض الاستحقاق أو قيمة بند سابق يحتاج تصحيحًا موثقًا في المرحلة التالية.",
+        "نسبة الاستحقاق السابقة لا تخفض؛ تخفيض الكمية يتم بتصحيح موثق في خانته المنفصلة.",
       );
     return {
       ...i,
+      correctionQuantity: Math.round(correctionQuantity * 1e6) / 1e6,
+      correctionReason:
+        correctionQuantity > 0 ? i.correctionReason!.trim() : null,
       sourceItemKey: old
         ? (old.sourceItemKey ?? null)
         : (i.sourceItemKey ?? null),
@@ -169,8 +205,10 @@ export function calculateExpense(
     };
   });
   const grossCents = safeCents(items.reduce((s, i) => s + i.totalCents, 0));
-  if (grossCents <= 0)
-    throw new Error("إجمالي الأعمال يجب أن يكون أكبر من صفر.");
+  if (grossCents === 0 && !items.some((i) => (i.correctionQuantity ?? 0) > 0))
+    throw new Error(
+      "إجمالي الأعمال يجب أن يكون أكبر من صفر، إلا عند تصحيح الحصر السابق بالكامل.",
+    );
   const calculatedDeductions = deductions.map((d, position) => {
     if (
       !d.name.trim() ||
@@ -211,6 +249,7 @@ export type ExpenseSummaryStatement = {
   stage: string;
   grossCents: number;
   netCents: number;
+  correctionDebtCents?: number;
   payments: { amountCents: number }[];
 };
 export function expenseSummary(statements: ExpenseSummaryStatement[]) {
@@ -223,12 +262,37 @@ export function expenseSummary(statements: ExpenseSummaryStatement[]) {
   );
   const grossCents = latest?.grossCents ?? 0,
     netCents = latest?.netCents ?? 0;
+  const excess = Math.max(0, paidCents - netCents);
+  const debtCents = Math.min(excess, latest?.correctionDebtCents ?? 0);
   return {
     grossCents,
     netCents,
     paidCents,
     remainingCents: Math.max(0, netCents - paidCents),
-    advanceCents: Math.max(0, paidCents - netCents),
+    advanceCents: excess - debtCents,
+    debtCents,
     latest,
   };
+}
+export function correctionDebtAfterApproval(
+  previous: {
+    netCents: number;
+    paidCents: number;
+    debtCents: number;
+  },
+  netCents: number,
+  hasCorrection: boolean,
+) {
+  const oldExcess = Math.max(0, previous.paidCents - previous.netCents);
+  const newExcess = Math.max(0, previous.paidCents - netCents);
+  const settledDebt = Math.max(
+    0,
+    previous.debtCents - Math.max(0, netCents - previous.netCents),
+  );
+  return safeCents(
+    Math.min(
+      newExcess,
+      settledDebt + (hasCorrection ? Math.max(0, newExcess - oldExcess) : 0),
+    ),
+  );
 }
