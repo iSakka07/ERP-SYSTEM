@@ -1,4 +1,6 @@
 import { ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, Building2, CircleCheckBig, Clock3, FileSpreadsheet, Landmark, Paperclip, ReceiptText, ShoppingCart, Sparkles, UsersRound, Vault } from "lucide-react";
+import { auth } from "@/auth";
+import { can } from "@/lib/permissions";
 
 const modules = [
   { name: "الوارد", code: "Incoming", description: "عقود الجهة المالكة والمستخلصات والتحصيلات الفعلية.", icon: BanknoteArrowUp, color: "bg-blue-50 text-blue-700 ring-blue-100" },
@@ -16,7 +18,8 @@ const metrics = [
   { label: "الرصيد النقدي", icon: Landmark, hint: "من الخزائن والبنوك" },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const session = await auth();
   return (
     <div className="space-y-6">
       <section className="hero-card overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -27,7 +30,7 @@ export default function Home() {
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 lg:text-base">ERP-SYSTEM V1 يجمع مستخلصات المالك، مقاولي الباطن، المشتريات، النثريات، المرتبات والخزنة في ملف مالي واحد لكل مشروع.</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <a href="#modules" className="inline-flex h-11 items-center gap-2 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">استعرض الموديولات<ArrowLeft className="size-4" /></a>
-              <div className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600"><CircleCheckBig className="size-4 text-emerald-600" />Phase 3 جاهزة للمراجعة</div>
+              {can(session?.user, "incoming.view") && <a href="/incoming" className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-blue-700"><CircleCheckBig className="size-4 text-emerald-600" />جرّب العقود والوارد</a>}
             </div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">

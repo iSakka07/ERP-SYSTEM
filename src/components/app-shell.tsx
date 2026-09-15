@@ -10,7 +10,7 @@ import { can } from "@/lib/permissions";
 const navItems = [
   { label: "الرئيسية", icon: LayoutDashboard, href: "/", permission: "dashboard.view" },
   { label: "الإدارة والمشروعات", icon: Building2, href: "/management", permission: "masterdata.view" },
-  { label: "الوارد", icon: BanknoteArrowUp, href: "/#modules", permission: "incoming.view" },
+  { label: "الوارد", icon: BanknoteArrowUp, href: "/incoming", permission: "incoming.view" },
   { label: "مستخلصات المقاولين", icon: FileSpreadsheet, href: "/#modules", permission: "expenses.view" },
   { label: "المشتريات", icon: ShoppingCart, href: "/#modules", permission: "purchases.view" },
   { label: "النثريات", icon: ReceiptText, href: "/#modules", permission: "prose.view" },
@@ -29,7 +29,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
         <div className="flex h-full items-center justify-between px-4 lg:pr-[294px] lg:pl-6">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setOpen(true)} className="grid size-10 place-items-center rounded-lg text-slate-200 hover:bg-white/10 lg:hidden" aria-label="فتح القائمة"><Menu className="size-5" /></button>
-            <div><p className="text-sm font-bold">لوحة الإدارة</p><p className="text-[10px] text-slate-400">Phase 3 · Master Data</p></div>
+            <div><p className="text-sm font-bold">لوحة الإدارة</p><p className="text-[10px] text-slate-400">ERP-SYSTEM V1 · Incoming</p></div>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden text-left sm:block"><p className="text-xs font-bold">{user.name}</p><p className="text-[10px] text-slate-400">{user.roleName} · {user.email}</p></div>
