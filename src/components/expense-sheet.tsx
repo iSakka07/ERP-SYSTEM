@@ -79,6 +79,8 @@ export function ExpenseSheet({
           currentQuantity: i.currentQuantity,
           price: i.unitPriceCents / 100,
           entitlementPercent: i.entitlementPercent,
+          sourceItemKey: i.sourceItemKey,
+          priceChangeReason: i.priceChangeReason,
         }))
       : previousItems.length
         ? previousItems.map((i) => ({
@@ -88,6 +90,8 @@ export function ExpenseSheet({
             currentQuantity: 0,
             price: i.unitPriceCents / 100,
             entitlementPercent: i.entitlementPercent,
+            sourceItemKey: i.sourceItemKey,
+            priceChangeReason: i.priceChangeReason,
           }))
         : [
             {
@@ -221,6 +225,11 @@ export function ExpenseSheet({
           </div>
         </div>
         <div className="overflow-hidden rounded-xl border bg-white">
+          <p className="border-b bg-blue-50/40 p-3 text-xs leading-6 text-slate-600">
+            لتغيير سعر بند سابق، اضغط «سعر جديد للكميات الجديدة» تحت اسم البند.
+            السابق يبقى بسعره القديم، وأدخل السعر والكمية الجديدة وسبب التغيير
+            في السطر الجديد، مع إرفاق إثبات.
+          </p>
           <div className="flex items-center justify-between gap-3 border-b p-4">
             <h2 className="text-sm font-extrabold">شيت حصر الأعمال</h2>
             <span className="text-[11px] text-slate-500">
@@ -271,9 +280,54 @@ export function ExpenseSheet({
                         className={expenseInput}
                         required
                         value={r.name}
-                        readOnly={Boolean(computed[n].old)}
+                        readOnly={Boolean(computed[n].old || r.sourceItemKey)}
                         onChange={(e) => updateRow(n, { name: e.target.value })}
                       />
+                      {computed[n].old &&
+                        !rows.some((x) => x.sourceItemKey === r.itemKey) &&
+                        rows.length < 200 && (
+                          <button
+                            type="button"
+                            className="mt-2 text-[10px] font-bold text-blue-700 underline underline-offset-2"
+                            onClick={() =>
+                              setRows([
+                                ...rows.map((x, j) =>
+                                  j === n ? { ...x, currentQuantity: 0 } : x,
+                                ),
+                                {
+                                  itemKey: crypto.randomUUID(),
+                                  name: r.name,
+                                  unit: r.unit,
+                                  currentQuantity: r.currentQuantity,
+                                  price: r.price,
+                                  entitlementPercent: r.entitlementPercent,
+                                  sourceItemKey: r.itemKey,
+                                  priceChangeReason: "",
+                                },
+                              ])
+                            }
+                          >
+                            سعر جديد للكميات الجديدة
+                          </button>
+                        )}
+                      {r.sourceItemKey && (
+                        <p className="mt-1 text-[10px] text-amber-700">
+                          إصدار سعر مرتبط بالبند السابق · السابق بسعره القديم
+                        </p>
+                      )}
+                      {r.sourceItemKey && !computed[n].old && (
+                        <input
+                          aria-label={`سبب تغيير السعر ${n + 1}`}
+                          required
+                          maxLength={1000}
+                          placeholder="سبب تغيير السعر (إلزامي)"
+                          className={`${expenseInput} mt-2`}
+                          value={r.priceChangeReason ?? ""}
+                          onChange={(e) =>
+                            updateRow(n, { priceChangeReason: e.target.value })
+                          }
+                        />
+                      )}
                     </td>
                     <td className="p-2">
                       <input
@@ -281,7 +335,7 @@ export function ExpenseSheet({
                         required
                         className={expenseInput}
                         value={r.unit}
-                        readOnly={Boolean(computed[n].old)}
+                        readOnly={Boolean(computed[n].old || r.sourceItemKey)}
                         onChange={(e) => updateRow(n, { unit: e.target.value })}
                       />
                     </td>
@@ -291,6 +345,9 @@ export function ExpenseSheet({
                     <td className="p-2">
                       <input
                         aria-label={`كمية الحالي ${n + 1}`}
+                        readOnly={rows.some(
+                          (x) => x.sourceItemKey === r.itemKey,
+                        )}
                         type="number"
                         min="0"
                         max="1000000000"

@@ -380,7 +380,14 @@ export function ExpensesCenter({
               {st.items.map((i, n) => (
                 <tr key={i.itemKey} className="border-t">
                   <td className="p-3 text-slate-400">{n + 1}</td>
-                  <td className="p-3 font-semibold">{i.name}</td>
+                  <td className="p-3 font-semibold">
+                    {i.name}
+                    {i.sourceItemKey && (
+                      <p className="mt-1 text-[10px] text-amber-700">
+                        إصدار سعر جديد للكميات الجديدة · {i.priceChangeReason}
+                      </p>
+                    )}
+                  </td>
                   <td className="p-3">{i.unit}</td>
                   <td className="p-3">{i.previousQuantity}</td>
                   <td className="p-3">{i.currentQuantity}</td>
@@ -421,8 +428,8 @@ export function ExpensesCenter({
               </div>
             ))}
             <p className="pt-2 text-[10px] text-slate-500">
-              هذه لقطة محفوظة لهذا الجاري؛ إجمالي أعمال المقاول يعتمد آخر جاري معتمد
-              فقط.
+              هذه لقطة محفوظة لهذا الجاري؛ إجمالي أعمال المقاول يعتمد آخر جاري
+              معتمد فقط.
             </p>
           </div>
           <div className="space-y-3 rounded-xl border bg-white p-4">
@@ -464,7 +471,9 @@ export function ExpensesCenter({
         </div>
         {paymentId === st.id && paymentForm(st)}
         <section className="space-y-3 rounded-xl border bg-white p-4">
-          <h3 className="text-sm font-bold">دفعات أعمال المقاول — جميع الجوارى</h3>
+          <h3 className="text-sm font-bold">
+            دفعات أعمال المقاول — جميع الجوارى
+          </h3>
           {account.statements.flatMap((s) =>
             s.payments.map((p) => (
               <div

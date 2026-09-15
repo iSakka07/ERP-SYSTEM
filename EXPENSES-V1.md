@@ -1,5 +1,7 @@
 # Expenses V1 — Phase 5A
 
+Phase5B.1: prospective price versions approved. Old quantities stay at old prices; linked new row for new quantities at new price. Older versions accept entitlement progression, not new quantity. New version requires reason/fresh proof and normal statement approvals. No historical repricing. Remaining5B withdrawal and corrections not implemented yet.
+
 Client-facing terminology: «أعمال المقاولين» (collection) and «أعمال المقاول» (individual work account). Never label contractor work as «ملفات المقاولين» or «ملف المقاول»; uploaded attachment files remain files.
 
 Usability update: main action «إضافة مقاولة جديدة». Saving a work account opens its first statement sheet automatically. Each collapsed account row has a direct «إضافة مستخلص» action, with visible blocking explanation for pending/final statements, and direct draft-sheet access. All existing approval and access rules remain unchanged.

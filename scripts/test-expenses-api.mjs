@@ -351,6 +351,96 @@ try {
     include: { payments: true },
   });
   assert.equal(expenseSummary(all).advanceCents, 600000);
+  const third = {
+    ...payload,
+    items: [{ ...row, currentQuantity: 0, entitlementPercent: 100 }],
+  };
+  r = await post(third, jars.manager);
+  assert.equal(r.status, 200, JSON.stringify(r));
+  const thirdId = r.id;
+  st = await read(thirdId);
+  const priced = {
+    ...third,
+    id: thirdId,
+    revision: st.revision,
+    items: [
+      ...third.items,
+      {
+        ...row,
+        itemKey: "paint-new-price",
+        sourceItemKey: "paint",
+        currentQuantity: 50,
+        price: 450,
+        entitlementPercent: 100,
+        priceChangeReason: "سعر جديد للكميات الجديدة فقط",
+      },
+    ],
+  };
+  assert.equal(
+    (await post(priced, jars.manager, false)).status,
+    400,
+    "new price needs fresh proof even when draft already has attachment",
+  );
+  assert.equal(
+    (
+      await post(
+        {
+          ...priced,
+          items: [
+            third.items[0],
+            { ...priced.items[1], priceChangeReason: "" },
+          ],
+        },
+        jars.manager,
+      )
+    ).status,
+    400,
+  );
+  r = await post(priced, jars.manager);
+  assert.equal(r.status, 200, JSON.stringify(r));
+  st = await read(thirdId);
+  assert.equal(st.grossCents, 14250000);
+  assert.equal(
+    st.items.find((i) => i.itemKey === "paint").unitPriceCents,
+    40000,
+  );
+  assert.equal(
+    st.items.find((i) => i.itemKey === "paint-new-price").unitPriceCents,
+    45000,
+  );
+  assert.equal(
+    (await read(secondId)).grossCents,
+    12000000,
+    "previous approved snapshot unchanged",
+  );
+  await stage(thirdId, "TECHNICAL", jars.technical);
+  await stage(thirdId, "SITE", jars.site);
+  await stage(thirdId, "EXECUTIVE", jars.executive);
+  assert.equal(
+    expenseSummary(
+      await db.subcontractStatement.findMany({
+        where: { accountId },
+        include: { payments: true },
+      }),
+    ).grossCents,
+    14250000,
+  );
+  assert.equal(
+    (
+      await post(
+        {
+          ...third,
+          items: [
+            { ...row, currentQuantity: 1, entitlementPercent: 100 },
+            { ...priced.items[1], currentQuantity: 0 },
+          ],
+        },
+        jars.manager,
+      )
+    ).status,
+    400,
+    "future quantity cannot use retired price",
+  );
   const page = await fetch(`${base}/expenses`, {
     headers: headers(jars.accounting),
   });

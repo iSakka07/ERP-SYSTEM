@@ -46,6 +46,8 @@ const schema = z.discriminatedUnion("action", [
           currentQuantity: z.number().finite().nonnegative().max(1e9),
           price: z.number().finite().positive().max(1e10),
           entitlementPercent: z.number().finite().min(0).max(100),
+          sourceItemKey: text.nullish(),
+          priceChangeReason: z.string().trim().max(1000).nullish(),
         }),
       )
       .min(1)
@@ -200,6 +202,27 @@ export async function POST(request: Request) {
             data.deductions,
             previous?.items ?? [],
           );
+          const priceVersions = calc.items.filter(
+            (i) =>
+              i.sourceItemKey &&
+              !previous?.items.some((p) => p.itemKey === i.itemKey),
+          );
+          if (
+            !files.length &&
+            priceVersions.some(
+              (v) =>
+                !current?.items.some(
+                  (c) =>
+                    c.itemKey === v.itemKey &&
+                    c.sourceItemKey === v.sourceItemKey &&
+                    c.unitPriceCents === v.unitPriceCents &&
+                    c.priceChangeReason === v.priceChangeReason,
+                ),
+            )
+          )
+            throw new Error(
+              "تغيير السعر يحتاج إثباتًا جديدًا مرفقًا بالمستخلص.",
+            );
           if (
             !files.length &&
             (!current ||
@@ -257,6 +280,8 @@ export async function POST(request: Request) {
               entitlementPercent: item.entitlementPercent,
               previousValueCents: item.previousValueCents,
               totalCents: item.totalCents,
+              sourceItemKey: item.sourceItemKey,
+              priceChangeReason: item.priceChangeReason,
               position: item.position,
             })),
           });
@@ -353,7 +378,9 @@ export async function POST(request: Request) {
               throw new Error("كل دفعة تحتاج فاتورة أو إثبات صرف.");
             const summary = expenseSummary(st.account.statements);
             if (summary.latest?.id !== st.id)
-              throw new Error("سجل الدفعة على آخر مستخلص معتمد لأعمال المقاول.");
+              throw new Error(
+                "سجل الدفعة على آخر مستخلص معتمد لأعمال المقاول.",
+              );
             const amountCents = safeCents(Math.round(data.amount * 100));
             if (!amountCents) throw new Error("قيمة الدفعة أصغر من قرش.");
             if (

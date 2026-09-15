@@ -29,12 +29,16 @@ export type ExpenseItemInput = {
   currentQuantity: number;
   price: number;
   entitlementPercent: number;
+  sourceItemKey?: string | null;
+  priceChangeReason?: string | null;
 };
 export type ExpenseItem = ExpenseItemInput & {
   previousQuantity: number;
   unitPriceCents: number;
   previousValueCents: number;
   totalCents: number;
+  sourceItemKey?: string | null;
+  priceChangeReason?: string | null;
   position: number;
 };
 export type PreviousItem = {
@@ -46,6 +50,8 @@ export type PreviousItem = {
   entitlementPercent: number;
   unitPriceCents: number;
   totalCents: number;
+  sourceItemKey?: string | null;
+  priceChangeReason?: string | null;
 };
 export type DeductionInput = {
   name: string;
@@ -83,6 +89,42 @@ export function calculateExpense(
     )
       throw new Error("راجع الاسم والوحدة والكمية والسعر ونسبة الاستحقاق.");
     const old = previous.find((p) => p.itemKey === i.itemKey);
+    if (
+      old &&
+      i.currentQuantity > 0 &&
+      previous.some((p) => p.sourceItemKey === old.itemKey)
+    )
+      throw new Error(
+        "الكميات الجديدة تسجل على آخر إصدار سعر فقط؛ إصدار السعر السابق محفوظ دون كميات جديدة.",
+      );
+    if (!old && i.sourceItemKey) {
+      const source = previous.find((p) => p.itemKey === i.sourceItemKey);
+      const sourceInput = input.find((p) => p.itemKey === i.sourceItemKey);
+      if (previous.some((p) => p.sourceItemKey === i.sourceItemKey))
+        throw new Error("اختر آخر إصدار سعر للبند، وليس إصدارًا أقدم.");
+      if (
+        !source ||
+        !sourceInput ||
+        sourceInput.currentQuantity !== 0 ||
+        source.name !== i.name.trim() ||
+        source.unit !== i.unit.trim() ||
+        i.currentQuantity <= 0 ||
+        source.unitPriceCents === Math.round(i.price * 100) ||
+        !i.priceChangeReason?.trim()
+      )
+        throw new Error(
+          "إصدار السعر الجديد يحتاج بندًا سابقًا ثابتًا، وكمية جديدة، وسعرًا مختلفًا وسببًا؛ كمية الحالي بسطر السعر القديم يجب أن تكون صفرًا.",
+        );
+      if (
+        input.filter(
+          (p) =>
+            !previous.some((old) => old.itemKey === p.itemKey) &&
+            p.sourceItemKey === i.sourceItemKey,
+        ).length > 1
+      )
+        throw new Error("يسمح بإصدار سعر جديد واحد لكل بند في الجاري.");
+    } else if (!old && i.priceChangeReason)
+      throw new Error("سبب تغيير السعر يجب ربطه ببند سابق.");
     const unitPriceCents = safeCents(Math.round(i.price * 100));
     if (
       old &&
@@ -111,6 +153,12 @@ export function calculateExpense(
       );
     return {
       ...i,
+      sourceItemKey: old
+        ? (old.sourceItemKey ?? null)
+        : (i.sourceItemKey ?? null),
+      priceChangeReason: old
+        ? (old.priceChangeReason ?? null)
+        : (i.priceChangeReason?.trim() ?? null),
       name: i.name.trim(),
       unit: i.unit.trim(),
       previousQuantity,

@@ -266,6 +266,8 @@ model SubcontractItem {
   unitPriceCents     Float
   previousValueCents Float
   totalCents         Float
+  sourceItemKey      String?
+  priceChangeReason  String?
 
   @@unique([statementId, itemKey])
 }

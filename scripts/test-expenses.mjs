@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
-import { calculateExpense, expenseSummary, newExpenseStatementBlockReason } from "../src/lib/expenses.ts";
+import {
+  calculateExpense,
+  expenseSummary,
+  newExpenseStatementBlockReason,
+} from "../src/lib/expenses.ts";
 assert.equal(newExpenseStatementBlockReason(), "");
-for (const stage of ["DRAFT", "TECHNICAL", "SITE"]) assert.ok(newExpenseStatementBlockReason({ stage, kind: "CURRENT" }));
-for (const stage of ["EXECUTIVE", "ACCOUNTING"]) assert.equal(newExpenseStatementBlockReason({ stage, kind: "CURRENT" }), "");
-assert.ok(newExpenseStatementBlockReason({ stage: "ACCOUNTING", kind: "FINAL" }));
+for (const stage of ["DRAFT", "TECHNICAL", "SITE"])
+  assert.ok(newExpenseStatementBlockReason({ stage, kind: "CURRENT" }));
+for (const stage of ["EXECUTIVE", "ACCOUNTING"])
+  assert.equal(newExpenseStatementBlockReason({ stage, kind: "CURRENT" }), "");
+assert.ok(
+  newExpenseStatementBlockReason({ stage: "ACCOUNTING", kind: "FINAL" }),
+);
 const item = {
   itemKey: "paint",
   name: "نقاشة",
@@ -89,4 +97,77 @@ assert.equal(expenseSummary(summaries).advanceCents, 600000);
 assert.equal(expenseSummary(summaries).remainingCents, 0);
 console.log(
   "Expenses calculations, cumulative snapshots, deductions, advances and invalid inputs passed.",
+);
+
+const oldPrice = calculateExpense([{ ...item, entitlementPercent: 100 }], []);
+const version = {
+  ...item,
+  itemKey: "paint-450",
+  currentQuantity: 100,
+  price: 450,
+  entitlementPercent: 100,
+  sourceItemKey: item.itemKey,
+  priceChangeReason: "زيادة سعر الكميات الجديدة",
+};
+const atNewPrice = calculateExpense(
+  [{ ...item, currentQuantity: 0, entitlementPercent: 100 }, version],
+  [],
+  oldPrice.items,
+);
+assert.equal(atNewPrice.grossCents, 12500000); // 200*400 + 100*450, never300*450
+assert.equal(oldPrice.items[0].totalCents, 8000000);
+assert.throws(() =>
+  calculateExpense(
+    [
+      { ...item, currentQuantity: 0, entitlementPercent: 100 },
+      { ...version, priceChangeReason: "" },
+    ],
+    [],
+    oldPrice.items,
+  ),
+);
+assert.throws(() =>
+  calculateExpense(
+    [{ ...item, currentQuantity: 1, entitlementPercent: 100 }, version],
+    [],
+    oldPrice.items,
+  ),
+);
+assert.throws(() =>
+  calculateExpense(
+    [
+      { ...item, currentQuantity: 0, entitlementPercent: 100 },
+      { ...version, price: 400 },
+    ],
+    [],
+    oldPrice.items,
+  ),
+);
+const later = calculateExpense(
+  [
+    { ...item, currentQuantity: 0, entitlementPercent: 100 },
+    { ...version, currentQuantity: 50 },
+  ],
+  [],
+  atNewPrice.items,
+);
+assert.equal(later.grossCents, 14750000);
+assert.throws(() =>
+  calculateExpense(
+    [
+      { ...item, currentQuantity: 1, entitlementPercent: 100 },
+      { ...version, currentQuantity: 50 },
+    ],
+    [],
+    atNewPrice.items,
+  ),
+);
+const progress = calculateExpense(
+  [{ ...item, currentQuantity: 0, entitlementPercent: 100 }, version],
+  [],
+  first.items,
+);
+assert.equal(progress.grossCents, 12500000); // entitlement advances on old quantities at400
+console.log(
+  "Prospective prices, historic values, later quantities and entitlement progression passed.",
 );
