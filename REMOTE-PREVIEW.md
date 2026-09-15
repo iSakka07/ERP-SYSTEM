@@ -1,5 +1,7 @@
 # Temporary remote preview
 
+**Current mode: LOCAL ONLY.** At the user's request the temporary public link is disabled and AUTH_URL is http://localhost:3090. No cloudflared tunnel is running for this project. Keep the administrator's chosen password and current account states; do not reseed. Preview: http://localhost:3090/expenses. The instructions below describe historical remote-preview setup, not the current operating mode.
+
 The user approved a public, temporary Cloudflare Quick Tunnel for mobile testing.
 The local origin runs `next start` (production build), not the development server,
 on `127.0.0.1:3090`. Cloudflared is a portable executable at
