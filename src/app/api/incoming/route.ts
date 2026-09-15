@@ -83,7 +83,8 @@ export async function POST(request: Request) {
     );
   try {
     const origin = request.headers.get("origin");
-    if (origin && new URL(origin).host !== request.headers.get("host"))
+    const configuredHost = process.env.AUTH_URL ? new URL(process.env.AUTH_URL).host : null;
+    if (origin && new URL(origin).host !== request.headers.get("host") && new URL(origin).host !== configuredHost)
       return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
     if (Number(request.headers.get("content-length") || 0) > 11 * 1024 * 1024)
       return NextResponse.json(

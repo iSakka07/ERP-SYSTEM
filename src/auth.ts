@@ -10,6 +10,8 @@ const credentialsSchema = z.object({
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Required for the explicitly approved HTTPS preview behind Cloudflare.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [
@@ -38,18 +40,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           roleKey: user.role.key,
           roleName: user.role.name,
           permissions: user.role.permissions.map(({ permission }) => permission.key),
+          sessionVersion: user.updatedAt.toISOString(),
         };
       },
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         token.userId = user.id!;
         token.roleKey = user.roleKey;
         token.roleName = user.roleName;
         token.permissions = user.permissions;
+        token.sessionVersion = user.sessionVersion;
       }
+      // Password changes and disabled accounts revoke existing encrypted sessions.
+      const current = await prisma.user.findUnique({
+        where: { id: String(token.userId ?? "") },
+        include: { role: { include: { permissions: { include: { permission: true } } } } },
+      });
+      if (!current?.active || !current.role || token.sessionVersion !== current.updatedAt.toISOString()) return null;
+      token.roleKey = current.role.key;
+      token.roleName = current.role.name;
+      token.permissions = current.role.permissions.map(p => p.permission.key);
       return token;
     },
     session({ session, token }) {
