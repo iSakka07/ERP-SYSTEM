@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { DeductionInput, ExpenseItemInput } from "@/lib/expenses";
 import type { ExpenseAccount, ExpenseStatement } from "@/lib/expense-types";
 import { expenseSummary } from "@/lib/expenses";
+import { withdrawnKeys } from "@/lib/work-withdrawals";
 import { Plus, Trash2, Save, ArrowRight, Paperclip } from "lucide-react";
 export const expenseInput =
   "w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100";
@@ -70,6 +71,13 @@ export function ExpenseSheet({
     )
     .at(-1);
   const previousItems = previous?.items ?? [];
+  const blocked = withdrawnKeys(account.withdrawals ?? []);
+  const remaining = (account.withdrawals ?? []).filter(
+    (w) =>
+      w.stage === "EXECUTIVE" &&
+      w.retainedItemKey &&
+      !previousItems.some((i) => i.itemKey === w.retainedItemKey),
+  );
   const [rows, setRows] = useState<ExpenseItemInput[]>(
     statement
       ? statement.items.map((i) => ({
@@ -83,21 +91,40 @@ export function ExpenseSheet({
           priceChangeReason: i.priceChangeReason,
         }))
       : previousItems.length
-        ? previousItems.map((i) => ({
-            itemKey: i.itemKey,
-            name: i.name,
-            unit: i.unit,
-            currentQuantity: 0,
-            price: i.unitPriceCents / 100,
-            entitlementPercent: i.entitlementPercent,
-            sourceItemKey: i.sourceItemKey,
-            priceChangeReason: i.priceChangeReason,
-          }))
+        ? [
+            ...previousItems.map((i) => ({
+              itemKey: i.itemKey,
+              name: i.name,
+              unit: i.unit,
+              currentQuantity: 0,
+              price: i.unitPriceCents / 100,
+              entitlementPercent: i.entitlementPercent,
+              sourceItemKey: i.sourceItemKey,
+              priceChangeReason: i.priceChangeReason,
+            })),
+            ...remaining.map((w) => ({
+              itemKey: w.retainedItemKey!,
+              name: `${w.itemName} — ${w.retainedScope}`,
+              unit: w.unit,
+              currentQuantity: 0,
+              price:
+                (previousItems
+                  .filter((i) =>
+                    (JSON.parse(w.itemKeysJson) as string[]).includes(
+                      i.itemKey,
+                    ),
+                  )
+                  .at(-1)?.unitPriceCents ?? 0) / 100,
+              entitlementPercent: 100,
+            })),
+          ]
         : [
             {
               itemKey: crypto.randomUUID(),
-              name: "",
-              unit: "م2",
+              name: account.assignments?.[0]
+                ? `${account.assignments[0].itemName} — ${account.scope}`
+                : "",
+              unit: account.assignments?.[0]?.unit ?? "م2",
               currentQuantity: 0,
               price: 0,
               entitlementPercent: 100,
@@ -284,6 +311,7 @@ export function ExpenseSheet({
                         onChange={(e) => updateRow(n, { name: e.target.value })}
                       />
                       {computed[n].old &&
+                        !blocked.has(r.itemKey) &&
                         !rows.some((x) => x.sourceItemKey === r.itemKey) &&
                         rows.length < 200 && (
                           <button
@@ -313,6 +341,12 @@ export function ExpenseSheet({
                       {r.sourceItemKey && (
                         <p className="mt-1 text-[10px] text-amber-700">
                           إصدار سعر مرتبط بالبند السابق · السابق بسعره القديم
+                        </p>
+                      )}
+                      {blocked.has(r.itemKey) && (
+                        <p className="mt-1 text-[10px] text-amber-800">
+                          مسحوب · السابق محفوظ، الحالي صفر. الاستحقاق السابق
+                          قابل للاستكمال بسعره القديم.
                         </p>
                       )}
                       {r.sourceItemKey && !computed[n].old && (
@@ -345,9 +379,10 @@ export function ExpenseSheet({
                     <td className="p-2">
                       <input
                         aria-label={`كمية الحالي ${n + 1}`}
-                        readOnly={rows.some(
-                          (x) => x.sourceItemKey === r.itemKey,
-                        )}
+                        readOnly={
+                          blocked.has(r.itemKey) ||
+                          rows.some((x) => x.sourceItemKey === r.itemKey)
+                        }
                         type="number"
                         min="0"
                         max="1000000000"

@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import {
+  withdrawalSchema,
+  withdrawalStageSchema,
+  withdrawalAssignSchema,
+} from "@/lib/work-withdrawals";
 import { prisma } from "@/lib/prisma";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import {
@@ -21,6 +27,9 @@ const date = z
       new Date(v).toISOString().slice(0, 10) === v,
   );
 const schema = z.discriminatedUnion("action", [
+  withdrawalSchema,
+  withdrawalStageSchema,
+  withdrawalAssignSchema,
   z.object({
     action: z.literal("account"),
     name: text,
@@ -116,13 +125,19 @@ export async function POST(request: Request) {
       );
     const data = parsed.data;
     const permission =
-      data.action === "stage"
-        ? data.stage === "DRAFT"
-          ? "expenses.return"
-          : approvalPermissions[data.stage]
-        : data.action === "payment"
-          ? "expenses.pay"
-          : "expenses.manage";
+      data.action === "withdrawalAssign"
+        ? "expenses.approve_executive"
+        : data.action === "withdrawalStage"
+          ? data.stage === "CANCELLED"
+            ? "expenses.manage"
+            : approvalPermissions[data.stage]
+          : data.action === "stage"
+            ? data.stage === "DRAFT"
+              ? "expenses.return"
+              : approvalPermissions[data.stage]
+            : data.action === "payment"
+              ? "expenses.pay"
+              : "expenses.manage";
     const user = await incomingUser(permission);
     if (!user)
       return NextResponse.json(
@@ -133,7 +148,269 @@ export async function POST(request: Request) {
     const result = await prisma.$transaction(
       async (tx) => {
         let id: string, entityType: string;
-        if (data.action === "account") {
+        if (data.action === "withdrawal") {
+          const account = await tx.subcontractAccount.findUniqueOrThrow({
+            where: { id: data.sourceAccountId },
+            include: {
+              company: true,
+              project: true,
+              withdrawals: true,
+              statements: { orderBy: { sequence: "asc" }, include: relations },
+            },
+          });
+          const source = account.statements.at(-1);
+          if (
+            !account.company.active ||
+            !account.project.active ||
+            !source ||
+            source.id !== data.sourceStatementId ||
+            source.kind === "FINAL" ||
+            !["EXECUTIVE", "ACCOUNTING"].includes(source.stage)
+          )
+            throw new Error(
+              "السحب يبدأ من آخر جاري معتمد تنفيذيًا، دون مستخلص معلق أو ختامي.",
+            );
+          const chosen = source.items.find((i) => i.itemKey === data.itemKey);
+          if (!chosen) throw new Error("اختر بندًا من الحصر المعتمد.");
+          let root = chosen;
+          const visited = new Set<string>();
+          while (root.sourceItemKey) {
+            if (visited.has(root.itemKey))
+              throw new Error("سلسلة أسعار غير صحيحة.");
+            visited.add(root.itemKey);
+            root = source.items.find((i) => i.itemKey === root.sourceItemKey)!;
+            if (!root) throw new Error("البند الأصلي غير موجود.");
+          }
+          const keys = new Set([root.itemKey]);
+          for (let n = 0; n < source.items.length; n++)
+            for (const item of source.items)
+              if (item.sourceItemKey && keys.has(item.sourceItemKey))
+                keys.add(item.itemKey);
+          if (
+            account.withdrawals.some(
+              (w) =>
+                w.stage !== "CANCELLED" &&
+                (JSON.parse(w.itemKeysJson) as string[]).some((k) =>
+                  keys.has(k),
+                ),
+            )
+          )
+            throw new Error(
+              "البند له إجراء سحب قائم؛ استخدم بند النطاق المتبقي عند السحب الجزئي.",
+            );
+          const effective = new Date(data.effectiveDate);
+          if (
+            !Number.isFinite(effective.getTime()) ||
+            effective.toISOString().slice(0, 10) !== data.effectiveDate ||
+            data.effectiveDate > new Date().toISOString().slice(0, 10) ||
+            data.effectiveDate < source.statementDate.toISOString().slice(0, 10)
+          )
+            throw new Error(
+              "تاريخ السحب من تاريخ الحصر المعتمد حتى اليوم، ولا يغير التاريخ السابق.",
+            );
+          if (
+            data.kind === "PARTIAL" &&
+            (!data.quantity ||
+              !data.retainedScope ||
+              data.retainedScope === data.withdrawnScope)
+          )
+            throw new Error(
+              "السحب الجزئي يحتاج كمية مسحوبة ووصفين مختلفين للمسحوب والمتبقي.",
+            );
+          if (!files.length) throw new Error("السحب يحتاج إثباتًا جديدًا.");
+          if (data.destinationCompanyId) {
+            const company = await tx.company.findUnique({
+              where: { id: data.destinationCompanyId },
+            });
+            if (
+              !company?.active ||
+              company.type !== "SUBCONTRACTOR" ||
+              company.id === account.companyId
+            )
+              throw new Error(
+                "اختر مقاولًا جديدًا نشطًا مختلفًا عن المقاول القديم.",
+              );
+          }
+          const change = await tx.workWithdrawal.create({
+            data: {
+              sourceAccountId: account.id,
+              sourceStatementId: source.id,
+              itemKey: root.itemKey,
+              itemName: root.name,
+              unit: root.unit,
+              itemKeysJson: JSON.stringify([...keys]),
+              kind: data.kind,
+              quantity: data.quantity,
+              withdrawnScope: data.withdrawnScope,
+              retainedScope:
+                data.kind === "PARTIAL" ? data.retainedScope : null,
+              retainedItemKey: data.kind === "PARTIAL" ? randomUUID() : null,
+              reason: data.reason,
+              effectiveDate: effective,
+              destinationCompanyId: data.destinationCompanyId,
+              snapshotJson: JSON.stringify(source),
+              actorId: user.id,
+            },
+          });
+          id = change.id;
+          entityType = "withdrawal";
+        } else if (data.action === "withdrawalStage") {
+          const change = await tx.workWithdrawal.findUniqueOrThrow({
+            where: { id: data.id },
+            include: {
+              sourceAccount: {
+                include: {
+                  company: true,
+                  project: true,
+                  statements: { orderBy: { sequence: "asc" } },
+                },
+              },
+            },
+          });
+          if (
+            change.revision !== data.revision ||
+            ["EXECUTIVE", "CANCELLED"].includes(change.stage)
+          )
+            throw new Error("إجراء السحب تغير أو تم إقفاله. حدث الصفحة.");
+          if (data.stage === "CANCELLED") {
+            if (!data.reason) throw new Error("إلغاء طلب السحب يحتاج سببًا.");
+          } else {
+            const order = ["DRAFT", "TECHNICAL", "SITE", "EXECUTIVE"];
+            if (order[order.indexOf(change.stage) + 1] !== data.stage)
+              throw new Error(
+                "اعتماد السحب بالترتيب: المكتب الفني ثم الموقع ثم المدير التنفيذي.",
+              );
+            const last = change.sourceAccount.statements.at(-1);
+            if (
+              last?.id !== change.sourceStatementId ||
+              !["EXECUTIVE", "ACCOUNTING"].includes(last.stage) ||
+              !change.sourceAccount.company.active ||
+              !change.sourceAccount.project.active
+            )
+              throw new Error(
+                "الحصر المصدر تغير أو المشروع غير نشط؛ ألغ الطلب وأنشئ طلبًا جديدًا.",
+              );
+          }
+          let destinationAccountId = change.destinationAccountId;
+          if (data.stage === "EXECUTIVE" && change.destinationCompanyId) {
+            const company = await tx.company.findUnique({
+              where: { id: change.destinationCompanyId },
+            });
+            if (!company?.active || company.type !== "SUBCONTRACTOR")
+              throw new Error("المقاول الجديد غير نشط.");
+            const next = await tx.subcontractAccount.create({
+              data: {
+                companyId: company.id,
+                projectId: change.sourceAccount.projectId,
+                name: `${change.itemName} — إعادة إسناد`,
+                scope: change.withdrawnScope,
+                notes: `إعادة إسناد من ${change.sourceAccount.name}. إجراء السحب: ${change.id}. السابق والمدفوع يظلان للمقاول القديم.`,
+              },
+            });
+            destinationAccountId = next.id;
+            const proof = await tx.expenseAttachment.findMany({
+              where: { entityType: "withdrawal", entityId: change.id },
+            });
+            await tx.expenseAttachment.createMany({
+              data: proof.map((f) => ({
+                entityType: "account",
+                entityId: next.id,
+                name: f.name,
+                mime: f.mime,
+                size: f.size,
+                data: f.data,
+                actorId: user.id,
+              })),
+            });
+          }
+          const updated = await tx.workWithdrawal.updateMany({
+            where: {
+              id: change.id,
+              revision: data.revision,
+              stage: change.stage,
+            },
+            data: {
+              stage: data.stage,
+              revision: { increment: 1 },
+              destinationAccountId,
+            },
+          });
+          if (updated.count !== 1)
+            throw new Error("تعارض اعتماد السحب. حدث الصفحة.");
+          await tx.auditLog.create({
+            data: {
+              actorId: user.id,
+              action: "expenses.withdrawalApproval",
+              target: change.id,
+              details: JSON.stringify({
+                from: change.stage,
+                ...data,
+                destinationAccountId,
+              }),
+            },
+          });
+          id = change.id;
+          entityType = "withdrawal";
+        } else if (data.action === "withdrawalAssign") {
+          const change = await tx.workWithdrawal.findUniqueOrThrow({
+            where: { id: data.id },
+            include: { sourceAccount: { include: { project: true } } },
+          });
+          if (
+            change.stage !== "EXECUTIVE" ||
+            change.revision !== data.revision ||
+            change.destinationAccountId
+          )
+            throw new Error(
+              "إعادة الإسناد اللاحقة تحتاج سحبًا معتمدًا لم يسند بعد. حدث الصفحة.",
+            );
+          const company = await tx.company.findUnique({
+            where: { id: data.companyId },
+          });
+          if (
+            !company?.active ||
+            company.type !== "SUBCONTRACTOR" ||
+            company.id === change.sourceAccount.companyId ||
+            !change.sourceAccount.project.active
+          )
+            throw new Error("اختر مقاولًا جديدًا مختلفًا ومشروعًا نشطًا.");
+          if (!files.length)
+            throw new Error("إعادة الإسناد تحتاج إثباتًا جديدًا.");
+          const next = await tx.subcontractAccount.create({
+            data: {
+              name: `${change.itemName} — إعادة إسناد`,
+              scope: change.withdrawnScope,
+              companyId: company.id,
+              projectId: change.sourceAccount.projectId,
+              notes: `إعادة إسناد من ${change.sourceAccount.name}. إجراء السحب: ${change.id}. السبب: ${data.reason}. المستحقات السابقة محفوظة للمقاول القديم.`,
+            },
+          });
+          const updated = await tx.workWithdrawal.updateMany({
+            where: {
+              id: change.id,
+              revision: data.revision,
+              destinationAccountId: null,
+              stage: "EXECUTIVE",
+            },
+            data: {
+              destinationAccountId: next.id,
+              destinationCompanyId: company.id,
+              revision: { increment: 1 },
+            },
+          });
+          if (updated.count !== 1)
+            throw new Error("تعارض إعادة إسناد. حدث الصفحة.");
+          await tx.expenseAttachment.createMany({
+            data: files.map((f) => ({
+              ...f,
+              entityType: "account",
+              entityId: next.id,
+              actorId: user.id,
+            })),
+          });
+          id = change.id;
+          entityType = "withdrawal";
+        } else if (data.action === "account") {
           const [company, project] = await Promise.all([
             tx.company.findUnique({ where: { id: data.companyId } }),
             tx.project.findUnique({ where: { id: data.projectId } }),
@@ -163,11 +440,37 @@ export async function POST(request: Request) {
             include: {
               project: true,
               company: true,
+              withdrawals: true,
               statements: { orderBy: { sequence: "asc" }, include: relations },
             },
           });
           if (!account || !account.company.active || !account.project.active)
             throw new Error("أعمال المقاول أو المشروع غير نشط.");
+          if (
+            account.withdrawals.some(
+              (w) => !["EXECUTIVE", "CANCELLED"].includes(w.stage),
+            )
+          )
+            throw new Error(
+              "أكمل اعتماد أو إلغاء طلب السحب المعلق قبل إضافة أو تعديل جاري.",
+            );
+          const blockedKeys = new Set<string>(
+            account.withdrawals
+              .filter((w) => w.stage === "EXECUTIVE")
+              .flatMap((w) => JSON.parse(w.itemKeysJson) as string[]),
+          );
+          for (const item of data.items) {
+            let key: string | null | undefined = item.itemKey;
+            const seen = new Set<string>();
+            while (key && !seen.has(key)) {
+              seen.add(key);
+              if (blockedKeys.has(key) && item.currentQuantity > 0)
+                throw new Error(
+                  "البند مسحوب: السابق محفوظ، ولا تضاف له كميات أو إصدارات سعر جديدة. استخدم بند النطاق المتبقي في السحب الجزئي.",
+                );
+              key = data.items.find((i) => i.itemKey === key)?.sourceItemKey;
+            }
+          }
           const current = data.id
             ? account.statements.find((s) => s.id === data.id)
             : undefined;
@@ -322,6 +625,17 @@ export async function POST(request: Request) {
           if (data.action === "stage") {
             const index = expenseStages.findIndex((s) => s[0] === st.stage);
             if (data.stage === "DRAFT") {
+              if (
+                await tx.workWithdrawal.count({
+                  where: {
+                    sourceStatementId: st.id,
+                    stage: { not: "CANCELLED" },
+                  },
+                })
+              )
+                throw new Error(
+                  "لا يمكن رد حصر مرتبط بإجراء سحب قائم؛ التاريخ والمستحقات محفوظة.",
+                );
               if (
                 st.stage === "DRAFT" ||
                 !data.reason ||

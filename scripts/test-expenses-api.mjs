@@ -10,6 +10,7 @@ const password = randomBytes(24).toString("base64url");
 const users = [],
   roles = [];
 let accountId;
+let destinationCompanyId;
 let proof;
 const headers = (jar) => ({
   Cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; "),
@@ -441,6 +442,334 @@ try {
     400,
     "future quantity cannot use retired price",
   );
+  const company2 = await db.company.create({
+    data: { name: `TEST-WITHDRAW-${stamp}`, type: "SUBCONTRACTOR" },
+  });
+  destinationCompanyId = company2.id;
+  const withdrawal = {
+    action: "withdrawal",
+    sourceAccountId: accountId,
+    sourceStatementId: thirdId,
+    itemKey: "paint-new-price",
+    kind: "PARTIAL",
+    quantity: 100,
+    withdrawnScope: "الدور الثاني — أعمال غير منفذة",
+    retainedScope: "الدور الأول — المتبقي فقط",
+    reason: "اختبار سحب جزئي مع حفظ التاريخ",
+    effectiveDate: "2026-09-15",
+    destinationCompanyId,
+  };
+  assert.equal((await post(withdrawal, jars.accounting)).status, 403);
+  assert.equal((await post(withdrawal, jars.manager, false)).status, 400);
+  assert.equal(
+    (await post({ ...withdrawal, retainedScope: undefined }, jars.manager))
+      .status,
+    400,
+  );
+  assert.equal(
+    (await post({ ...withdrawal, effectiveDate: "2099-01-01" }, jars.manager))
+      .status,
+    400,
+  );
+  r = await post(withdrawal, jars.manager);
+  assert.equal(r.status, 200, JSON.stringify(r));
+  const withdrawalId = r.id;
+  const change = () =>
+    db.workWithdrawal.findUniqueOrThrow({ where: { id: withdrawalId } });
+  const approveWithdrawal = async (key, jar, expected = 200) => {
+    const w = await change();
+    const result = await post(
+      { action: "withdrawalStage", id: w.id, revision: w.revision, stage: key },
+      jar,
+      false,
+    );
+    assert.equal(result.status, expected, JSON.stringify(result));
+  };
+  assert.equal(
+    (await post(withdrawal, jars.manager)).status,
+    400,
+    "duplicate/overlapping source rejected",
+  );
+  assert.equal(
+    (await post(third, jars.manager)).status,
+    400,
+    "pending withdrawal blocks new Jari",
+  );
+  await approveWithdrawal("EXECUTIVE", jars.executive, 400);
+  await approveWithdrawal("TECHNICAL", jars.manager, 403);
+  await approveWithdrawal("TECHNICAL", jars.technical);
+  assert.equal(
+    (
+      await post(
+        {
+          action: "withdrawalStage",
+          id: withdrawalId,
+          revision: 1,
+          stage: "SITE",
+        },
+        jars.site,
+        false,
+      )
+    ).status,
+    400,
+  );
+  await approveWithdrawal("SITE", jars.site);
+  assert.equal(
+    (await change()).destinationAccountId,
+    null,
+    "no reassignment before executive approval",
+  );
+  await approveWithdrawal("EXECUTIVE", jars.executive);
+  const w = await change();
+  const destination = await db.subcontractAccount.findUniqueOrThrow({
+    where: { id: w.destinationAccountId },
+    include: { statements: true },
+  });
+  assert.equal(destination.projectId, project.id);
+  assert.equal(destination.companyId, destinationCompanyId);
+  assert.equal(
+    destination.statements.length,
+    0,
+    "new contractor starts at zero",
+  );
+  assert.ok(
+    await db.expenseAttachment.count({
+      where: { entityType: "account", entityId: destination.id },
+    }),
+  );
+  assert.equal(
+    (await read(thirdId)).grossCents,
+    14250000,
+    "withdrawal never changes approved work value",
+  );
+  assert.equal(
+    (await read(secondId)).payments.length,
+    1,
+    "historic actual payments preserved",
+  );
+  st = await read(thirdId);
+  assert.equal(
+    (
+      await post(
+        {
+          action: "stage",
+          id: thirdId,
+          revision: st.revision,
+          stage: "DRAFT",
+          reason: "test",
+        },
+        jars.manager,
+        false,
+      )
+    ).status,
+    400,
+    "source snapshot cannot be unwound",
+  );
+  const fourth = {
+    ...third,
+    items: [
+      { ...row, currentQuantity: 0, entitlementPercent: 100 },
+      { ...priced.items[1], currentQuantity: 0 },
+      {
+        ...row,
+        itemKey: w.retainedItemKey,
+        price: 450,
+        name: `نقاشة اختبار — ${w.retainedScope}`,
+        currentQuantity: 50,
+        entitlementPercent: 100,
+      },
+    ],
+  };
+  assert.equal(
+    (
+      await post(
+        {
+          ...fourth,
+          items: fourth.items.map((i) =>
+            i.itemKey === "paint-new-price" ? { ...i, currentQuantity: 1 } : i,
+          ),
+        },
+        jars.manager,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await post(
+        {
+          ...fourth,
+          items: [
+            ...fourth.items,
+            {
+              ...priced.items[1],
+              itemKey: "bypass-price",
+              sourceItemKey: "paint-new-price",
+              currentQuantity: 1,
+              price: 500,
+            },
+          ],
+        },
+        jars.manager,
+      )
+    ).status,
+    400,
+    "price-version bypass blocked",
+  );
+  r = await post(fourth, jars.manager);
+  assert.equal(r.status, 200, JSON.stringify(r));
+  const fourthId = r.id;
+  assert.equal((await read(fourthId)).grossCents, 16500000);
+  for (const [key, jar] of [
+    ["TECHNICAL", jars.technical],
+    ["SITE", jars.site],
+    ["EXECUTIVE", jars.executive],
+  ])
+    await stage(fourthId, key, jar);
+  r = await post(
+    {
+      ...withdrawal,
+      sourceStatementId: fourthId,
+      itemKey: w.retainedItemKey,
+      kind: "FULL",
+      quantity: undefined,
+      retainedScope: undefined,
+      destinationCompanyId: undefined,
+    },
+    jars.manager,
+  );
+  assert.equal(r.status, 200, JSON.stringify(r));
+  let fullId = r.id;
+  let full = await db.workWithdrawal.findUniqueOrThrow({
+    where: { id: fullId },
+  });
+  assert.equal(
+    (
+      await post(
+        {
+          action: "withdrawalStage",
+          id: fullId,
+          revision: full.revision,
+          stage: "CANCELLED",
+        },
+        jars.manager,
+        false,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await post(
+        {
+          action: "withdrawalStage",
+          id: fullId,
+          revision: full.revision,
+          stage: "CANCELLED",
+          reason: "تعديل نطاق الطلب",
+        },
+        jars.accounting,
+        false,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(
+        {
+          action: "withdrawalStage",
+          id: fullId,
+          revision: full.revision,
+          stage: "CANCELLED",
+          reason: "تعديل نطاق الطلب",
+        },
+        jars.manager,
+        false,
+      )
+    ).status,
+    200,
+  );
+  r = await post(
+    {
+      ...withdrawal,
+      sourceStatementId: fourthId,
+      itemKey: w.retainedItemKey,
+      kind: "FULL",
+      quantity: undefined,
+      retainedScope: undefined,
+      destinationCompanyId: undefined,
+    },
+    jars.manager,
+  );
+  assert.equal(r.status, 200, JSON.stringify(r));
+  fullId = r.id;
+  for (const [key, jar] of [
+    ["TECHNICAL", jars.technical],
+    ["SITE", jars.site],
+    ["EXECUTIVE", jars.executive],
+  ]) {
+    const full = await db.workWithdrawal.findUniqueOrThrow({
+      where: { id: fullId },
+    });
+    assert.equal(
+      (
+        await post(
+          {
+            action: "withdrawalStage",
+            id: fullId,
+            revision: full.revision,
+            stage: key,
+          },
+          jar,
+          false,
+        )
+      ).status,
+      200,
+    );
+  }
+  assert.equal(
+    (
+      await post(
+        {
+          ...fourth,
+          items: fourth.items.map((i) => ({
+            ...i,
+            currentQuantity: i.itemKey === w.retainedItemKey ? 1 : 0,
+          })),
+        },
+        jars.manager,
+      )
+    ).status,
+    400,
+    "full withdrawal blocks retained scope future quantities",
+  );
+  full = await db.workWithdrawal.findUniqueOrThrow({ where: { id: fullId } });
+  const assign = {
+    action: "withdrawalAssign",
+    id: full.id,
+    revision: full.revision,
+    companyId: destinationCompanyId,
+    reason: "إسناد لاحق موثق",
+  };
+  assert.equal((await post(assign, jars.manager)).status, 403);
+  assert.equal((await post(assign, jars.executive, false)).status, 400);
+  assert.equal(
+    (await post({ ...assign, companyId: company.id }, jars.executive)).status,
+    400,
+  );
+  r = await post(assign, jars.executive);
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.equal(
+    (await post(assign, jars.executive)).status,
+    400,
+    "duplicate reassignment blocked",
+  );
+  assert.equal(
+    (await read(fourthId)).grossCents,
+    16500000,
+    "later reassignment never changes source finances",
+  );
   const page = await fetch(`${base}/expenses`, {
     headers: headers(jars.accounting),
   });
@@ -449,23 +778,50 @@ try {
   assert.ok(html.includes("مستخلصات مقاولي الباطن"));
   assert.ok(!html.includes("إضافة مقاولة جديدة</button>"));
   console.log(
-    "API passed: isolated approval permissions, ordering, mandatory evidence, executive financial effect, cumulative Jari2, stale writes, actual payment, advance, attachment protection, restricted UI.",
+    "API passed: approval permissions, cumulative values, actual payment, prospective prices, partial/full withdrawal, cancellation, immediate/later reassignment, evidence, price bypass protection, immutable history and restricted UI.",
   );
 } finally {
   if (accountId)
     await db.$transaction(async (tx) => {
       const sts = await tx.subcontractStatement.findMany({
-        where: { accountId },
+        where: {
+          accountId: {
+            in: [
+              accountId,
+              ...(
+                await tx.workWithdrawal.findMany({
+                  where: { sourceAccountId: accountId },
+                })
+              )
+                .map((w) => w.destinationAccountId)
+                .filter(Boolean),
+            ],
+          },
+        },
         select: { id: true },
       });
       const ids = sts.map((s) => s.id);
+      const changes = await tx.workWithdrawal.findMany({
+        where: { sourceAccountId: accountId },
+      });
+      const accountIds = [
+        accountId,
+        ...changes.map((w) => w.destinationAccountId).filter(Boolean),
+      ];
       const pays = await tx.subcontractPayment.findMany({
         where: { statementId: { in: ids } },
         select: { id: true },
       });
       await tx.expenseAttachment.deleteMany({
         where: {
-          entityId: { in: [accountId, ...ids, ...pays.map((p) => p.id)] },
+          entityId: {
+            in: [
+              ...accountIds,
+              ...changes.map((w) => w.id),
+              ...ids,
+              ...pays.map((p) => p.id),
+            ],
+          },
         },
       });
       await tx.subcontractPayment.deleteMany({
@@ -480,9 +836,16 @@ try {
       await tx.subcontractDeduction.deleteMany({
         where: { statementId: { in: ids } },
       });
-      await tx.subcontractStatement.deleteMany({ where: { accountId } });
-      await tx.subcontractAccount.delete({ where: { id: accountId } });
+      await tx.workWithdrawal.deleteMany({
+        where: { id: { in: changes.map((w) => w.id) } },
+      });
+      await tx.subcontractStatement.deleteMany({ where: { id: { in: ids } } });
+      await tx.subcontractAccount.deleteMany({
+        where: { id: { in: accountIds } },
+      });
     });
+  if (destinationCompanyId)
+    await db.company.delete({ where: { id: destinationCompanyId } });
   await db.user.deleteMany({ where: { id: { in: users } } });
   await db.role.deleteMany({ where: { id: { in: roles } } });
   await db.$disconnect();

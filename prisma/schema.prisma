@@ -215,16 +215,18 @@ model ProjectEngineerAssignment {
 }
 
 model SubcontractAccount {
-  id         String                 @id @default(cuid())
-  name       String
-  companyId  String
-  company    Company                @relation(fields: [companyId], references: [id])
-  projectId  String
-  project    Project                @relation(fields: [projectId], references: [id])
-  scope      String
-  notes      String?
-  statements SubcontractStatement[]
-  createdAt  DateTime               @default(now())
+  id          String                 @id @default(cuid())
+  name        String
+  companyId   String
+  company     Company                @relation(fields: [companyId], references: [id])
+  projectId   String
+  project     Project                @relation(fields: [projectId], references: [id])
+  scope       String
+  notes       String?
+  statements  SubcontractStatement[]
+  withdrawals WorkWithdrawal[]       @relation("WithdrawalSource")
+  assignments WorkWithdrawal[]       @relation("WithdrawalDestination")
+  createdAt   DateTime               @default(now())
 }
 
 model SubcontractStatement {
@@ -248,6 +250,7 @@ model SubcontractStatement {
   approvals           SubcontractApproval[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
+  withdrawals         WorkWithdrawal[]
 
   @@unique([accountId, sequence])
 }
@@ -307,6 +310,35 @@ model SubcontractApproval {
   actorName   String
   revision    Int
   createdAt   DateTime             @default(now())
+}
+
+model WorkWithdrawal {
+  id                   String               @id @default(cuid())
+  sourceAccountId      String
+  sourceAccount        SubcontractAccount   @relation("WithdrawalSource", fields: [sourceAccountId], references: [id])
+  sourceStatementId    String
+  sourceStatement      SubcontractStatement @relation(fields: [sourceStatementId], references: [id])
+  destinationAccountId String?              @unique
+  destinationAccount   SubcontractAccount?  @relation("WithdrawalDestination", fields: [destinationAccountId], references: [id])
+  destinationCompanyId String?
+  itemKey              String
+  itemName             String
+  unit                 String
+  itemKeysJson         String
+  kind                 String
+  quantity             Float?
+  withdrawnScope       String
+  retainedScope        String?
+  retainedItemKey      String?
+  reason               String
+  effectiveDate        DateTime
+  stage                String               @default("DRAFT")
+  revision             Int                  @default(1)
+  snapshotJson         String
+  actorId              String
+  createdAt            DateTime             @default(now())
+
+  @@index([sourceAccountId, stage])
 }
 
 model ExpenseAttachment {

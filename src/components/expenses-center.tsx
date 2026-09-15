@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { WorkWithdrawalsCenter } from "./work-withdrawals-center";
 import {
   Plus,
   ChevronDown,
@@ -56,6 +57,7 @@ export function ExpensesCenter({
     statementId?: string;
   } | null>(null);
   const [newAccount, setNewAccount] = useState(false);
+  const [changeAccountId, setChangeAccountId] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [returnId, setReturnId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -119,6 +121,13 @@ export function ExpensesCenter({
   const editAccount = editor
     ? accounts.find((a) => a.id === editor.accountId)
     : undefined;
+  const changeAccount = accounts.find((a) => a.id === changeAccountId);
+  if (changeAccount)
+    return (
+      <WorkWithdrawalsCenter account={changeAccount} companies={companies}
+        attachments={attachments} permissions={permissions}
+        onClose={() => setChangeAccountId(null)} />
+    );
   if (editAccount)
     return (
       <ExpenseSheet
@@ -780,7 +789,10 @@ export function ExpensesCenter({
                   {visible.map((a) => {
                     const s = expenseSummary(a.statements);
                     const last = a.statements.at(-1);
-                    const blockReason = newExpenseStatementBlockReason(last);
+                    const blockReason = (a.withdrawals ?? []).some(
+                      (w) => !["EXECUTIVE", "CANCELLED"].includes(w.stage),
+                    ) ? "أكمل اعتماد أو إلغاء طلب السحب المعلق أولًا."
+                      : newExpenseStatementBlockReason(last);
                     return (
                       <Row key={a.id}>
                         <tr className="border-t">
@@ -789,6 +801,11 @@ export function ExpensesCenter({
                             <p className="mt-1 text-[10px] text-slate-400">
                               {a.scope}
                             </p>
+                            <button type="button"
+                              className="mt-2 block text-[11px] font-bold text-blue-700 underline"
+                              onClick={() => setChangeAccountId(a.id)}>
+                              سحب وإعادة إسناد الأعمال
+                            </button>
                             {allowed("expenses.manage") && (
                               <div className="mt-2 space-y-2">
                                 <button

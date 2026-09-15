@@ -1,4 +1,5 @@
 import type { PreviousItem, DeductionInput } from "./expenses";
+import type { WorkWithdrawal } from "./work-withdrawals";
 export type ExpenseStatement = {
   id: string;
   accountId: string;
@@ -41,6 +42,8 @@ export type ExpenseAccount = {
   company: { name: string };
   project: { name: string; sector: { name: string } | null };
   statements: ExpenseStatement[];
+  withdrawals: WorkWithdrawal[];
+  assignments: WorkWithdrawal[];
 };
 export type ExpenseAttachmentInfo = {
   id: string;

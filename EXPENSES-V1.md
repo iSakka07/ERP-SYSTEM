@@ -1,6 +1,8 @@
 # Expenses V1 — Phase 5A
 
-Phase5B.1: prospective price versions approved. Old quantities stay at old prices; linked new row for new quantities at new price. Older versions accept entitlement progression, not new quantity. New version requires reason/fresh proof and normal statement approvals. No historical repricing. Remaining5B withdrawal and corrections not implemented yet.
+Phase5B.1: prospective price versions approved. Old quantities stay at old prices; linked new row for new quantities at new price. Older versions accept entitlement progression, not new quantity. New version requires reason/fresh proof and normal statement approvals. No historical repricing. Phase5B.2 withdrawal/reassignment implemented for review; negative quantity corrections remain deferred.
+
+Phase5B.2: withdraw all remaining work of an item or a quantified, explicitly described unperformed portion. Preserve all historic quantities, prices, entitlements, retention and payments. Proposal requires reason, proof and effective date from latest approved measurement through today. Technical → site → executive approval; pending withdrawal blocks new Jari, approved withdrawal freezes new quantity on all original price versions (server also blocks linked-version bypass). Old entitlement may progress at old prices. Partial withdrawal provides a distinct retained-scope item starting at zero, suggested latest price, no inherited quantity and no fixed financial ceiling. Immediate assignment creates separate work account in the same project at executive approval; alternatively, approved unassigned withdrawals can be assigned later by executive permission with new reason/proof. New contractor begins at zero with its own price, statements and approval cycle. Pending requests may be cancelled with reason; approved requests cannot be cancelled or reassigned twice. Source measurement cannot be returned while a non-cancelled withdrawal depends on it. No automatic financial deduction, payment transfer, journal or treasury movement.
 
 Client-facing terminology: «أعمال المقاولين» (collection) and «أعمال المقاول» (individual work account). Never label contractor work as «ملفات المقاولين» or «ملف المقاول»; uploaded attachment files remain files.
 
@@ -15,6 +17,6 @@ Focused creation: new work-account creation shows only its form, without the ove
 - Draft → technical-office approval → site-engineer approval → executive approval → accounting. Separate permissions per approval and payment.
 - Actual payments independent, multiple per statement, date/method/reference and mandatory proof. Excess payment requires explicit advance confirmation/reason and shows advance balance.
 - All accounts, statements and payments require attachments. Historic statements immutable; documented returns only without later statements/payments. Optimistic revisions prevent stale edits/duplicate approvals.
-- Phase 5B deferred until review: item withdrawal/reassignment, negative quantity corrections and price amendment cycle. No journal/treasury entries yet.
+- Remaining Phase 5B: documented negative quantity corrections. Prices and withdrawal/reassignment are implemented; no journal/treasury entries yet.
 
 Acceptance example: Jari 1 = 200 × 400 × 65% = 52,000; retention 5% gives 49,400. Pay 30,000. Jari 2: +100 quantity, entitlement100% =120,000; net114,000; previous actual payment30,000; remaining84,000.

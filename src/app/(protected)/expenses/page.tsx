@@ -10,6 +10,8 @@ export default async function ExpensesPage() {
     prisma.subcontractAccount.findMany({
       include: {
         company: true,
+        withdrawals: { orderBy: { createdAt: "asc" } },
+        assignments: true,
         project: { include: { sector: true } },
         statements: {
           orderBy: { sequence: "asc" },
