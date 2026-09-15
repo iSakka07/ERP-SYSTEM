@@ -1,4 +1,7 @@
 "use client";
+import { ERPSelect } from "@/components/erp-select";
+import { CurrencyInput } from "@/components/currency-input";
+import { DocumentLayout } from "@/components/document-layout";
 import { useState } from "react";
 import type { DeductionInput, ExpenseItemInput } from "@/lib/expenses";
 import type { ExpenseAccount, ExpenseStatement } from "@/lib/expense-types";
@@ -213,6 +216,7 @@ export function ExpenseSheet({
           الحفظ كمسودة — لا تأثير مالي قبل اعتماد المدير التنفيذي
         </span>
       </div>
+      <DocumentLayout movements={statement?.approvals.map(a => ({ id:a.id, label:`${stageName(a.toStage)} · ${a.actorName}`, date:a.createdAt, note:a.reason || undefined }))}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -247,14 +251,14 @@ export function ExpenseSheet({
         <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-3">
           <label className="text-xs font-bold">
             نوع المستخلص
-            <select
+            <ERPSelect
               name="kind"
               className={`${expenseInput} mt-2`}
               defaultValue={statement?.kind ?? "CURRENT"}
             >
               <option value="CURRENT">جاري</option>
               <option value="FINAL">ختامي</option>
-            </select>
+            </ERPSelect>
           </label>
           <label className="text-xs font-bold">
             تاريخ الحصر
@@ -493,17 +497,16 @@ export function ExpenseSheet({
                       {computed[n].quantity.toLocaleString("en-US")}
                     </td>
                     <td className="p-2">
-                      <input
+                      <CurrencyInput
                         aria-label={`سعر الوحدة ${n + 1}`}
-                        type="number"
                         min="0.01"
                         step="0.01"
                         required
                         readOnly={Boolean(computed[n].old)}
                         className={expenseInput}
                         value={r.price}
-                        onChange={(e) =>
-                          updateRow(n, { price: Number(e.target.value) })
+                        onValueChange={(raw) =>
+                          updateRow(n, { price: Number(raw) })
                         }
                       />
                     </td>
@@ -615,17 +618,17 @@ export function ExpenseSheet({
                     )
                   }
                 />
-                <select
+                <ERPSelect
                   aria-label={`نوع الخصم ${n + 1}`}
                   className={expenseInput}
                   value={d.kind}
-                  onChange={(e) =>
+                  onValueChange={(e) =>
                     setDeductions(
                       deductions.map((x, i) =>
                         i === n
                           ? {
                               ...x,
-                              kind: e.target.value as DeductionInput["kind"],
+                              kind: e as DeductionInput["kind"],
                             }
                           : x,
                       ),
@@ -634,8 +637,8 @@ export function ExpenseSheet({
                 >
                   <option value="PERCENT">نسبة %</option>
                   <option value="FIXED">مبلغ ثابت</option>
-                </select>
-                <input
+                </ERPSelect>
+                {d.kind === "FIXED" ? <CurrencyInput required aria-label={`قيمة الخصم ${n + 1}`} value={d.value} onValueChange={raw => setDeductions(deductions.map((x,i) => i === n ? {...x,value:Number(raw)} : x))} /> : <input
                   required
                   type="number"
                   min="0"
@@ -651,7 +654,7 @@ export function ExpenseSheet({
                       ),
                     )
                   }
-                />
+                />}
                 <span className="self-center text-xs font-bold" dir="ltr">
                   {money(discountAmounts[n])}
                 </span>
@@ -744,6 +747,7 @@ export function ExpenseSheet({
           </button>
         </div>
       </form>
+      </DocumentLayout>
     </section>
   );
 }

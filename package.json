@@ -12,6 +12,7 @@
     "db:seed": "node prisma/seed.mjs",
     "db:demo-incoming": "node scripts/seed-incoming-demo.mjs",
     "test:incoming": "node scripts/test-incoming.mjs",
+    "test:design-inputs": "node scripts/test-design-inputs.mjs",
     "test:incoming-api": "node scripts/test-incoming-api.mjs",
     "test:expenses": "node scripts/test-expenses.mjs",
     "test:expenses-api": "node scripts/test-expenses-api.mjs",

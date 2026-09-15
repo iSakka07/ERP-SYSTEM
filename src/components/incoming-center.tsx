@@ -1,4 +1,7 @@
 "use client";
+import { ERPSelect } from "@/components/erp-select";
+import { CurrencyInput } from "@/components/currency-input";
+import { DocumentLayout, type Movement } from "@/components/document-layout";
 
 import { Fragment, FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -57,6 +60,7 @@ type Contract = {
   projectId: string;
   originalCents: number;
   estimateReference: string | null;
+  estimateCents?: number | null;
   notes: string | null;
   project: Project;
   statements: Statement[];
@@ -90,12 +94,14 @@ export function IncomingCenter({
   attachments,
   canManage,
   isAdmin,
+  movements = [],
 }: {
   contracts: Contract[];
   projects: Project[];
   attachments: Attachment[];
   canManage: boolean;
   isAdmin: boolean;
+  movements?: (Movement & { entityId: string })[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -134,13 +140,14 @@ export function IncomingCenter({
     setMessage("");
     setEditor(e);
   };
-  async function save(payload: object, files: File[]) {
+  async function save(payload: object, files: File[], estimateFiles: File[] = []) {
     setBusy(true);
     setMessage("");
     try {
       const form = new FormData();
       form.set("payload", JSON.stringify(payload));
       files.forEach((f) => form.append("files", f));
+      estimateFiles.forEach((f) => form.append("estimateFiles", f));
       const response = await fetch("/api/incoming", {
         method: "POST",
         body: form,
@@ -262,6 +269,7 @@ export function IncomingCenter({
             setMessage("");
           }}
           onSave={save}
+          movements={movements}
         />
       ) : (
         <>
@@ -513,6 +521,7 @@ export function IncomingCenter({
                                     .join("، ") || "غير محدد"}
                                   {c.estimateReference &&
                                     ` · مرجع المقايسة: ${c.estimateReference}`}
+                                  {c.estimateCents != null && ` · قيمة المقايسة: ${money(c.estimateCents)} · الفرق عن أصل العقد: ${money(c.originalCents - c.estimateCents)}`}
                                 </p>
                                 <div className="flex gap-3 overflow-x-auto pb-2">
                                   {c.statements.map((s) => (
@@ -722,6 +731,7 @@ function IncomingEditor({
   isAdmin,
   onCancel,
   onSave,
+  movements,
 }: {
   editor: Editor;
   projects: Project[];
@@ -729,7 +739,8 @@ function IncomingEditor({
   busy: boolean;
   isAdmin: boolean;
   onCancel: () => void;
-  onSave: (payload: object, files: File[]) => Promise<void>;
+  onSave: (payload: object, files: File[], estimateFiles?: File[]) => Promise<void>;
+  movements: (Movement & { entityId: string })[];
 }) {
   const c = e.contract;
   const m = e.material;
@@ -768,6 +779,8 @@ function IncomingEditor({
     })) || [{ name: "", unit: "طن", quantity: "", price: "" }],
   );
   const [files, setFiles] = useState<File[]>([]);
+  const [estimateFiles, setEstimateFiles] = useState<File[]>([]);
+  const [estimateValue, setEstimateValue] = useState(c?.estimateCents == null ? "" : String(c.estimateCents / 100));
   const selectedProject =
     projects.find((p) => p.id === projectId) || c?.project;
   const title = {
@@ -808,13 +821,14 @@ function IncomingEditor({
       ...(c ? { contractId: c.id } : {}),
       ...(e.action === "material" ? { statementId: s?.id, items } : {}),
     };
-    await onSave(payload, files);
+    await onSave(payload, files, estimateFiles);
   }
   const patchItem = (index: number, patch: Partial<Item>) =>
     setItems((rows) =>
       rows.map((r, i) => (i === index ? { ...r, ...patch } : r)),
     );
   return (
+    <DocumentLayout movements={movements.filter(x => x.entityId === (m?.id || s?.id || (e.edit ? c?.id : undefined)))}>
     <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
       <div className="mb-5 flex items-center gap-3">
         <button disabled={busy} onClick={onCancel} className={secondary}>
@@ -863,11 +877,11 @@ function IncomingEditor({
               <Field label="رقم العقد" name="number" defaultValue={c?.number} />
               <label>
                 <Label>المشروع</Label>
-                <select
+                <ERPSelect
                   required
                   name="projectId"
                   value={projectId}
-                  onChange={(ev) => setProjectId(ev.target.value)}
+                  onValueChange={(ev) => setProjectId(ev)}
                   className={inputClass}
                 >
                   {!projects.length && (
@@ -878,7 +892,7 @@ function IncomingEditor({
                       {p.name}
                     </option>
                   ))}
-                </select>
+                </ERPSelect>
               </label>
               <Field
                 label="القيمة الأصلية للعقد (ج.م)"
@@ -887,12 +901,16 @@ function IncomingEditor({
                 value={value}
                 onChange={setValue}
               />
-              <Field
-                label="مرجع المقايسة — اختياري"
-                name="estimateReference"
-                defaultValue={c?.estimateReference || ""}
-                required={false}
-              />
+            </div>
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <Field label="قيمة المقايسة — اختياري" name="estimateValue" type="number" value={estimateValue} onChange={setEstimateValue} required={false} />
+              <p className="text-xs text-slate-500">للمقارنة بقيمة العقد فقط؛ لا تؤثر على الوارد أو المستحقات.</p>
+              {estimateValue && <p className="text-xs text-blue-700">الفرق (العقد − المقايسة): <b dir="ltr">{money(Math.round((Number(value || 0) - Number(estimateValue)) * 100))}</b></p>}
+              <label className="block text-xs text-slate-600">إرفاق المقايسة — أرشيف للمراجعة
+                <input type="file" multiple accept=".pdf,.xls,.xlsx,.png,.jpg,.jpeg,.webp" required={Boolean(estimateValue) && Math.round(Number(estimateValue) * 100) !== c?.estimateCents} onChange={ev => setEstimateFiles(Array.from(ev.target.files || []))} className="mt-2 block w-full text-xs" />
+              </label>
+              <Files files={attachments.filter(f => f.entityId === c?.id && f.entityType === "estimate")} />
+              {c?.estimateReference && <p className="text-xs text-slate-500">المرجع النصي السابق (محفوظ): {c.estimateReference}</p>}
             </div>
             <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
               الجهة المالكة: {selectedProject?.company.name || "—"} · القطاع:{" "}
@@ -911,14 +929,14 @@ function IncomingEditor({
             <div className="grid gap-4 md:grid-cols-2">
               <label>
                 <Label>نوع المستخلص</Label>
-                <select
+                <ERPSelect
                   name="kind"
                   defaultValue={s?.kind || "CURRENT"}
                   className={inputClass}
                 >
                   <option value="CURRENT">جاري</option>
                   <option value="FINAL">ختامي</option>
-                </select>
+                </ERPSelect>
               </label>
               <Field
                 label="إجمالي المستخلص التراكمي قبل خصم الخامات (ج.م)"
@@ -955,10 +973,10 @@ function IncomingEditor({
           <>
             <label>
               <Label>المستخلص المرتبط بالشهادة</Label>
-              <select
+              <ERPSelect
                 required
                 value={selectedStatementId}
-                onChange={(ev) => setSelectedStatementId(ev.target.value)}
+                onValueChange={(ev) => setSelectedStatementId(ev)}
                 disabled={e.edit}
                 className={inputClass}
               >
@@ -975,7 +993,7 @@ function IncomingEditor({
                       {statementLabel(x)} — {money(x.grossCents)}
                     </option>
                   ))}
-              </select>
+              </ERPSelect>
             </label>
             <Field
               label="رقم شهادة الخامات"
@@ -1036,11 +1054,11 @@ function IncomingEditor({
                         />
                       </td>
                       <td className="p-2">
-                        <select
+                        <ERPSelect
                           aria-label={`الوحدة ${index + 1}`}
                           value={i.unit}
-                          onChange={(ev) =>
-                            patchItem(index, { unit: ev.target.value })
+                          onValueChange={(ev) =>
+                            patchItem(index, { unit: ev })
                           }
                           className={inputClass}
                         >
@@ -1056,7 +1074,7 @@ function IncomingEditor({
                           ].map((u) => (
                             <option key={u}>{u}</option>
                           ))}
-                        </select>
+                        </ERPSelect>
                       </td>
                       <td className="p-2">
                         <input
@@ -1073,15 +1091,14 @@ function IncomingEditor({
                         />
                       </td>
                       <td className="p-2">
-                        <input
+                        <CurrencyInput
                           aria-label={`سعر الوحدة ${index + 1}`}
                           required
-                          type="number"
                           min="0.01"
                           step="0.01"
                           value={i.price}
-                          onChange={(ev) =>
-                            patchItem(index, { price: ev.target.value })
+                          onValueChange={(raw) =>
+                            patchItem(index, { price: raw })
                           }
                           className={inputClass}
                         />
@@ -1130,10 +1147,10 @@ function IncomingEditor({
           <div className="grid gap-4 md:grid-cols-2">
             <label>
               <Label>نوع المذكرة</Label>
-              <select name="kind" className={inputClass}>
+              <ERPSelect name="kind" className={inputClass}>
                 <option value="INCREASE">رفع</option>
                 <option value="DECREASE">خفض</option>
-              </select>
+              </ERPSelect>
             </label>
             <Field label="قيمة المذكرة (ج.م)" name="value" type="number" />
             <Field label="سبب المذكرة" name="reason" />
@@ -1147,10 +1164,10 @@ function IncomingEditor({
             </p>
             <label>
               <Label>المرحلة الجديدة</Label>
-              <select
+              <ERPSelect
                 name="stage"
                 value={stage}
-                onChange={(ev) => setStage(ev.target.value)}
+                onValueChange={(ev) => setStage(ev)}
                 className={inputClass}
               >
                 {incomingStages.map(([key, label], index) => (
@@ -1167,7 +1184,7 @@ function IncomingEditor({
                     {label}
                   </option>
                 ))}
-              </select>
+              </ERPSelect>
             </label>
             <Field
               label="سبب الرجوع / ملاحظات الحركة"
@@ -1182,10 +1199,10 @@ function IncomingEditor({
                 <Field label="تاريخ الصرف" name="paidAt" type="date" />
                 <label>
                   <Label>وسيلة التحصيل</Label>
-                  <select required name="paymentMethod" className={inputClass}>
+                  <ERPSelect required name="paymentMethod" className={inputClass}>
                     <option value="CHEQUE">شيك</option>
                     <option value="TRANSFER">تحويل</option>
-                  </select>
+                  </ERPSelect>
                 </label>
                 <Field
                   label="رقم الشيك / مرجع التحويل"
@@ -1234,7 +1251,7 @@ function IncomingEditor({
             PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت
           </p>
         </label>
-        {e.edit && <Files files={existingFiles} />}
+        {e.edit && <Files files={existingFiles.filter(f => f.entityType !== "estimate")} />}
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
           <button
             type="button"
@@ -1250,6 +1267,7 @@ function IncomingEditor({
         </div>
       </form>
     </section>
+    </DocumentLayout>
   );
 }
 
@@ -1280,7 +1298,7 @@ function Field({
   return (
     <label>
       <Label>{label}</Label>
-      <input
+      {type === "number" ? <CurrencyInput name={name} required={required} value={value} defaultValue={defaultValue} min="0.01" onValueChange={onChange} /> : <input
         name={name}
         type={type}
         required={required}
@@ -1294,7 +1312,7 @@ function Field({
         min={type === "number" ? "0.01" : undefined}
         step={type === "number" ? "0.01" : undefined}
         className={inputClass}
-      />
+      />}
     </label>
   );
 }
@@ -1312,10 +1330,10 @@ function Filter({
   return (
     <label>
       <span className="sr-only">{label}</span>
-      <select
+      <ERPSelect
         aria-label={label}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onValueChange={(e) => onChange(e)}
         className={inputClass}
       >
         <option value="">{label}</option>
@@ -1324,7 +1342,7 @@ function Filter({
             {o.name}
           </option>
         ))}
-      </select>
+      </ERPSelect>
     </label>
   );
 }

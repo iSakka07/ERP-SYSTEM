@@ -1,8 +1,8 @@
 # ERP Build Guide
 
-Current incremental slice: Phase5B.1 prospective price versions, documented and reviewed within normal statements. Historical quantity stays at historical price. Remaining5B withdrawal/reassignment and quantity corrections pending.
+Current approved refinement: shared document creation layout, Technical Hub-style controls, currency inputs, and optional incoming estimate value with a separate archive. See Product Bible 26.9.1 and design-qa.md. Phase 5B price versions, withdrawal/reassignment and documented quantity corrections/debt are implemented; do not start another module before review.
 
-Current approved work: Phase 5A — subcontractor statements. Read ../PRODUCT_BIBLE_V1.md Phase 5 update. Build cumulative sheet, dynamic deductions, approval cycle, separate evidenced payments. No final accounting entries; item withdrawal/reassignment and price corrections are Phase 5B after review. Preserve public-preview credentials and disabled demo accounts; never rerun the global seed on this database.
+Reuse DocumentLayout, CurrencyInput and ERPSelect in all additions. Data is right, history is left on desktop and below on mobile. Submit raw money without commas, keep cents calculations and approval/payment rules unchanged. Use currency for prices and fixed deductions, not quantities or percentages. Preserve existing credentials and disabled demo accounts; never rerun the global seed on this database. Runtime remains local-only; public tunnel is cancelled.
 
 The product requirements, financial rules, UX system, phase prompts, and
 Definitions of Done are maintained in `../PRODUCT_BIBLE_V1.md`.

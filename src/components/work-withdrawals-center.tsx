@@ -1,4 +1,6 @@
 "use client";
+import { DocumentLayout } from "@/components/document-layout";
+import { ERPSelect } from "@/components/erp-select";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
@@ -76,7 +78,7 @@ export function WorkWithdrawalsCenter({
         </p>
       )}
       {adding ? (
-        <form
+        <DocumentLayout><form
           className="space-y-4 rounded-xl border bg-white p-5"
           onSubmit={(e) => {
             e.preventDefault();
@@ -117,24 +119,24 @@ export function WorkWithdrawalsCenter({
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs">
               البند
-              <select name="itemKey" required className={expenseInput}>
+              <ERPSelect name="itemKey" required className={expenseInput}>
                 {available.map((i) => (
                   <option key={i.itemKey} value={i.itemKey}>
                     {i.name} · {i.unit}
                   </option>
                 ))}
-              </select>
+              </ERPSelect>
             </label>
             <label className="text-xs">
               نوع السحب
-              <select
+              <ERPSelect
                 value={kind}
-                onChange={(e) => setKind(e.target.value)}
+                onValueChange={(e) => setKind(e)}
                 className={expenseInput}
               >
                 <option value="PARTIAL">جزء من البند</option>
                 <option value="FULL">كامل الأعمال المتبقية للبند</option>
-              </select>
+              </ERPSelect>
             </label>
             <label className="text-xs">
               كمية الأعمال المسحوبة{" "}
@@ -185,7 +187,7 @@ export function WorkWithdrawalsCenter({
             )}
             <label className="text-xs">
               إعادة إسناد لمقاول جديد
-              <select
+              <ERPSelect
                 name="destinationCompanyId"
                 className={expenseInput}
                 defaultValue=""
@@ -198,7 +200,7 @@ export function WorkWithdrawalsCenter({
                       {c.name}
                     </option>
                   ))}
-              </select>
+              </ERPSelect>
             </label>
           </div>
           <label className="block text-xs">
@@ -230,9 +232,9 @@ export function WorkWithdrawalsCenter({
               إلغاء
             </button>
           </div>
-        </form>
+        </form></DocumentLayout>
       ) : assignment ? (
-        <form
+        <DocumentLayout><form
           className="space-y-4 rounded-xl border bg-white p-5"
           onSubmit={(e) => {
             e.preventDefault();
@@ -259,7 +261,7 @@ export function WorkWithdrawalsCenter({
           </p>
           <label className="block text-xs">
             المقاول الجديد
-            <select
+            <ERPSelect
               name="companyId"
               required
               defaultValue=""
@@ -275,7 +277,7 @@ export function WorkWithdrawalsCenter({
                     {c.name}
                   </option>
                 ))}
-            </select>
+            </ERPSelect>
           </label>
           <label className="block text-xs">
             سبب إعادة الإسناد
@@ -306,7 +308,7 @@ export function WorkWithdrawalsCenter({
               إلغاء
             </button>
           </div>
-        </form>
+        </form></DocumentLayout>
       ) : (
         <>
           <button className={expenseButton} onClick={onClose}>

@@ -1,4 +1,7 @@
 "use client";
+import { ERPSelect } from "@/components/erp-select";
+import { CurrencyInput } from "@/components/currency-input";
+import { DocumentLayout } from "@/components/document-layout";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { WorkWithdrawalsCenter } from "./work-withdrawals-center";
@@ -147,6 +150,7 @@ export function ExpensesCenter({
   const detail = detailAccount?.statements.find((s) => s.id === selected);
   function paymentForm(st: ExpenseStatement) {
     return (
+      <DocumentLayout>
       <form
         className="space-y-3 rounded-xl border border-blue-200 bg-white p-4"
         onSubmit={(e) => {
@@ -174,9 +178,8 @@ export function ExpensesCenter({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs">
             قيمة الدفعة (ج.م)
-            <input
+            <CurrencyInput
               name="amount"
-              type="number"
               min="0.01"
               step="0.01"
               required
@@ -195,11 +198,11 @@ export function ExpensesCenter({
           </label>
           <label className="text-xs">
             وسيلة الصرف
-            <select name="method" className={`${expenseInput} mt-1`}>
+            <ERPSelect name="method" className={`${expenseInput} mt-1`}>
               <option value="CHEQUE">شيك</option>
               <option value="TRANSFER">تحويل</option>
               <option value="CASH">نقدي / إيصال صرف</option>
-            </select>
+            </ERPSelect>
           </label>
           <label className="text-xs">
             رقم الشيك / التحويل / الإيصال
@@ -245,6 +248,7 @@ export function ExpensesCenter({
           المحاسبة.
         </p>
       </form>
+      </DocumentLayout>
     );
   }
   function statementDetail(st: ExpenseStatement, account: ExpenseAccount) {
@@ -484,7 +488,6 @@ export function ExpensesCenter({
             </div>
           ))}
         </div>
-        {paymentId === st.id && paymentForm(st)}
         <section className="space-y-3 rounded-xl border bg-white p-4">
           <h3 className="text-sm font-bold">
             دفعات أعمال المقاول — جميع الجوارى
@@ -519,6 +522,12 @@ export function ExpensesCenter({
       </div>
     );
   }
+  const paymentStatement = accounts.flatMap(a => a.statements).find(s => s.id === paymentId);
+  if (paymentStatement) return <div className="space-y-4">
+    {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+    {notice && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
+    {paymentForm(paymentStatement)}
+  </div>;
   return (
     <div className="space-y-5">
       {!newAccount && (
@@ -579,7 +588,7 @@ export function ExpensesCenter({
       ) : (
         <>
           {newAccount ? (
-            <form
+            <DocumentLayout><form
               className="space-y-3 rounded-xl border border-blue-200 bg-white p-4"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -618,7 +627,7 @@ export function ExpensesCenter({
                 </label>
                 <label className="text-xs">
                   المقاول
-                  <select
+                  <ERPSelect
                     name="companyId"
                     required
                     className={`${expenseInput} mt-1`}
@@ -632,11 +641,11 @@ export function ExpensesCenter({
                         {c.name}
                       </option>
                     ))}
-                  </select>
+                  </ERPSelect>
                 </label>
                 <label className="text-xs">
                   المشروع
-                  <select
+                  <ERPSelect
                     name="projectId"
                     required
                     defaultValue=""
@@ -650,7 +659,7 @@ export function ExpensesCenter({
                         {p.name}
                       </option>
                     ))}
-                  </select>
+                  </ERPSelect>
                 </label>
                 <label className="text-xs">
                   وحدة التنفيذ / نطاق العمل
@@ -695,7 +704,7 @@ export function ExpensesCenter({
                   أضف مقاول باطن من صفحة الإدارة والمشروعات أولًا.
                 </p>
               )}
-            </form>
+            </form></DocumentLayout>
           ) : (
           <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -740,11 +749,11 @@ export function ExpensesCenter({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <select
+            <ERPSelect
               aria-label="فلتر المشروع"
               className={expenseInput}
               value={project}
-              onChange={(e) => setProject(e.target.value)}
+              onValueChange={(e) => setProject(e)}
             >
               <option value="">كل المشروعات</option>
               {projects.map((p) => (
@@ -752,12 +761,12 @@ export function ExpensesCenter({
                   {p.name}
                 </option>
               ))}
-            </select>
-            <select
+            </ERPSelect>
+            <ERPSelect
               aria-label="فلتر المقاول"
               className={expenseInput}
               value={company}
-              onChange={(e) => setCompany(e.target.value)}
+              onValueChange={(e) => setCompany(e)}
             >
               <option value="">كل المقاولين</option>
               {companies.map((c) => (
@@ -765,7 +774,7 @@ export function ExpensesCenter({
                   {c.name}
                 </option>
               ))}
-            </select>
+            </ERPSelect>
             <p className="text-[11px] text-slate-400 sm:col-span-3">
               {visible.length} مقاولة · التكلفة تظهر عند اعتماد المدير التنفيذي،
               والصرف عند تسجيل دفعة.

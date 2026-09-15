@@ -19,9 +19,9 @@ export async function incomingUser(permission: string) {
   return { id: user.id, admin: user.role.key === "admin" };
 }
 
-export async function readIncomingFiles(form: FormData) {
+export async function readIncomingFiles(form: FormData, field = "files") {
   const files = form
-    .getAll("files")
+    .getAll(field)
     .filter((f): f is File => f instanceof File && f.size > 0);
   if (
     files.length > 5 ||

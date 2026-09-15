@@ -114,6 +114,7 @@ model IncomingContract {
   project           Project             @relation(fields: [projectId], references: [id])
   originalCents     Float
   estimateReference String?
+  estimateCents     Float?
   notes             String?
   statements        IncomingStatement[]
   memos             IncomingMemo[]

@@ -2,11 +2,27 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { incomingUser } from "@/lib/incoming-server";
 import { IncomingCenter } from "@/components/incoming-center";
+import { incomingStages } from "@/lib/incoming";
+
+function movementLabel(action: string, details: string) {
+  const labels: Record<string, string> = {
+    "incoming.contract": "حفظ العقد",
+    "incoming.statement": "حفظ المستخلص",
+    "incoming.material": "حفظ شهادة الخامات",
+    "incoming.memo": "إضافة مذكرة",
+    "incoming.stage": "تغيير مرحلة المستخلص",
+  };
+  try {
+    const data = JSON.parse(details);
+    const stage = incomingStages.find(s => s[0] === data.input?.stage)?.[1];
+    return { label: action === "incoming.stage" && stage ? `نقل إلى ${stage}` : labels[action] || action, note: data.input?.reason || undefined };
+  } catch { return { label: labels[action] || action }; }
+}
 
 export default async function IncomingPage() {
   if (!(await incomingUser("incoming.view"))) redirect("/");
   const manager = await incomingUser("incoming.manage");
-  const [contracts, projects, attachments] = await Promise.all([
+  const [contracts, projects, attachments, movements] = await Promise.all([
     prisma.incomingContract.findMany({
       include: {
         project: {
@@ -42,6 +58,11 @@ export default async function IncomingPage() {
       },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.auditLog.findMany({
+      where: { action: { startsWith: "incoming." } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, target: true, action: true, createdAt: true, details: true },
+    }),
   ]);
   return (
     <IncomingCenter
@@ -50,6 +71,10 @@ export default async function IncomingPage() {
       attachments={attachments}
       canManage={Boolean(manager)}
       isAdmin={Boolean(manager?.admin)}
+      movements={movements.map(m => ({
+        id: m.id, entityId: m.target || "", date: m.createdAt.toISOString(),
+        ...movementLabel(m.action, m.details || "{}"),
+      }))}
     />
   );
 }

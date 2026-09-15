@@ -21,6 +21,7 @@ const schema = z.discriminatedUnion("action", [
     projectId: text,
     value: amount,
     estimateReference: z.string().trim().max(300).optional(),
+    estimateValue: z.preprocess(v => v === "" || v === null ? null : v, amount.nullable()).optional(),
     notes: z.string().max(2000).optional(),
   }),
   z.object({
@@ -100,6 +101,11 @@ export async function POST(request: Request) {
       );
     const d = parsed.data;
     const files = await readIncomingFiles(form);
+    const estimateFiles = await readIncomingFiles(form, "estimateFiles");
+    const allFiles = [...files, ...estimateFiles];
+    if (allFiles.length > 5 || allFiles.reduce((n, f) => n + f.size, 0) > 10 * 1024 * 1024)
+      throw new Error("الحد الأقصى 5 مرفقات بإجمالي 10 ميجابايت لكل المستند.");
+    if (estimateFiles.length && d.action !== "contract") throw new Error("مرفق المقايسة خاص بالعقد فقط.");
     const result = await prisma.$transaction(async (tx) => {
       let target = "";
       let entityType = d.action;
@@ -136,12 +142,15 @@ export async function POST(request: Request) {
           name: d.name,
           projectId: d.projectId,
           originalCents: d.value,
-          estimateReference: d.estimateReference || null,
+          ...(d.estimateReference !== undefined ? { estimateReference: d.estimateReference || null } : {}),
+          ...(d.estimateValue !== undefined ? { estimateCents: d.estimateValue } : {}),
           notes: d.notes || null,
         };
         if (d.id) {
           const c = await contract(d.id);
           before = c;
+          if (d.estimateValue != null && d.estimateValue !== c.estimateCents && !estimateFiles.length)
+            throw new Error("أرفق المقايسة عند تسجيل قيمتها أو تغييرها للمراجعة.");
           if (
             c.statements.length &&
             (c.projectId !== d.projectId || c.originalCents !== d.value)
@@ -154,6 +163,7 @@ export async function POST(request: Request) {
           ).id;
         } else {
           requireFiles();
+          if (d.estimateValue != null && !estimateFiles.length) throw new Error("أرفق المقايسة للمراجعة عند إدخال قيمتها.");
           target = (await tx.incomingContract.create({ data })).id;
         }
       }
@@ -367,6 +377,8 @@ export async function POST(request: Request) {
             actorId: user.id,
           })),
         });
+      if (estimateFiles.length)
+        await tx.incomingAttachment.createMany({ data: estimateFiles.map(f => ({ ...f, entityType: "estimate", entityId: target, actorId: user.id })) });
       await tx.auditLog.create({
         data: {
           actorId: user.id,
@@ -376,6 +388,7 @@ export async function POST(request: Request) {
             before,
             input: d,
             attachmentCount: files.length,
+            estimateAttachmentCount: estimateFiles.length,
           }),
         },
       });

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -62,3 +63,28 @@ button, input, select, textarea { font: inherit; }
     linear-gradient(135deg, #ffffff 0%, #ffffff 62%, #f3f7fd 100%);
 }
 ::selection { background: #cfe1ff; color: #0a397d; }
+
+/* Approved Technical Hub document/control pattern; shared by every module. */
+.erp-document-layout { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:24px; align-items:stretch; }
+.erp-document-data { min-width:0; }
+.erp-document-data > form { background:white; border:1px solid #d9e1ea; border-radius:10px; padding:24px; }
+.erp-movement-card { background:white; border:1px solid #d9e1ea; border-radius:10px; padding:24px; min-height:360px; }
+.erp-movement-card h2 { font-size:16px; font-weight:800; color:#172033; }
+.erp-empty-history { margin-top:18px; font-size:13px; color:#78869d; }
+.erp-history { margin-top:20px; padding-right:16px; border-right:2px solid #e5ebf2; display:grid; gap:20px; font-size:13px; }
+.erp-control, input:not([type=hidden]):not([type=file]):not([type=checkbox]):not([type=radio]), textarea {
+  background:#f5f7fa; border:1px solid #d9e1ea; border-radius:8px; color:#172033; min-height:40px; padding:8px 12px; font-size:13px; outline:none; width:100%;
+}
+.erp-control:focus-visible, form input:focus-visible, form textarea:focus-visible { border-color:#0d5cc7; box-shadow:0 0 0 3px #dceaff; }
+input:not([type=hidden]):not([type=file]):not([type=checkbox]):not([type=radio]), .erp-select { height:40px; }
+.erp-currency { display:block; position:relative; width:100%; height:40px; padding:0 !important; border:0 !important; background:transparent !important; }
+form .erp-currency input.erp-control, .erp-currency input.erp-control { height:40px; padding-right:34px; font-variant-numeric:tabular-nums; text-align:left; }
+.erp-currency-symbol { position:absolute; top:50%; right:12px; transform:translateY(-50%); font-size:12px; color:#78869d; pointer-events:none; }
+.erp-select { display:flex; justify-content:space-between; align-items:center; gap:12px; text-align:right; cursor:pointer; }
+.erp-select > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.erp-select-popup { background:#fff; border:1px solid #d9e1ea; border-radius:8px; box-shadow:0 8px 24px #17203318; padding:5px; min-width:var(--anchor-width); max-width:min(650px,calc(100vw - 24px)); max-height:min(360px,var(--available-height)); overflow:auto; font-size:13px; }
+.erp-select-option { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; border-radius:5px; cursor:pointer; outline:none; }
+.erp-select-option[data-highlighted] { background:#eaf2ff; color:#0d5cc7; }
+.erp-select-option[data-disabled] { opacity:.45; cursor:not-allowed; }
+@media(max-width:1100px) { .erp-document-layout { grid-template-columns:minmax(0,1fr) 260px; gap:16px; } }
+@media(max-width:800px) { .erp-document-layout { grid-template-columns:minmax(0,1fr); } .erp-movement-card { min-height:160px; } }
