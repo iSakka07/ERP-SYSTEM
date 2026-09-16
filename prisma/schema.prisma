@@ -106,6 +106,7 @@ model Project {
   subcontractAccounts SubcontractAccount[]
   purchaseInvoices    PurchaseInvoice[]
   pettyCashTransactions PettyCashTransaction[]
+  salaryAllocations EmployeeSalaryAllocation[]
   createdAt           DateTime                    @default(now())
   updatedAt           DateTime                    @updatedAt
 }
@@ -199,11 +200,27 @@ model Employee {
   name         String
   jobTitle     String
   phone        String?
+  monthlySalaryCents Float @default(0)
   active       Boolean                     @default(true)
   supervisors  ProjectEngineerAssignment[]
   createdAt    DateTime                    @default(now())
   updatedAt    DateTime                    @updatedAt
   pettyCashAccounts PettyCashAccount[]
+  salaryAllocations EmployeeSalaryAllocation[]
+}
+
+model EmployeeSalaryAllocation {
+  id         String   @id @default(cuid())
+  employeeId String
+  projectId  String?
+  startDate  DateTime
+  endDate    DateTime?
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([employeeId, startDate])
+  @@index([projectId, startDate])
 }
 
 model ProjectEngineerAssignment {

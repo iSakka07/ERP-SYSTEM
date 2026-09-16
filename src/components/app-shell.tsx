@@ -13,7 +13,7 @@ const navItems = [
   { label: "الوارد", icon: BanknoteArrowUp, href: "/incoming", permission: "incoming.view" },
   { label: "مستخلصات المقاولين", icon: FileSpreadsheet, href: "/expenses", permission: "expenses.view" },
   { label: "المشتريات", icon: ShoppingCart, href: "/purchases", permission: "purchases.view" },
-  { label: "المرتبات", icon: UsersRound, href: "/#modules", permission: "salaries.view" },
+  { label: "المرتبات", icon: UsersRound, href: "/salaries", permission: "salaries.view" },
   { label: "Petty Cash", icon: Vault, href: "/petty-cash", permission: "pettycash.view" },
   { label: "المرفقات", icon: Paperclip, href: "/#modules", permission: "dashboard.view" },
   { label: "إدارة الحسابات", icon: Settings2, href: "/admin/accounts", permission: "accounts.manage" },
