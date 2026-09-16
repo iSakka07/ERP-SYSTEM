@@ -29,7 +29,6 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
         project: {
           include: {
             company: true,
-            sector: true,
             supervisors: {
               where: { active: true },
               include: { employee: true },
@@ -46,7 +45,7 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
     }),
     prisma.project.findMany({
       where: { active: true, company: { active: true, type: "OWNER" } },
-      include: { company: true, sector: true },
+      include: { company: true },
       orderBy: { name: "asc" },
     }),
     prisma.incomingAttachment.findMany({

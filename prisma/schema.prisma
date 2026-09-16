@@ -69,28 +69,13 @@ model Company {
   id                  String               @id @default(cuid())
   name                String               @unique
   type                String
-  taxNumber           String?
   phone               String?
   active              Boolean              @default(true)
-  sectors             Sector[]
   projects            Project[]
   subcontractAccounts SubcontractAccount[]
   purchaseInvoices    PurchaseInvoice[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
-}
-
-model Sector {
-  id        String    @id @default(cuid())
-  name      String
-  companyId String?
-  company   Company?  @relation(fields: [companyId], references: [id])
-  active    Boolean   @default(true)
-  projects  Project[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  @@unique([name, companyId])
 }
 
 model Project {
@@ -99,8 +84,6 @@ model Project {
   name                String
   companyId           String
   company             Company                     @relation(fields: [companyId], references: [id])
-  sectorId            String?
-  sector              Sector?                     @relation(fields: [sectorId], references: [id])
   status              String                      @default("ACTIVE")
   active              Boolean                     @default(true)
   supervisors         ProjectEngineerAssignment[]

@@ -48,9 +48,7 @@ try {
     await prisma.user.upsert({ where: { email }, update: { name, passwordHash, active: true, roleId: role.id }, create: { name, email, passwordHash, roleId: role.id } });
   }
   const company = await prisma.company.upsert({ where: { name: "إدارة الأشغال العسكرية" }, update: { active: true }, create: { name: "إدارة الأشغال العسكرية", type: "OWNER" } });
-  let sector = await prisma.sector.findFirst({ where: { name: "القيادة الاستراتيجية", companyId: company.id } });
-  sector ??= await prisma.sector.create({ data: { name: "القيادة الاستراتيجية", companyId: company.id } });
-  const project = await prisma.project.upsert({ where: { code: "MAYAN-27" }, update: { companyId: company.id, sectorId: sector.id }, create: { code: "MAYAN-27", name: "عمارة 27 - كمبوند مايان", companyId: company.id, sectorId: sector.id } });
+  const project = await prisma.project.upsert({ where: { code: "MAYAN-27" }, update: { companyId: company.id }, create: { code: "MAYAN-27", name: "عمارة 27 - كمبوند مايان", companyId: company.id } });
   await prisma.company.upsert({ where: { name: "مورد خامات تجريبي" }, update: { type: "SUPPLIER", active: true }, create: { name: "مورد خامات تجريبي", type: "SUPPLIER", phone: "01000000000" } });
   const engineer = await prisma.employee.upsert({ where: { employeeCode: "ENG-001" }, update: { active: true }, create: { employeeCode: "ENG-001", name: "أحمد محمد", jobTitle: "مهندس موقع" } });
   const assignment = await prisma.projectEngineerAssignment.findFirst({ where: { projectId: project.id, employeeId: engineer.id, active: true } });

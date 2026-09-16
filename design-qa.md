@@ -51,3 +51,29 @@ No unresolved P0/P1/P2 in the requested pattern. Intentional adaptations: retain
 ## Durable implementation rule
 
 Read Product Bible 26.9.1. All future additions reuse DocumentLayout, CurrencyInput and ERPSelect. Currency formatting is presentation only; quantities/percentages are never monetary inputs. Estimate comparison is informational and cannot create revenue/cost/treasury/journal entries.
+
+## UX/UI page review — shared components and Management
+
+### Scope
+
+- Compared the rebuilt `/management` page in the in-app browser against the already approved ERP visual language represented by `qa-artifacts/incoming-desktop-final.png` and the user's current page-by-page specification.
+- This is a pattern comparison, not a pixel clone: the Management page is a list-and-master-data workflow, while the reference capture is a document-creation workflow.
+
+### Findings and fixes
+
+1. The previous Management layout placed forms before the records and mixed sectors, tax data and stop actions into the workflow. Rebuilt it with three focused tabs, tables first, forms below, and safe-delete icon actions.
+2. Added shared KPI, money, icon-action and responsive-table primitives. Icon actions expose both `title` and accessible names; responsive rows expose field labels and collapse to readable cards below 800px.
+3. Removed Sector and company tax number from the active schema, routes, filters, seed and dependent page queries. A database backup was created before the migration and SQLite foreign-key integrity was checked afterwards.
+4. Limited company phone capture and display to subcontractors.
+5. Merged supervisor data and current assignment in one form/table. Editing or moving a supervisor now closes all previous active assignments and creates the new current assignment with the operation timestamp. Duplicate legacy assignment names are de-duplicated in project display.
+6. Browser review covered companies and projects. The tables precede their creation forms, destructive actions are icon-only with accessible labels, no sector/tax controls remain, and project rows show the owning company plus supervisors.
+
+### Verification
+
+- `pnpm lint` — passed.
+- `pnpm build` — passed, including TypeScript.
+- `pnpm test:incoming`, `pnpm test:expenses`, `pnpm test:petty-cash`, `pnpm test:salaries`, and `pnpm test:design-inputs` — passed.
+- `PRAGMA foreign_key_check` — returned no violations after migration.
+- Browser visual and accessibility-tree review of `/management` — passed for the first page-review stage.
+
+No unresolved P0/P1/P2 in this stage. The next page, Incoming, remains intentionally unchanged beyond removing the deleted Sector dependency until Management is reviewed by the user.

@@ -8,7 +8,7 @@ import { ERPSelect } from "@/components/erp-select";
 import { UploadBox } from "@/components/upload-box";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 
-type Project = { id: string; name: string; code: string; sector?: { name: string } | null };
+type Project = { id: string; name: string; code: string };
 type Supplier = { id: string; name: string };
 type PurchaseItem = {
   id: string;
@@ -315,7 +315,7 @@ export function PurchasesCenter({
                     <span className="inline-flex items-center gap-2"><FileText className="size-4 text-blue-700" />{invoice.number}</span>
                     {invoice.notes && <p className="mt-1 text-[11px] font-normal text-slate-500">{invoice.notes}</p>}
                   </td>
-                  <td className="p-3">{invoice.project.name}<p className="mt-1 text-[11px] text-slate-400">{invoice.project.sector?.name ?? invoice.project.code}</p></td>
+                  <td className="p-3">{invoice.project.name}<p className="mt-1 text-[11px] text-slate-400">{invoice.project.code}</p></td>
                   <td className="p-3">{invoice.supplier?.name ?? "—"}</td>
                   <td className="p-3">{invoice.invoiceDate.slice(0, 10)}</td>
                   <td className="p-3">{invoice.items.length}</td>

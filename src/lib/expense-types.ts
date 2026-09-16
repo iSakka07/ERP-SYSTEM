@@ -41,7 +41,7 @@ export type ExpenseAccount = {
   scope: string;
   notes: string | null;
   company: { name: string };
-  project: { name: string; sector: { name: string } | null };
+  project: { name: string };
   statements: ExpenseStatement[];
   withdrawals: WorkWithdrawal[];
   assignments: WorkWithdrawal[];

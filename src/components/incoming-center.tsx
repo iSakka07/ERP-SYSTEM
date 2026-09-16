@@ -26,7 +26,6 @@ type Project = {
   id: string;
   name: string;
   company: { id: string; name: string };
-  sector: { id: string; name: string } | null;
   supervisors?: { employee: { name: string } }[];
 };
 type Material = {
@@ -110,7 +109,6 @@ export function IncomingCenter({
   const [query, setQuery] = useState("");
   const [project, setProject] = useState(initialProjectId);
   const [owner, setOwner] = useState("");
-  const [sector, setSector] = useState("");
   const [stage, setStage] = useState("");
   const [expanded, setExpanded] = useState("");
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -121,7 +119,6 @@ export function IncomingCenter({
       (!query || `${c.name} ${c.number} ${c.project.name}`.includes(query)) &&
       (!project || c.projectId === project) &&
       (!owner || c.project.company.id === owner) &&
-      (!sector || c.project.sector?.id === sector) &&
       (!stage || c.statements.some((s) => s.stage === stage)),
   );
   const totals = filtered.reduce(
@@ -295,7 +292,7 @@ export function IncomingCenter({
             ))}
           </div>
           <section className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="grid gap-3 md:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-4">
               <label>
                 <span className="sr-only">البحث</span>
                 <input
@@ -318,14 +315,6 @@ export function IncomingCenter({
                 options={unique(projects.map((p) => p.company))}
               />
               <Filter
-                label="كل القطاعات"
-                value={sector}
-                onChange={setSector}
-                options={unique(
-                  projects.flatMap((p) => (p.sector ? [p.sector] : [])),
-                )}
-              />
-              <Filter
                 label="كل مراحل المستخلصات"
                 value={stage}
                 onChange={setStage}
@@ -344,7 +333,7 @@ export function IncomingCenter({
                   <tr>
                     {[
                       "العقد",
-                      "المشروع / القطاع",
+                      "المشروع",
                       "الجهة المالكة",
                       "قيمة العقد",
                       "موقف المستخلصات",
@@ -388,12 +377,7 @@ export function IncomingCenter({
                               {c.number}
                             </p>
                           </td>
-                          <td>
-                            {c.project.name}
-                            <p className="mt-1 text-[10px] text-slate-400">
-                              {c.project.sector?.name || "—"}
-                            </p>
-                          </td>
+                          <td>{c.project.name}</td>
                           <td>
                             {c.project.company.name}
                           </td>
@@ -914,8 +898,7 @@ function IncomingEditor({
               {c?.estimateReference && <p className="text-xs text-slate-500">المرجع النصي السابق (محفوظ): {c.estimateReference}</p>}
             </div>
             <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-              الجهة المالكة: {selectedProject?.company.name || "—"} · القطاع:{" "}
-              {selectedProject?.sector?.name || "—"}
+              الجهة المالكة: {selectedProject?.company.name || "—"}
             </div>
             {c?.statements.length ? (
               <p className="text-xs text-amber-700">

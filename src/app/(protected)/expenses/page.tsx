@@ -13,7 +13,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
         company: true,
         withdrawals: { orderBy: { createdAt: "asc" } },
         assignments: true,
-        project: { include: { sector: true } },
+        project: true,
         statements: {
           orderBy: { sequence: "asc" },
           include: {

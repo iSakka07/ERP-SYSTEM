@@ -1,83 +1,89 @@
 "use client";
-import { ERPSelect } from "@/components/erp-select";
 
 import { FormEvent, useState } from "react";
-import { Building2, CheckCircle2, Factory, HardHat, Layers3, LoaderCircle, Plus, Power } from "lucide-react";
+import { Building2, Factory, HardHat, LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { ERPSelect } from "@/components/erp-select";
+import { DataTable, IconAction } from "@/components/erp-ui";
 
-type Company = { id: string; name: string; type: string; taxNumber: string | null; phone: string | null; active: boolean };
-type Sector = { id: string; name: string; active: boolean; company: Company | null };
-type Engineer = { id: string; employeeCode: string; name: string; jobTitle: string; phone: string | null; active: boolean };
-type Project = { id: string; code: string; name: string; active: boolean; company: Company; sector: { id: string; name: string; active: boolean } | null; supervisors: { employee: Engineer }[] };
-type Assignment = { id: string; active: boolean; project: { name: string }; employee: { name: string; jobTitle: string } };
-type Tab = "companies" | "sectors" | "projects" | "engineers";
-
+type Company = { id: string; name: string; type: string; phone: string | null };
+type Engineer = { id: string; employeeCode: string; name: string; jobTitle: string; phone: string | null; supervisors: { project: { id: string; name: string } }[] };
+type Project = { id: string; code: string; name: string; company: Company; supervisors: { employee: { id: string; name: string } }[] };
+type Tab = "companies" | "projects" | "engineers";
 const companyTypes: Record<string, string> = { OWNER: "جهة مالكة", SUBCONTRACTOR: "مقاول باطن", SUPPLIER: "مورد" };
 
-export function ManagementCenter({ companies, sectors, projects, engineers, assignments, canManage }: { companies: Company[]; sectors: Sector[]; projects: Project[]; engineers: Engineer[]; assignments: Assignment[]; canManage: boolean }) {
+export function ManagementCenter({ companies, projects, engineers, canManage }: { companies: Company[]; projects: Project[]; engineers: Engineer[]; canManage: boolean }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("companies");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
-  const [projectCompanyId, setProjectCompanyId] = useState("");
+  const [companyType, setCompanyType] = useState("OWNER");
+  const [editingEngineer, setEditingEngineer] = useState<Engineer | null>(null);
+  const [engineerProjectId, setEngineerProjectId] = useState("");
   const tabs = [
     { key: "companies" as const, label: "الشركات والجهات", icon: Factory, count: companies.length },
-    { key: "sectors" as const, label: "القطاعات", icon: Layers3, count: sectors.length },
     { key: "projects" as const, label: "المشروعات", icon: Building2, count: projects.length },
     { key: "engineers" as const, label: "المهندسون المشرفون", icon: HardHat, count: engineers.length },
   ];
 
-  async function request(method: "POST" | "PATCH", body: object, key: string) {
+  async function request(method: "POST" | "PATCH" | "DELETE", body: object, key: string) {
     setBusy(key); setMessage("");
     const response = await fetch("/api/management", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const result = await response.json();
-    setBusy("");
-    if (!response.ok) { setMessage(result.error === "SECTOR_COMPANY_MISMATCH" ? "القطاع المختار لا يتبع الجهة المالكة للمشروع." : (result.error || "تعذر الحفظ. راجع البيانات وتأكد أنها غير مكررة.")); return false; }
-    setMessage("تم حفظ البيانات بنجاح."); router.refresh(); return true;
+    const result = await response.json(); setBusy("");
+    if (!response.ok) {
+      const labels: Record<string, string> = { INVALID_OWNER: "اختر جهة مالكة صحيحة.", INVALID_PROJECT: "اختر مشروعًا صحيحًا.", DUPLICATE_OR_INVALID: "البيانات مكررة أو غير صحيحة." };
+      setMessage(labels[result.error] || "تعذر حفظ العملية. راجع البيانات وحاول مرة أخرى."); return false;
+    }
+    setMessage(method === "DELETE" ? "تم المسح من القوائم مع الاحتفاظ بالتاريخ السابق." : "تم حفظ البيانات بنجاح."); router.refresh(); return true;
   }
-
-  async function submit(event: FormEvent<HTMLFormElement>, type: string) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    if (await request("POST", { type, ...Object.fromEntries(new FormData(form)) }, `create-${type}`)) form.reset();
+  async function submit(event: FormEvent<HTMLFormElement>, type: "company" | "project" | "engineer") {
+    event.preventDefault(); const form = event.currentTarget;
+    if (await request("POST", { type, ...Object.fromEntries(new FormData(form)) }, `create-${type}`)) { form.reset(); if (type === "company") setCompanyType("OWNER"); }
   }
-
-  function toggle(entity: string, id: string, active: boolean) { return canManage ? <button disabled={busy === id} onClick={() => request("PATCH", { entity, id, active: !active }, id)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Power className="size-3.5" />{active ? "إيقاف" : "تفعيل"}</button> : null; }
+  async function remove(entity: "company" | "project" | "engineer", id: string, name: string) {
+    if (!window.confirm(`مسح «${name}» من القوائم؟ سيظل تاريخه السابق محفوظًا.`)) return;
+    await request("DELETE", { entity, id }, id);
+  }
+  async function submitEngineer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = event.currentTarget;
+    const payload = { ...Object.fromEntries(new FormData(form)), projectId: engineerProjectId };
+    const method = editingEngineer ? "PATCH" : "POST";
+    const body = editingEngineer ? { ...payload, id: editingEngineer.id } : { type: "engineer", ...payload };
+    if (await request(method, body, editingEngineer ? `edit-${editingEngineer.id}` : "create-engineer")) {
+      form.reset(); setEditingEngineer(null); setEngineerProjectId("");
+    }
+  }
+  function editEngineer(engineer: Engineer) {
+    setEditingEngineer(engineer); setEngineerProjectId(engineer.supervisors[0]?.project.id || ""); setMessage("");
+  }
+  const empty = (columns: number, label: string) => <tr><td colSpan={columns} className="py-12 text-center text-slate-400">{label}</td></tr>;
 
   return <div className="space-y-6">
-    <section><p className="text-xs font-bold text-blue-700">البيانات الأساسية</p><h1 className="mt-1 text-2xl font-black text-slate-950">إدارة الشركة والمشروعات</h1><p className="mt-2 text-sm text-slate-500">مركز موحد للجهات والقطاعات والمشروعات والمهندسين المشرفين.</p></section>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{tabs.map(({ key, label, icon: Icon, count }) => <button key={key} onClick={() => { setTab(key); setMessage(""); }} className={`flex items-center gap-3 rounded-xl border p-4 text-right transition ${tab === key ? "border-blue-200 bg-blue-50 text-blue-800 shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"}`}><span className={`grid size-10 place-items-center rounded-lg ${tab === key ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}><Icon className="size-5" /></span><span><span className="block text-sm font-extrabold">{label}</span><span className="mt-1 block text-xs opacity-60">{count} سجل</span></span></button>)}</div>
-    {message && <p className={`rounded-xl border px-4 py-3 text-sm font-bold ${message.includes("بنجاح") ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>{message}</p>}
+    <section><p className="text-xs font-bold text-blue-700">البيانات الأساسية</p><h1 className="mt-1 text-2xl font-black text-slate-950">إدارة الشركة والمشروعات</h1><p className="mt-2 text-sm text-slate-500">الجهات والمشروعات والمهندسون المشرفون في مكان واحد.</p></section>
+    <div className="grid gap-3 sm:grid-cols-3">{tabs.map(({ key, label, icon: Icon, count }) => <button key={key} onClick={() => { setTab(key); setMessage(""); }} className={`flex min-h-20 items-center gap-3 rounded-xl border p-4 text-right transition ${tab === key ? "border-blue-300 bg-blue-50 text-blue-800 shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"}`}><span className={`grid size-10 place-items-center rounded-lg ${tab === key ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}><Icon className="size-5" /></span><span><span className="block text-sm font-extrabold">{label}</span><span className="mt-1 block text-xs opacity-60">{count} سجل</span></span></button>)}</div>
+    {message && <p role="status" className={`rounded-xl border px-4 py-3 text-sm font-bold ${message.includes("تعذر") || message.includes("اختر") || message.includes("مكررة") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{message}</p>}
 
-    {tab === "companies" && <Section title="الشركات والجهات" description="الجهات المالكة ومقاولو الباطن والموردون.">
-      {canManage && <form onSubmit={(event) => submit(event, "company")} className="grid gap-3 border-b border-slate-200 p-5 md:grid-cols-2 "><Field label="اسم الشركة أو الجهة" name="name" placeholder="مثال: إدارة الأشغال العسكرية" /><label><span className="mb-1.5 block text-xs font-bold text-slate-600">نوع الجهة</span><ERPSelect name="companyType" className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="OWNER">جهة مالكة</option><option value="SUBCONTRACTOR">مقاول باطن</option><option value="SUPPLIER">مورد</option></ERPSelect></label><Field label="الرقم الضريبي" name="taxNumber" required={false} /><Field label="رقم الهاتف" name="phone" required={false} /><Submit busy={busy === "create-company"} /></form>}
-      <Table headers={["الاسم", "التصنيف", "الرقم الضريبي", "الحالة", "التحكم"]}>{companies.map((company) => <tr key={company.id}><Cell strong>{company.name}</Cell><Cell>{companyTypes[company.type]}</Cell><Cell>{company.taxNumber || "—"}</Cell><Cell><Status active={company.active} /></Cell><Cell>{toggle("company", company.id, company.active)}</Cell></tr>)}</Table>
+    {tab === "companies" && <Section title="الشركات والجهات" description="الجدول أولًا، ثم إضافة جهة جديدة أسفله.">
+      <DataTable headers={["نوع الجهة", "الاسم", "هاتف مقاول الباطن", "الإجراءات"]}>{companies.length ? companies.map(company => <tr key={company.id}><Cell label="نوع الجهة"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{companyTypes[company.type]}</span></Cell><Cell label="الاسم" strong>{company.name}</Cell><Cell label="هاتف مقاول الباطن">{company.type === "SUBCONTRACTOR" ? company.phone || "—" : "—"}</Cell><Cell label="الإجراءات">{canManage && <IconAction label={`مسح ${company.name}`} icon={Trash2} tone="danger" disabled={busy === company.id} onClick={() => remove("company", company.id, company.name)} />}</Cell></tr>) : empty(4, "لا توجد شركات أو جهات مسجلة.")}</DataTable>
+      {canManage && <Form title="إضافة شركة أو جهة"><form onSubmit={event => submit(event, "company")} className="grid gap-3 md:grid-cols-2"><label><Label>نوع الجهة</Label><ERPSelect name="companyType" value={companyType} onValueChange={setCompanyType} className="erp-control"><option value="OWNER">جهة مالكة</option><option value="SUBCONTRACTOR">مقاول باطن</option><option value="SUPPLIER">مورد</option></ERPSelect></label><Field label="اسم الشركة أو الجهة" name="name" placeholder="اكتب الاسم" />{companyType === "SUBCONTRACTOR" && <Field label="رقم الهاتف" name="phone" required={false} placeholder="رقم هاتف المقاول" />}<Submit busy={busy === "create-company"} /></form></Form>}
     </Section>}
 
-    {tab === "sectors" && <Section title="القطاعات" description="تقسيم المشروعات حسب القطاع والجهة التابعة له.">
-      {canManage && <form onSubmit={(event) => submit(event, "sector")} className="grid gap-3 border-b border-slate-200 p-5 md:grid-cols-2"><Field label="اسم القطاع" name="name" placeholder="مثال: القيادة الاستراتيجية" /><Select label="الجهة المالكة" name="companyId" options={companies.filter((item) => item.type === "OWNER" && item.active)} optional /><Submit busy={busy === "create-sector"} /></form>}
-      <Table headers={["اسم القطاع", "الجهة المالكة", "الحالة", "التحكم"]}>{sectors.map((sector) => <tr key={sector.id}><Cell strong>{sector.name}</Cell><Cell>{sector.company?.name || "عام"}</Cell><Cell><Status active={sector.active} /></Cell><Cell>{toggle("sector", sector.id, sector.active)}</Cell></tr>)}</Table>
+    {tab === "projects" && <Section title="المشروعات" description="كل مشروع مرتبط مباشرة بالجهة المالكة.">
+      <DataTable headers={["كود المشروع", "اسم المشروع", "الجهة المالكة", "المهندس المشرف", "الإجراءات"]}>{projects.length ? projects.map(project => <tr key={project.id}><Cell label="كود المشروع"><code dir="ltr" className="text-xs font-bold text-blue-700">{project.code}</code></Cell><Cell label="اسم المشروع" strong>{project.name}</Cell><Cell label="الجهة المالكة">{project.company.name}</Cell><Cell label="المهندس المشرف">{[...new Set(project.supervisors.map(({ employee }) => employee.name))].join("، ") || "غير محدد"}</Cell><Cell label="الإجراءات">{canManage && <IconAction label={`مسح ${project.name}`} icon={Trash2} tone="danger" disabled={busy === project.id} onClick={() => remove("project", project.id, project.name)} />}</Cell></tr>) : empty(5, "لا توجد مشروعات مسجلة.")}</DataTable>
+      {canManage && <Form title="إضافة مشروع"><form onSubmit={event => submit(event, "project")} className="grid gap-3 md:grid-cols-3"><Field label="كود المشروع" name="code" placeholder="MAYAN-27" /><Field label="اسم المشروع" name="name" placeholder="عمارة 27 - كمبوند مايان" /><Select label="الجهة المالكة" name="companyId" options={companies.filter(item => item.type === "OWNER")} /><Submit busy={busy === "create-project"} /></form></Form>}
     </Section>}
 
-    {tab === "projects" && <Section title="المشروعات" description="ربط كل مشروع بالجهة المالكة والقطاع والمهندس المشرف.">
-      {canManage && <form onSubmit={(event) => submit(event, "project")} className="grid gap-3 border-b border-slate-200 p-5 md:grid-cols-2 "><Field label="كود المشروع" name="code" placeholder="MAYAN-27" /><Field label="اسم المشروع" name="name" placeholder="عمارة 27 - كمبوند مايان" /><label><span className="mb-1.5 block text-xs font-bold text-slate-600">الجهة المالكة</span><ERPSelect name="companyId" required value={projectCompanyId} onValueChange={setProjectCompanyId} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">اختر الجهة المالكة</option>{companies.filter((item) => item.type === "OWNER" && item.active).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</ERPSelect></label><Select label="القطاع" name="sectorId" options={sectors.filter((item) => item.active && (!item.company || item.company.id === projectCompanyId))} optional /><Submit busy={busy === "create-project"} /></form>}
-      <Table headers={["الكود", "المشروع", "الجهة المالكة", "القطاع", "المهندس المشرف", "الحالة", "التحكم"]}>{projects.map((project) => <tr key={project.id}><Cell><code dir="ltr" className="text-xs text-blue-700">{project.code}</code></Cell><Cell strong>{project.name}</Cell><Cell>{project.company.name}</Cell><Cell>{project.sector?.name || "—"}</Cell><Cell>{project.supervisors.map(({ employee }) => employee.name).join("، ") || "غير محدد"}</Cell><Cell><Status active={project.active} /></Cell><Cell>{toggle("project", project.id, project.active)}</Cell></tr>)}</Table>
+    {tab === "engineers" && <Section title="المهندسون المشرفون" description="بيانات المهندس وتسكينه الحالي في جدول واحد.">
+      <DataTable headers={["الكود", "اسم المهندس", "المسمى الوظيفي", "الهاتف", "التسكين", "المشروع", "الإجراءات"]}>{engineers.length ? engineers.map(engineer => { const assignment = engineer.supervisors[0]; return <tr key={engineer.id}><Cell label="الكود"><code dir="ltr" className="text-xs font-bold text-blue-700">{engineer.employeeCode}</code></Cell><Cell label="اسم المهندس" strong>{engineer.name}</Cell><Cell label="المسمى الوظيفي">{engineer.jobTitle}</Cell><Cell label="الهاتف">{engineer.phone || "—"}</Cell><Cell label="التسكين"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{assignment ? "مشروع" : "عام الشركة"}</span></Cell><Cell label="المشروع">{assignment?.project.name || "—"}</Cell><Cell label="الإجراءات"><div className="flex justify-center gap-1">{canManage && <><IconAction label={`تعديل أو نقل ${engineer.name}`} icon={Pencil} disabled={busy === `edit-${engineer.id}`} onClick={() => editEngineer(engineer)} /><IconAction label={`مسح ${engineer.name}`} icon={Trash2} tone="danger" disabled={busy === engineer.id} onClick={() => remove("engineer", engineer.id, engineer.name)} /></>}</div></Cell></tr>; }) : empty(7, "لا يوجد مهندسون مشرفون.")}</DataTable>
+      {canManage && <Form title={editingEngineer ? `تعديل وتسكين ${editingEngineer.name}` : "إضافة مهندس وتسكينه"}><form key={editingEngineer?.id || "new"} onSubmit={submitEngineer} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5"><Field label="كود الموظف" name="employeeCode" placeholder="ENG-002" defaultValue={editingEngineer?.employeeCode} /><Field label="اسم المهندس" name="name" defaultValue={editingEngineer?.name} /><Field label="المسمى الوظيفي" name="jobTitle" placeholder="مهندس موقع" defaultValue={editingEngineer?.jobTitle} /><Field label="رقم الهاتف" name="phone" required={false} defaultValue={editingEngineer?.phone || ""} /><Select label="التسكين" name="projectId" options={projects} optional value={engineerProjectId} onValueChange={setEngineerProjectId} /><Submit busy={busy === (editingEngineer ? `edit-${editingEngineer.id}` : "create-engineer")} label={editingEngineer ? "حفظ التعديل" : "إضافة"} />{editingEngineer && <button type="button" onClick={() => { setEditingEngineer(null); setEngineerProjectId(""); }} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><X className="size-4" />إلغاء</button>}</form></Form>}
     </Section>}
-
-    {tab === "engineers" && <div className="space-y-5"><Section title="المهندسون المشرفون" description="ملفات موظفين جاهزة للربط بموديول المرتبات لاحقًا.">
-      {canManage && <form onSubmit={(event) => submit(event, "engineer")} className="grid gap-3 border-b border-slate-200 p-5 md:grid-cols-2 "><Field label="كود الموظف" name="employeeCode" placeholder="ENG-002" /><Field label="اسم المهندس" name="name" /><Field label="المسمى الوظيفي" name="jobTitle" placeholder="مهندس موقع" /><Field label="رقم الهاتف" name="phone" required={false} /><Submit busy={busy === "create-engineer"} /></form>}
-      <Table headers={["الكود", "اسم المهندس", "المسمى الوظيفي", "الهاتف", "الحالة", "التحكم"]}>{engineers.map((engineer) => <tr key={engineer.id}><Cell>{engineer.employeeCode}</Cell><Cell strong>{engineer.name}</Cell><Cell>{engineer.jobTitle}</Cell><Cell>{engineer.phone || "—"}</Cell><Cell><Status active={engineer.active} /></Cell><Cell>{toggle("engineer", engineer.id, engineer.active)}</Cell></tr>)}</Table>
-    </Section><Section title="تكليفات الإشراف" description="يمكن تكليف المهندس بأكثر من مشروع مع الاحتفاظ بتاريخ التكليف.">
-      {canManage && <form onSubmit={(event) => submit(event, "assignment")} className="grid gap-3 border-b border-slate-200 p-5 md:grid-cols-2"><Select label="المشروع" name="projectId" options={projects.filter((item) => item.active)} /><Select label="المهندس المشرف" name="employeeId" options={engineers.filter((item) => item.active)} /><Submit busy={busy === "create-assignment"} label="إضافة تكليف" /></form>}
-      <Table headers={["المهندس", "المسمى", "المشروع", "الحالة", "التحكم"]}>{assignments.map((assignment) => <tr key={assignment.id}><Cell strong>{assignment.employee.name}</Cell><Cell>{assignment.employee.jobTitle}</Cell><Cell>{assignment.project.name}</Cell><Cell><Status active={assignment.active} /></Cell><Cell>{toggle("assignment", assignment.id, assignment.active)}</Cell></tr>)}</Table>
-    </Section></div>}
   </div>;
 }
 
-function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) { return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center justify-between px-5 py-4"><div><h2 className="font-extrabold text-slate-900">{title}</h2><p className="mt-1 text-xs text-slate-500">{description}</p></div><CheckCircle2 className="size-5 text-emerald-500" /></div>{children}</section>; }
-function Table({ headers, children }: { headers: string[]; children: React.ReactNode }) { return <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-right text-sm"><thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500"><tr>{headers.map((header) => <th key={header} className="px-5 py-3 font-bold">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table></div>; }
-function Cell({ children, strong = false }: { children: React.ReactNode; strong?: boolean }) { return <td className={`px-5 py-4 ${strong ? "font-bold text-slate-900" : "text-slate-600"}`}>{children}</td>; }
-function Submit({ busy, label = "إضافة" }: { busy: boolean; label?: string }) { return <button disabled={busy} className="mt-auto flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60">{busy ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}{label}</button>; }
-function Select({ label, name, options, optional = false }: { label: string; name: string; options: { id: string; name: string }[]; optional?: boolean }) { return <label><span className="mb-1.5 block text-xs font-bold text-slate-600">{label}</span><ERPSelect name={name} required={!optional} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm">{optional && <option value="">عام / بدون تحديد</option>}{options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</ERPSelect></label>; }
-function Field({ label, name, placeholder, required = true }: { label: string; name: string; placeholder?: string; required?: boolean }) { return <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-600">{label}</span><input name={name} required={required} className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-500" placeholder={placeholder} /></label>; }
-function Status({ active }: { active: boolean }) { return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}><span className={`size-1.5 rounded-full ${active ? "bg-emerald-500" : "bg-slate-400"}`} />{active ? "نشط" : "موقوف"}</span>; }
+function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) { return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><header className="border-b border-slate-100 px-5 py-4"><h2 className="font-extrabold text-slate-900">{title}</h2><p className="mt-1 text-xs text-slate-500">{description}</p></header>{children}</section>; }
+function Form({ title, children }: { title: string; children: React.ReactNode }) { return <div className="border-t border-slate-200 bg-slate-50/70 p-5"><h3 className="mb-4 text-sm font-extrabold text-slate-900">{title}</h3>{children}</div>; }
+function Cell({ label, children, strong = false }: { label: string; children: React.ReactNode; strong?: boolean }) { return <td data-label={label} className={strong ? "font-bold text-slate-900" : "text-slate-600"}>{children}</td>; }
+function Label({ children }: { children: React.ReactNode }) { return <span className="mb-1.5 block text-xs font-bold text-slate-600">{children}</span>; }
+function Submit({ busy, label = "إضافة" }: { busy: boolean; label?: string }) { return <button disabled={busy} className="mt-auto flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-60">{busy ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}{label}</button>; }
+function Select({ label, name, options, optional = false, value, onValueChange }: { label: string; name: string; options: { id: string; name: string }[]; optional?: boolean; value?: string; onValueChange?: (value: string) => void }) { return <label><Label>{label}</Label><ERPSelect name={name} required={!optional} className="erp-control" value={value} onValueChange={onValueChange}>{optional && <option value="">عام الشركة</option>}{!optional && <option value="">اختر</option>}{options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}</ERPSelect></label>; }
+function Field({ label, name, placeholder, required = true, defaultValue }: { label: string; name: string; placeholder?: string; required?: boolean; defaultValue?: string }) { return <label><Label>{label}</Label><input name={name} required={required} placeholder={placeholder} defaultValue={defaultValue} /></label>; }

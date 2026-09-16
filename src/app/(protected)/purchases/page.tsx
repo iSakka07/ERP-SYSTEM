@@ -10,7 +10,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
   const [invoices, projects, suppliers, attachments] = await Promise.all([
     prisma.purchaseInvoice.findMany({
       include: {
-        project: { include: { sector: true } },
+        project: true,
         supplier: true,
         items: { orderBy: { position: "asc" } },
       },
@@ -18,7 +18,6 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
     }),
     prisma.project.findMany({
       where: { active: true },
-      include: { sector: true },
       orderBy: { name: "asc" },
     }),
     prisma.company.findMany({
