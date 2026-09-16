@@ -16,6 +16,7 @@
     "test:incoming-api": "node scripts/test-incoming-api.mjs",
     "test:expenses": "node scripts/test-expenses.mjs",
     "test:petty-cash": "node scripts/test-petty-cash.mjs",
+    "test:petty-cash-api": "node scripts/test-petty-cash-api.mjs",
     "test:expenses-api": "node scripts/test-expenses-api.mjs",
     "test:expense-corrections-api": "node scripts/test-expense-corrections-api.mjs",
     "test:purchases-api": "node scripts/test-purchases-api.mjs",

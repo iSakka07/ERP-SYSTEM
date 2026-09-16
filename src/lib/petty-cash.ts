@@ -19,7 +19,7 @@ export function validatePettyInput(input: { type: string; amount: unknown; proje
   const type = input.type as PettyType;
   if (expenseTypes.has(type) && !input.projectId && input.allocation !== "GENERAL") throw new Error("المصروف الفعلي يحتاج مشروعًا أو اختر عام الشركة.");
   if (type === "FUNDING" && input.sourceAccountId) throw new Error("تمويل الخزنة مصدره المدير التنفيذي وليس خزنة أخرى.");
-  if (type === "CUSTODY_ISSUE" && !input.destinationAccountId) throw new Error("اختر عهدة الموظف.");
+  if (type === "CUSTODY_ISSUE" && !input.destinationAccountId && !input.projectId) { /* employee is validated by the API */ }
   if ((type === "CUSTODY_RETURN" || type === "CUSTODY_EXPENSE") && !input.sourceAccountId) throw new Error("اختر العهدة.");
   if (input.requiresDocument && !input.documentNumber?.trim()) throw new Error("رقم المستند مطلوب لهذا التصنيف.");
   if ((input.requiresAttachment ?? true) && !input.hasAttachment) throw new Error("المرفق/الإثبات مطلوب لكل حركة مالية.");

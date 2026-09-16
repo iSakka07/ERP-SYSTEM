@@ -27,11 +27,12 @@ export async function POST(req: Request) {
     const destinationAccountId = String(form.get("destinationAccountId") ?? "") || null;
     const category = categoryId ? await prisma.pettyCashCategory.findUnique({ where: { id: categoryId } }) : null;
     const files = await readIncomingFiles(form, "files");
-    validatePettyInput({ type, amount, projectId, allocation: String(form.get("allocation") ?? ""), sourceAccountId, destinationAccountId, description, documentNumber, hasAttachment: files.length > 0, requiresDocument: !!category?.requiresDocument, requiresAttachment: category?.requiresAttachment ?? true });
+    validatePettyInput({ type, amount, projectId, allocation: String(form.get("allocation") ?? ""), sourceAccountId, destinationAccountId: destinationAccountId || employeeId, description, documentNumber, hasAttachment: files.length > 0, requiresDocument: !!category?.requiresDocument, requiresAttachment: category?.requiresAttachment ?? true });
     const main = await mainAccount(); if (!main) throw new Error("لم يتم إعداد الخزنة الرئيسية.");
     let from = sourceAccountId, to = destinationAccountId;
     if (type === "FUNDING" || type === "OPENING_BALANCE") { from = null; to = main.id; }
     if (type === "DIRECT_EXPENSE") { from = main.id; to = null; }
+    if (type === "CUSTODY_RETURN") { to = main.id; }
     if (type === "CUSTODY_ISSUE") { from = main.id; if (!to) { if (!employeeId) throw new Error("اختر الموظف."); const employee = await prisma.employee.findUnique({ where: { id: employeeId } }); const custody = await prisma.pettyCashAccount.create({ data: { name: `عهدة ${employee?.name ?? "موظف"} — ${new Date().toLocaleDateString("ar-EG")}`, type: "CUSTODY", employeeId } }); to = custody.id; } }
     const existing = await prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { amountCents: true, sourceAccountId: true, destinationAccountId: true, status: true } });
     if (from && from === main.id && ["DIRECT_EXPENSE", "CUSTODY_ISSUE"].includes(type) && existing.reduce((s, t) => s + (t.destinationAccountId === main.id ? t.amountCents : 0) - (t.sourceAccountId === main.id ? t.amountCents : 0), 0) < amount) throw new Error("لا يمكن الصرف أكبر من رصيد الخزنة.");
