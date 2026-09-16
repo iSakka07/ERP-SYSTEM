@@ -30,7 +30,17 @@ export async function POST(request: Request) {
   try {
     if (data.type === "company") target = (await prisma.company.create({ data: { name: data.name, type: data.companyType, taxNumber: data.taxNumber || null, phone: data.phone || null } })).id;
     if (data.type === "sector") target = (await prisma.sector.create({ data: { name: data.name, companyId: data.companyId || null } })).id;
-    if (data.type === "project") target = (await prisma.project.create({ data: { code: data.code, name: data.name, companyId: data.companyId, sectorId: data.sectorId || null } })).id;
+    if (data.type === "project") {
+      const [company, sector] = await Promise.all([
+        prisma.company.findUnique({ where: { id: data.companyId } }),
+        data.sectorId ? prisma.sector.findUnique({ where: { id: data.sectorId } }) : null,
+      ]);
+      if (!company?.active || company.type !== "OWNER")
+        return NextResponse.json({ error: "INVALID_OWNER" }, { status: 400 });
+      if (data.sectorId && (!sector?.active || (sector.companyId && sector.companyId !== company.id)))
+        return NextResponse.json({ error: "SECTOR_COMPANY_MISMATCH" }, { status: 400 });
+      target = (await prisma.project.create({ data: { code: data.code, name: data.name, companyId: data.companyId, sectorId: data.sectorId || null } })).id;
+    }
     if (data.type === "engineer") target = (await prisma.employee.create({ data: { employeeCode: data.employeeCode, name: data.name, jobTitle: data.jobTitle, phone: data.phone || null } })).id;
     if (data.type === "assignment") target = (await prisma.projectEngineerAssignment.create({ data: { projectId: data.projectId, employeeId: data.employeeId, startDate: data.startDate ? new Date(data.startDate) : new Date() } })).id;
   } catch {

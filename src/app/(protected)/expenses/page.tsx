@@ -3,8 +3,9 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { incomingUser } from "@/lib/incoming-server";
 import { ExpensesCenter } from "@/components/expenses-center";
-export default async function ExpensesPage() {
+export default async function ExpensesPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   if (!(await incomingUser("expenses.view"))) redirect("/");
+  const requestedProject = (await searchParams).project ?? "";
   const session = await auth();
   const [accounts, projects, companies, attachments] = await Promise.all([
     prisma.subcontractAccount.findMany({
@@ -46,6 +47,7 @@ export default async function ExpensesPage() {
       companies={companies}
       attachments={attachments}
       permissions={session?.user.permissions ?? []}
+      initialProjectId={projects.some((project) => project.id === requestedProject) ? requestedProject : ""}
     />
   );
 }

@@ -15,6 +15,8 @@ export async function GET(
     headers: {
       "content-type": file.mime,
       "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      "cache-control": "private, no-store",
+      "x-content-type-options": "nosniff",
     },
   });
 }

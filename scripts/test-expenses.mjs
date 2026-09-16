@@ -5,6 +5,7 @@ import {
   newExpenseStatementBlockReason,
   expenseCumulativeQuantity,
   correctionDebtAfterApproval,
+  expensePayableCents,
 } from "../src/lib/expenses.ts";
 assert.equal(newExpenseStatementBlockReason(), "");
 for (const stage of ["DRAFT", "TECHNICAL", "SITE"])
@@ -14,6 +15,10 @@ for (const stage of ["EXECUTIVE", "ACCOUNTING"])
 assert.ok(
   newExpenseStatementBlockReason({ stage: "ACCOUNTING", kind: "FINAL" }),
 );
+assert.equal(expensePayableCents([
+  { id: "j1", sequence: 1, stage: "ACCOUNTING", grossCents: 10000, netCents: 9000, payments: [{ amountCents: 4000 }] },
+  { id: "j2", sequence: 2, stage: "EXECUTIVE", grossCents: 20000, netCents: 18000, payments: [] },
+], "j1"), 5000, "a later executive statement does not block paying an earlier accounting statement");
 const item = {
   itemKey: "paint",
   name: "نقاشة",

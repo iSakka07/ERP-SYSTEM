@@ -22,7 +22,8 @@ export function AccountsManager({ users, roles, permissions, currentUserId }: { 
   const [message, setMessage] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState(roles.find((role) => role.key === "accountant")?.id ?? roles[0]?.id);
   const selectedRole = roles.find((role) => role.id === selectedRoleId);
-  const [selectedPermissions, setSelectedPermissions] = useState<string[]>(selectedRole?.permissions.map((item) => item.permissionId) ?? []);
+  const adminOnlyPermissionId = permissions.find((permission) => permission.key === "accounts.manage")?.id;
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>(selectedRole?.permissions.map((item) => item.permissionId).filter((id) => selectedRole.key === "admin" || id !== adminOnlyPermissionId) ?? []);
   const grouped = useMemo(() => Object.entries(Object.groupBy(permissions, (permission) => permission.module)), [permissions]);
 
   async function request(method: "POST" | "PATCH", body: object, key: string) {
@@ -43,7 +44,7 @@ export function AccountsManager({ users, roles, permissions, currentUserId }: { 
 
   function chooseRole(role: Role) {
     setSelectedRoleId(role.id);
-    setSelectedPermissions(role.permissions.map((item) => item.permissionId));
+    setSelectedPermissions(role.permissions.map((item) => item.permissionId).filter((id) => role.key === "admin" || id !== adminOnlyPermissionId));
     setMessage("");
   }
 
@@ -75,7 +76,7 @@ export function AccountsManager({ users, roles, permissions, currentUserId }: { 
         <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="px-3 py-2 text-xs font-bold text-slate-500">اختر الدور</p>{roles.map((role) => <button key={role.id} onClick={() => chooseRole(role)} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-right text-sm font-bold ${selectedRoleId === role.id ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100" : "text-slate-600 hover:bg-slate-50"}`}><UserRoundCog className="size-4" />{role.name}{role.key === "admin" && <KeyRound className="mr-auto size-3.5" />}</button>)}</aside>
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4"><div><h2 className="font-extrabold text-slate-900">صلاحيات {selectedRole?.name}</h2><p className="mt-1 text-xs text-slate-500">حدد ما يمكن لهذا الدور رؤيته أو إدارته.</p></div><button disabled={selectedRole?.key === "admin" || busy === "permissions"} onClick={() => request("PATCH", { type: "role-permissions", roleId: selectedRoleId, permissionIds: selectedPermissions }, "permissions")} className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white disabled:bg-slate-300">{busy === "permissions" ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}حفظ الصلاحيات</button></div>
           {selectedRole?.key === "admin" && <p className="my-4 rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">صلاحيات مدير النظام كاملة وثابتة لحماية إدارة المنظومة.</p>}
-          <div className="mt-5 grid gap-3 md:grid-cols-2">{grouped.map(([module, items]) => <article key={module} className="rounded-xl border border-slate-200 p-4"><h3 className="mb-3 text-sm font-extrabold text-slate-800">{moduleNames[module] ?? module}</h3><div className="space-y-2">{items?.map((permission) => <label key={permission.id} className="flex cursor-pointer items-center gap-3 rounded-lg bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700"><input type="checkbox" disabled={selectedRole?.key === "admin"} checked={selectedRole?.key === "admin" || selectedPermissions.includes(permission.id)} onChange={(event) => setSelectedPermissions((current) => event.target.checked ? [...current, permission.id] : current.filter((id) => id !== permission.id))} className="size-4 accent-blue-600" />{permission.name}<code dir="ltr" className="mr-auto text-[10px] text-slate-400">{permission.key}</code></label>)}</div></article>)}</div>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">{grouped.map(([module, items]) => <article key={module} className="rounded-xl border border-slate-200 p-4"><h3 className="mb-3 text-sm font-extrabold text-slate-800">{moduleNames[module] ?? module}</h3><div className="space-y-2">{items?.map((permission) => { const locked = permission.key === "accounts.manage" && selectedRole?.key !== "admin"; return <label key={permission.id} className={`flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2.5 text-xs font-semibold ${locked ? "cursor-not-allowed text-slate-400" : "cursor-pointer text-slate-700"}`}><input type="checkbox" disabled={selectedRole?.key === "admin" || locked} checked={selectedRole?.key === "admin" || (!locked && selectedPermissions.includes(permission.id))} onChange={(event) => setSelectedPermissions((current) => event.target.checked ? [...current, permission.id] : current.filter((id) => id !== permission.id))} className="size-4 accent-blue-600" />{permission.name}{locked && <span className="text-[10px]">مدير النظام فقط</span>}<code dir="ltr" className="mr-auto text-[10px] text-slate-400">{permission.key}</code></label>; })}</div></article>)}</div>
         </section>
       </div>}
     </div>

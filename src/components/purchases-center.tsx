@@ -43,15 +43,17 @@ export function PurchasesCenter({
   suppliers,
   attachments,
   canManage,
+  initialProjectId = "",
 }: {
   invoices: PurchaseInvoice[];
   projects: Project[];
   suppliers: Supplier[];
   attachments: Attachment[];
   canManage: boolean;
+  initialProjectId?: string;
 }) {
   const router = useRouter();
-  const [project, setProject] = useState("");
+  const [project, setProject] = useState(initialProjectId);
   const [supplier, setSupplier] = useState("");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
@@ -145,7 +147,7 @@ export function PurchasesCenter({
           <p className="text-xs font-bold text-blue-700">Purchases Module</p>
           <h1 className="mt-1 text-2xl font-black text-slate-950">مشتريات المشروع</h1>
           <p className="mt-2 text-sm text-slate-500">
-            فواتير مشتريات مباشرة على المشروع، وتدخل ضمن تكلفة المشروع فور التسجيل.
+            فواتير مشتريات مباشرة تُحمّل على تكلفة المشروع، والصرف الفعلي يُسجل لاحقًا من الخزنة أو الحسابات.
           </p>
         </div>
         {canManage && (
@@ -265,9 +267,9 @@ export function PurchasesCenter({
 
       <section className="grid gap-3 md:grid-cols-3">
         <article className="rounded-2xl border bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">إجمالي المشتريات</p>
+          <p className="text-xs text-slate-500">قيمة فواتير المشتريات</p>
           <strong className="mt-2 block text-2xl text-slate-950" dir="ltr">{money(total)}</strong>
-          <p className="mt-1 text-xs text-slate-500">ج.م · حسب الفلاتر الحالية</p>
+          <p className="mt-1 text-xs text-slate-500">تكلفة مسجلة · لا تعني أنها مدفوعة</p>
         </article>
         <article className="rounded-2xl border bg-white p-4 shadow-sm">
           <p className="text-xs text-slate-500">عدد الفواتير</p>

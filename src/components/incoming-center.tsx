@@ -95,6 +95,7 @@ export function IncomingCenter({
   attachments,
   canManage,
   isAdmin,
+  initialProjectId = "",
   movements = [],
 }: {
   contracts: Contract[];
@@ -102,11 +103,12 @@ export function IncomingCenter({
   attachments: Attachment[];
   canManage: boolean;
   isAdmin: boolean;
+  initialProjectId?: string;
   movements?: (Movement & { entityId: string })[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [project, setProject] = useState("");
+  const [project, setProject] = useState(initialProjectId);
   const [owner, setOwner] = useState("");
   const [sector, setSector] = useState("");
   const [stage, setStage] = useState("");

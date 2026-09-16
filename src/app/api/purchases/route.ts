@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 
@@ -14,25 +15,41 @@ const schema = z.object({
   action: z.literal("invoice"),
   projectId: z.string().trim().min(1),
   supplierId: z.string().trim().optional().nullable(),
-  invoiceDate: z.string().trim().min(1),
+  invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+    const date = new Date(value);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }),
   number: z.string().trim().optional(),
   notes: z.string().trim().max(2000).optional(),
   items: z.array(itemSchema).min(1).max(200),
 });
 
 function cents(value: number) {
-  return Math.round(value * 100);
+  const result = Math.round(value * 100);
+  return validCents(result);
 }
 
-async function nextNumber() {
-  const count = await prisma.purchaseInvoice.count();
-  return `PUR-${String(count + 1).padStart(5, "0")}`;
+function validCents(result: number) {
+  if (!Number.isSafeInteger(result) || result < 1 || result > 1_000_000_000_000)
+    throw new Error("راجع القيمة المالية؛ الحد الأدنى قرش واحد.");
+  return result;
+}
+
+function nextNumber() {
+  const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  return `PUR-${day}-${randomUUID().slice(0, 6).toUpperCase()}`;
 }
 
 export async function POST(request: Request) {
   const user = await incomingUser("purchases.manage");
   if (!user) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   try {
+    const origin = request.headers.get("origin");
+    const configuredHost = process.env.AUTH_URL ? new URL(process.env.AUTH_URL).host : null;
+    if (origin && new URL(origin).host !== request.headers.get("host") && new URL(origin).host !== configuredHost)
+      return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
+    if (Number(request.headers.get("content-length") || 0) > 11 * 1024 * 1024)
+      return NextResponse.json({ error: "حجم الطلب أكبر من الحد المسموح." }, { status: 413 });
     const form = await request.formData();
     const data = schema.parse(JSON.parse(String(form.get("payload") ?? "{}")));
     const files = await readIncomingFiles(form);
@@ -49,7 +66,7 @@ export async function POST(request: Request) {
       });
       if (!supplier) throw new Error("اختر موردًا صحيحًا.");
     }
-    const number = data.number?.trim() || (await nextNumber());
+    const number = data.number?.trim() || nextNumber();
     const exists = await prisma.purchaseInvoice.findUnique({ where: { number } });
     if (exists) throw new Error("رقم فاتورة المشتريات مستخدم بالفعل.");
     const items = data.items.map((item, position) => {
@@ -60,10 +77,15 @@ export async function POST(request: Request) {
         unit: item.unit,
         quantity: item.quantity,
         unitPriceCents,
-        totalCents: Math.round(item.quantity * unitPriceCents),
+        totalCents: validCents(Math.round(item.quantity * unitPriceCents)),
       };
     });
-    const totalCents = items.reduce((sum, item) => sum + item.totalCents, 0);
+    const totalCents = items.reduce((sum, item) => {
+      const total = sum + item.totalCents;
+      if (!Number.isSafeInteger(total) || total > 1_000_000_000_000)
+        throw new Error("إجمالي الفاتورة أكبر من الحد المسموح.");
+      return total;
+    }, 0);
     const invoice = await prisma.$transaction(async (tx) => {
       const created = await tx.purchaseInvoice.create({
         data: {

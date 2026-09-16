@@ -1,25 +1,50 @@
-import { ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, Building2, CircleCheckBig, Clock3, FileSpreadsheet, Landmark, Paperclip, ReceiptText, ShoppingCart, Sparkles, UsersRound, Vault } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, Building2, CircleCheckBig, FileSpreadsheet, Landmark, Paperclip, ReceiptText, ShoppingCart, Sparkles, UsersRound, Vault } from "lucide-react";
 import { auth } from "@/auth";
 import { can } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import { financials, money } from "@/lib/incoming";
+import { expenseSummary } from "@/lib/expenses";
 
 const modules = [
-  { name: "الوارد", code: "Incoming", description: "عقود الجهة المالكة والمستخلصات والتحصيلات الفعلية.", icon: BanknoteArrowUp, color: "bg-blue-50 text-blue-700 ring-blue-100" },
-  { name: "مستخلصات المقاولين", code: "Expenses", description: "حصر الأعمال والجوارى وتأمين الأعمال ومدفوعات المقاولين.", icon: FileSpreadsheet, color: "bg-indigo-50 text-indigo-700 ring-indigo-100" },
-  { name: "المشتريات", code: "Purchases", description: "بنود وفواتير مشتريات المشروع والمدفوعات المرتبطة بها.", icon: ShoppingCart, color: "bg-amber-50 text-amber-700 ring-amber-100" },
-  { name: "النثريات", code: "Prose", description: "مصروفات المشروعات والمصروفات العامة بمرفقاتها.", icon: ReceiptText, color: "bg-rose-50 text-rose-700 ring-rose-100" },
-  { name: "المرتبات", code: "Salaries", description: "مرتبات ومكافآت وخصومات وسلف وتسكين الموظفين.", icon: UsersRound, color: "bg-violet-50 text-violet-700 ring-violet-100" },
-  { name: "الخزنة", code: "Treasur", description: "حركة الخزائن والعهد والإضافات والمصروفات الفعلية.", icon: Vault, color: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
+  { name: "الوارد", code: "Incoming", href: "/incoming", permission: "incoming.view", live: true, description: "عقود الجهة المالكة والمستخلصات والتحصيلات الفعلية.", icon: BanknoteArrowUp, color: "bg-blue-50 text-blue-700 ring-blue-100" },
+  { name: "مستخلصات المقاولين", code: "Expenses", href: "/expenses", permission: "expenses.view", live: true, description: "حصر الأعمال والجوارى وتأمين الأعمال ومدفوعات المقاولين.", icon: FileSpreadsheet, color: "bg-indigo-50 text-indigo-700 ring-indigo-100" },
+  { name: "المشتريات", code: "Purchases", href: "/purchases", permission: "purchases.view", live: true, description: "بنود وفواتير مشتريات المشروع المسجلة كتكلفة.", icon: ShoppingCart, color: "bg-amber-50 text-amber-700 ring-amber-100" },
+  { name: "النثريات", code: "Prose", href: "/#modules", permission: "prose.view", live: false, description: "مصروفات المشروعات والمصروفات العامة بمرفقاتها.", icon: ReceiptText, color: "bg-rose-50 text-rose-700 ring-rose-100" },
+  { name: "المرتبات", code: "Salaries", href: "/#modules", permission: "salaries.view", live: false, description: "مرتبات ومكافآت وخصومات وسلف وتسكين الموظفين.", icon: UsersRound, color: "bg-violet-50 text-violet-700 ring-violet-100" },
+  { name: "الخزنة", code: "Treasur", href: "/#modules", permission: "treasury.view", live: false, description: "حركة الخزائن والعهد والإضافات والمصروفات الفعلية.", icon: Vault, color: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
 ];
 
-const metrics = [
-  { label: "المشروعات", icon: Building2, hint: "بعد إعداد البيانات الأساسية" },
-  { label: "إجمالي الوارد", icon: BanknoteArrowUp, hint: "من مستخلصات المالك" },
-  { label: "إجمالي المنصرف", icon: BanknoteArrowDown, hint: "من جميع مصادر التكلفة" },
-  { label: "الرصيد النقدي", icon: Landmark, hint: "من الخزائن والبنوك" },
-];
-
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   const session = await auth();
+  const requestedProject = (await searchParams).project ?? "";
+  const [projects, contracts, accounts, invoices] = await Promise.all([
+    prisma.project.findMany({ where: { active: true }, include: { company: true, sector: true }, orderBy: { name: "asc" } }),
+    prisma.incomingContract.findMany({ include: { memos: true, statements: { orderBy: { sequence: "asc" }, include: { materials: true } } } }),
+    prisma.subcontractAccount.findMany({ include: { statements: { include: { payments: true } } } }),
+    prisma.purchaseInvoice.findMany(),
+  ]);
+  const projectId = projects.some((project) => project.id === requestedProject) ? requestedProject : "";
+  const rows = projects.filter((project) => !projectId || project.id === projectId).map((project) => {
+    const incoming = contracts.filter((contract) => contract.projectId === project.id).reduce((sum, contract) => sum + financials(contract).net, 0);
+    const contractValue = contracts.filter((contract) => contract.projectId === project.id).reduce((sum, contract) => sum + financials(contract).value, 0);
+    const subcontract = accounts.filter((account) => account.projectId === project.id).reduce((sum, account) => sum + expenseSummary(account.statements).netCents, 0);
+    const subcontractPaid = accounts.filter((account) => account.projectId === project.id).reduce((sum, account) => sum + expenseSummary(account.statements).paidCents, 0);
+    const purchases = invoices.filter((invoice) => invoice.projectId === project.id).reduce((sum, invoice) => sum + invoice.totalCents, 0);
+    return { project, incoming, contractValue, subcontract, subcontractPaid, purchases, cost: subcontract + purchases };
+  });
+  const totals = rows.reduce((sum, row) => ({
+    contracts: sum.contracts + row.contractValue,
+    incoming: sum.incoming + row.incoming,
+    cost: sum.cost + row.cost,
+    paid: sum.paid + row.subcontractPaid,
+  }), { contracts: 0, incoming: 0, cost: 0, paid: 0 });
+  const metrics = [
+    { label: "قيمة العقود الواردة", value: money(totals.contracts), icon: Building2, hint: "القيمة الحالية للعقود بعد المذكرات" },
+    { label: "الوارد المحصل", value: money(totals.incoming), icon: BanknoteArrowUp, hint: "آخر مستخلصات مالك وصلت إلى تم الصرف" },
+    { label: "تكلفة المشروع المسجلة", value: money(totals.cost), icon: BanknoteArrowDown, hint: "مقاولون معتمدون + فواتير مشتريات" },
+    { label: "المنصرف الفعلي الموثق", value: money(totals.paid), icon: Landmark, hint: "دفعات المقاولين؛ صرف المشتريات ينتظر الخزنة" },
+  ];
   return (
     <div className="space-y-6">
       <section className="hero-card overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -47,18 +72,25 @@ export default async function Home() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map(({ label, icon: Icon, hint }) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,.03)]"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-2 text-2xl font-extrabold text-slate-900">—</p></div><span className="grid size-9 place-items-center rounded-lg bg-blue-50 text-blue-700"><Icon className="size-4.5" /></span></div><p className="mt-3 text-[11px] text-slate-400">{hint}</p></article>)}
+              {metrics.map(({ label, value, icon: Icon, hint }) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,.03)]"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-2 text-xl font-extrabold text-slate-900" dir="ltr">{value}</p></div><span className="grid size-9 place-items-center rounded-lg bg-blue-50 text-blue-700"><Icon className="size-4.5" /></span></div><p className="mt-3 text-[11px] text-slate-400">{hint}</p></article>)}
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
+          <div><h2 className="font-extrabold text-slate-950">الملف المالي للمشروعات</h2><p className="mt-1 text-xs text-slate-500">كل قيمة تفتح الموديول المرتبط بنفس المشروع.</p></div>
+          <form><select name="project" defaultValue={projectId} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">كل المشروعات</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><button className="mr-2 h-10 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white">تطبيق</button></form>
+        </div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-right text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-3">المشروع</th><th className="p-3">قيمة العقود</th><th className="p-3">الوارد المحصل</th><th className="p-3">تكلفة المقاولين</th><th className="p-3">فواتير المشتريات</th><th className="p-3">المنصرف الفعلي</th><th className="p-3">الفرق</th></tr></thead><tbody className="divide-y">{rows.map((row) => <tr key={row.project.id}><td className="p-3"><strong>{row.project.name}</strong><p className="mt-1 text-[11px] text-slate-400">{row.project.company.name} · {row.project.sector?.name ?? "بدون قطاع"}</p></td><td className="p-3" dir="ltr">{money(row.contractValue)}</td><td className="p-3">{can(session?.user, "incoming.view") ? <Link className="font-bold text-blue-700" dir="ltr" href={`/incoming?project=${row.project.id}`}>{money(row.incoming)}</Link> : <span dir="ltr">{money(row.incoming)}</span>}</td><td className="p-3">{can(session?.user, "expenses.view") ? <Link className="font-bold text-indigo-700" dir="ltr" href={`/expenses?project=${row.project.id}`}>{money(row.subcontract)}</Link> : <span dir="ltr">{money(row.subcontract)}</span>}</td><td className="p-3">{can(session?.user, "purchases.view") ? <Link className="font-bold text-amber-700" dir="ltr" href={`/purchases?project=${row.project.id}`}>{money(row.purchases)}</Link> : <span dir="ltr">{money(row.purchases)}</span>}</td><td className="p-3 font-bold" dir="ltr">{money(row.subcontractPaid)}</td><td className={`p-3 font-extrabold ${row.incoming - row.cost < 0 ? "text-red-700" : "text-emerald-700"}`} dir="ltr">{money(row.incoming - row.cost)}</td></tr>)}{!rows.length && <tr><td colSpan={7} className="p-6 text-center text-slate-400">لا توجد مشروعات نشطة.</td></tr>}</tbody></table></div>
       </section>
 
       <section id="modules" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 lg:p-6">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div><p className="text-xs font-bold text-blue-700">خريطة النظام</p><h2 className="mt-1 text-xl font-extrabold text-slate-950">الموديولات الرئيسية</h2><p className="mt-1 text-sm text-slate-500">روابط مؤقتة حتى نبدأ موديولات البيانات بعد اعتماد كل مرحلة.</p></div>
-          <div className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"><Clock3 className="size-3.5" />التنفيذ يتم مرحلة بمرحلة</div>
+          <div><p className="text-xs font-bold text-blue-700">خريطة النظام</p><h2 className="mt-1 text-xl font-extrabold text-slate-950">الموديولات الرئيسية</h2><p className="mt-1 text-sm text-slate-500">الموديولات المنفذة تفتح مباشرة حسب صلاحيات الحساب.</p></div>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {modules.map((module) => {
+          {modules.filter((module) => can(session?.user, module.permission)).map((module) => {
             const Icon = module.icon;
-            return <article key={module.code} className="group rounded-xl border border-slate-200 p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_8px_24px_rgba(15,23,42,.06)]"><div className="flex items-start gap-3"><span className={`grid size-10 shrink-0 place-items-center rounded-lg ring-1 ${module.color}`}><Icon className="size-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h3 className="font-bold text-slate-900">{module.name}</h3><p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{module.code} Module</p></div><ArrowUpRight className="size-4 text-slate-300 transition group-hover:text-blue-700" /></div><p className="mt-3 text-sm leading-6 text-slate-500">{module.description}</p><div className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400"><Paperclip className="size-3" />المرفقات جزء أساسي من كل معاملة</div></div></div></article>;
+            return <Link href={module.href} key={module.code} className="group rounded-xl border border-slate-200 p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_8px_24px_rgba(15,23,42,.06)]"><div className="flex items-start gap-3"><span className={`grid size-10 shrink-0 place-items-center rounded-lg ring-1 ${module.color}`}><Icon className="size-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h3 className="font-bold text-slate-900">{module.name}</h3><p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{module.live ? "متاح الآن" : "مرحلة لاحقة"}</p></div><ArrowUpRight className="size-4 text-slate-300 transition group-hover:text-blue-700" /></div><p className="mt-3 text-sm leading-6 text-slate-500">{module.description}</p><div className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400"><Paperclip className="size-3" />المرفقات جزء أساسي من كل معاملة</div></div></div></Link>;
           })}
         </div>
       </section>

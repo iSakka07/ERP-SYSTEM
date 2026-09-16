@@ -20,7 +20,7 @@ const navItems = [
   { label: "إدارة الحسابات", icon: Settings2, href: "/admin/accounts", permission: "accounts.manage" },
 ];
 
-export function AppShell({ children, user }: { children: React.ReactNode; user: { name?: string | null; email?: string | null; roleName: string; permissions: string[] } }) {
+export function AppShell({ children, user }: { children: React.ReactNode; user: { name?: string | null; email?: string | null; roleKey: string; roleName: string; permissions: string[] } }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   return (
@@ -48,7 +48,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
         </div>
         <nav className="space-y-1 overflow-y-auto px-3 py-5">
           <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">التنقل الرئيسي</p>
-          {navItems.filter((item) => can(user, item.permission)).map((item) => {
+          {navItems.filter((item) => can(user, item.permission) && (item.href !== "/admin/accounts" || user.roleKey === "admin")).map((item) => {
             const Icon = item.icon;
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             return <Link key={item.label} href={item.href} onClick={() => setOpen(false)} className={`flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition ${active ? "bg-blue-600 text-white shadow-md shadow-blue-950/20" : "text-slate-300 hover:bg-white/7 hover:text-white"}`}><Icon className="size-4.5" /><span className="flex-1">{item.label}</span>{item.href === "/#modules" && <span className="rounded bg-white/6 px-1.5 py-0.5 text-[9px] text-slate-500">قريبًا</span>}</Link>;

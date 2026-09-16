@@ -19,8 +19,9 @@ function movementLabel(action: string, details: string) {
   } catch { return { label: labels[action] || action }; }
 }
 
-export default async function IncomingPage() {
+export default async function IncomingPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   if (!(await incomingUser("incoming.view"))) redirect("/");
+  const requestedProject = (await searchParams).project ?? "";
   const manager = await incomingUser("incoming.manage");
   const [contracts, projects, attachments, movements] = await Promise.all([
     prisma.incomingContract.findMany({
@@ -71,6 +72,7 @@ export default async function IncomingPage() {
       attachments={attachments}
       canManage={Boolean(manager)}
       isAdmin={Boolean(manager?.admin)}
+      initialProjectId={projects.some((project) => project.id === requestedProject) ? requestedProject : ""}
       movements={movements.map(m => ({
         id: m.id, entityId: m.target || "", date: m.createdAt.toISOString(),
         ...movementLabel(m.action, m.details || "{}"),

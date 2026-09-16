@@ -19,6 +19,7 @@ export function ManagementCenter({ companies, sectors, projects, engineers, assi
   const [tab, setTab] = useState<Tab>("companies");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  const [projectCompanyId, setProjectCompanyId] = useState("");
   const tabs = [
     { key: "companies" as const, label: "الشركات والجهات", icon: Factory, count: companies.length },
     { key: "sectors" as const, label: "القطاعات", icon: Layers3, count: sectors.length },
@@ -29,8 +30,9 @@ export function ManagementCenter({ companies, sectors, projects, engineers, assi
   async function request(method: "POST" | "PATCH", body: object, key: string) {
     setBusy(key); setMessage("");
     const response = await fetch("/api/management", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const result = await response.json();
     setBusy("");
-    if (!response.ok) { setMessage("تعذر الحفظ. راجع البيانات وتأكد أنها غير مكررة."); return false; }
+    if (!response.ok) { setMessage(result.error === "SECTOR_COMPANY_MISMATCH" ? "القطاع المختار لا يتبع الجهة المالكة للمشروع." : (result.error || "تعذر الحفظ. راجع البيانات وتأكد أنها غير مكررة.")); return false; }
     setMessage("تم حفظ البيانات بنجاح."); router.refresh(); return true;
   }
 
@@ -58,7 +60,7 @@ export function ManagementCenter({ companies, sectors, projects, engineers, assi
     </Section>}
 
     {tab === "projects" && <Section title="المشروعات" description="ربط كل مشروع بالجهة المالكة والقطاع والمهندس المشرف.">
-      {canManage && <form onSubmit={(event) => submit(event, "project")} className="grid gap-3 border-b border-slate-200 p-5 md:grid-cols-2 "><Field label="كود المشروع" name="code" placeholder="MAYAN-27" /><Field label="اسم المشروع" name="name" placeholder="عمارة 27 - كمبوند مايان" /><Select label="الجهة المالكة" name="companyId" options={companies.filter((item) => item.type === "OWNER" && item.active)} /><Select label="القطاع" name="sectorId" options={sectors.filter((item) => item.active)} optional /><Submit busy={busy === "create-project"} /></form>}
+      {canManage && <form onSubmit={(event) => submit(event, "project")} className="grid gap-3 border-b border-slate-200 p-5 md:grid-cols-2 "><Field label="كود المشروع" name="code" placeholder="MAYAN-27" /><Field label="اسم المشروع" name="name" placeholder="عمارة 27 - كمبوند مايان" /><label><span className="mb-1.5 block text-xs font-bold text-slate-600">الجهة المالكة</span><ERPSelect name="companyId" required value={projectCompanyId} onValueChange={setProjectCompanyId} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">اختر الجهة المالكة</option>{companies.filter((item) => item.type === "OWNER" && item.active).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</ERPSelect></label><Select label="القطاع" name="sectorId" options={sectors.filter((item) => item.active && (!item.company || item.company.id === projectCompanyId))} optional /><Submit busy={busy === "create-project"} /></form>}
       <Table headers={["الكود", "المشروع", "الجهة المالكة", "القطاع", "المهندس المشرف", "الحالة", "التحكم"]}>{projects.map((project) => <tr key={project.id}><Cell><code dir="ltr" className="text-xs text-blue-700">{project.code}</code></Cell><Cell strong>{project.name}</Cell><Cell>{project.company.name}</Cell><Cell>{project.sector?.name || "—"}</Cell><Cell>{project.supervisors.map(({ employee }) => employee.name).join("، ") || "غير محدد"}</Cell><Cell><Status active={project.active} /></Cell><Cell>{toggle("project", project.id, project.active)}</Cell></tr>)}</Table>
     </Section>}
 

@@ -292,6 +292,20 @@ export function expenseSummary(statements: ExpenseSummaryStatement[]) {
     latest,
   };
 }
+
+export function expensePayableCents(
+  statements: ExpenseSummaryStatement[],
+  targetId: string,
+) {
+  const target = statements.find((statement) => statement.id === targetId);
+  if (!target || target.stage !== "ACCOUNTING") return 0;
+  const paidCents = statements.reduce(
+    (sum, statement) =>
+      sum + statement.payments.reduce((value, payment) => value + payment.amountCents, 0),
+    0,
+  );
+  return Math.max(0, target.netCents - paidCents);
+}
 export function correctionDebtAfterApproval(
   previous: {
     netCents: number;

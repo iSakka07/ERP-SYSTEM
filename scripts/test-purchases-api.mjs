@@ -85,6 +85,8 @@ try {
   };
   assert.equal((await post(payload, sales, proof)).status, 403);
   assert.equal((await post(payload, admin, proof, false)).status, 400);
+  assert.equal((await post({ ...payload, invoiceDate: "2026-02-31" }, admin, proof)).status, 400);
+  assert.equal((await post({ ...payload, items: [{ name: "قيمة غير صالحة", unit: "وحدة", quantity: 1, price: 0.001 }] }, admin, proof)).status, 400);
   const response = await post(payload, admin, proof);
   assert.equal(response.status, 200, JSON.stringify(response));
   created.push(response.id);
@@ -101,6 +103,12 @@ try {
     1,
   );
   assert.equal((await post(payload, admin, proof)).status, 400, "duplicate number");
+  const generatedA = await post({ ...payload, number: undefined }, admin, proof);
+  const generatedB = await post({ ...payload, number: undefined }, admin, proof);
+  assert.equal(generatedA.status, 200, JSON.stringify(generatedA));
+  assert.equal(generatedB.status, 200, JSON.stringify(generatedB));
+  assert.notEqual(generatedA.id, generatedB.id);
+  created.push(generatedA.id, generatedB.id);
   const file = await db.purchaseAttachment.findFirstOrThrow({
     where: { entityType: "invoice", entityId: response.id },
   });
@@ -120,7 +128,7 @@ try {
     ).status,
     200,
   );
-  console.log("Purchases API passed: RBAC, required proof, items, totals, duplicate number and attachments.");
+  console.log("Purchases API passed: RBAC, required proof, valid dates and cents, safe numbering, totals, duplicate number and attachments.");
 } finally {
   for (const id of created) {
     await db.purchaseAttachment.deleteMany({ where: { entityId: id } });

@@ -14,6 +14,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       user={{
         name: session.user.name ?? "مستخدم النظام",
         email: session.user.email ?? "",
+        roleKey: session.user.roleKey,
         roleName: session.user.roleName,
         permissions: session.user.permissions,
       }}

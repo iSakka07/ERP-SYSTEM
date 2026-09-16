@@ -18,6 +18,7 @@ import {
   approvalPermissions,
   expenseStages,
   expenseSummary,
+  expensePayableCents,
   newExpenseStatementBlockReason,
   expenseCumulativeQuantity,
 } from "@/lib/expenses";
@@ -42,17 +43,19 @@ export function ExpensesCenter({
   companies,
   attachments,
   permissions,
+  initialProjectId = "",
 }: {
   accounts: ExpenseAccount[];
   projects: { id: string; name: string }[];
   companies: { id: string; name: string }[];
   attachments: ExpenseAttachmentInfo[];
   permissions: string[];
+  initialProjectId?: string;
 }) {
   const router = useRouter();
   const allowed = (p: string) => permissions.includes(p);
   const [search, setSearch] = useState("");
-  const [project, setProject] = useState("");
+  const [project, setProject] = useState(initialProjectId);
   const [company, setCompany] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -149,9 +152,7 @@ export function ExpensesCenter({
   );
   const detail = detailAccount?.statements.find((s) => s.id === selected);
   function paymentForm(st: ExpenseStatement, account: ExpenseAccount) {
-    const paymentSummary = expenseSummary(account.statements);
-    const dueCents =
-      paymentSummary.latest?.id === st.id ? paymentSummary.remainingCents : 0;
+    const dueCents = expensePayableCents(account.statements, st.id);
     return (
       <form
         className="space-y-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm"
@@ -306,7 +307,7 @@ export function ExpensesCenter({
               </button>
             )}
           {st.stage === "ACCOUNTING" &&
-            summary.latest?.id === st.id &&
+            expensePayableCents(account.statements, st.id) > 0 &&
             allowed("expenses.pay") && (
               <button
                 className={`${expenseButton} text-emerald-700`}

@@ -14,6 +14,7 @@ import {
   calculateExpense,
   expenseStages,
   expenseSummary,
+  expensePayableCents,
   safeCents,
   correctionDebtAfterApproval,
 } from "@/lib/expenses";
@@ -735,16 +736,12 @@ export async function POST(request: Request) {
               throw new Error("الصرف متاح بعد وصول المستخلص للحسابات فقط.");
             if (!files.length)
               throw new Error("كل دفعة تحتاج فاتورة أو إثبات صرف.");
-            const summary = expenseSummary(st.account.statements);
-            if (summary.latest?.id !== st.id)
-              throw new Error(
-                "سجل الدفعة على آخر مستخلص معتمد لأعمال المقاول.",
-              );
+            const payableCents = expensePayableCents(st.account.statements, st.id);
             const amountCents = safeCents(Math.round(data.amount * 100));
             if (!amountCents) throw new Error("قيمة الدفعة أصغر من قرش.");
-            if (amountCents + summary.paidCents > summary.netCents)
+            if (amountCents > payableCents)
               throw new Error(
-                "قيمة الدفعة تتجاوز صافي المستحق الحالي.",
+                "قيمة الدفعة تتجاوز صافي المستحق لهذا الجاري بعد خصم كل الدفعات السابقة.",
               );
             const updated = await tx.subcontractStatement.updateMany({
               where: {

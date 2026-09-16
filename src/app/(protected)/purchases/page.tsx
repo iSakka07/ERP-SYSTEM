@@ -3,8 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { incomingUser } from "@/lib/incoming-server";
 import { PurchasesCenter } from "@/components/purchases-center";
 
-export default async function PurchasesPage() {
+export default async function PurchasesPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   if (!(await incomingUser("purchases.view"))) redirect("/");
+  const requestedProject = (await searchParams).project ?? "";
   const manager = await incomingUser("purchases.manage");
   const [invoices, projects, suppliers, attachments] = await Promise.all([
     prisma.purchaseInvoice.findMany({
@@ -37,6 +38,7 @@ export default async function PurchasesPage() {
       suppliers={suppliers}
       attachments={attachments}
       canManage={Boolean(manager)}
+      initialProjectId={projects.some((project) => project.id === requestedProject) ? requestedProject : ""}
     />
   );
 }

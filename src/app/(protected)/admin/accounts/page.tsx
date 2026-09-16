@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { AccountsManager } from "@/components/accounts-manager";
-import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
 export default async function AccountsPage() {
   const session = await auth();
-  if (!session?.user || !can(session.user, "accounts.manage")) redirect("/");
+  if (!session?.user || session.user.roleKey !== "admin") redirect("/");
 
   const [users, roles, permissions] = await Promise.all([
     prisma.user.findMany({ include: { role: true }, orderBy: { createdAt: "asc" } }),

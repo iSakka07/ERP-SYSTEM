@@ -20,7 +20,7 @@ const updateSchema = z.discriminatedUnion("type", [
 
 async function adminSession() {
   const session = await auth();
-  return session?.user && can(session.user, "accounts.manage") ? session : null;
+  return session?.user && session.user.roleKey === "admin" && can(session.user, "accounts.manage") ? session : null;
 }
 
 export async function POST(request: Request) {
@@ -60,9 +60,17 @@ export async function PATCH(request: Request) {
   if (data.type === "role-permissions") {
     const role = await prisma.role.findUniqueOrThrow({ where: { id: data.roleId } });
     if (role.key === "admin") return NextResponse.json({ error: "ADMIN_LOCKED" }, { status: 400 });
+    const requested = await prisma.permission.findMany({
+      where: { id: { in: data.permissionIds } },
+      select: { id: true, key: true },
+    });
+    if (requested.length !== new Set(data.permissionIds).size)
+      return NextResponse.json({ error: "INVALID_PERMISSION" }, { status: 400 });
+    if (requested.some((permission) => permission.key === "accounts.manage"))
+      return NextResponse.json({ error: "ADMIN_PERMISSION_LOCKED" }, { status: 400 });
     await prisma.$transaction([
       prisma.rolePermission.deleteMany({ where: { roleId: data.roleId } }),
-      prisma.rolePermission.createMany({ data: data.permissionIds.map((permissionId) => ({ roleId: data.roleId, permissionId })) }),
+      prisma.rolePermission.createMany({ data: requested.map(({ id: permissionId }) => ({ roleId: data.roleId, permissionId })) }),
     ]);
     await prisma.auditLog.create({ data: { actorId: session.user.id, action: "role.permissions.update", target: data.roleId, details: JSON.stringify({ permissionIds: data.permissionIds }) } });
   }
