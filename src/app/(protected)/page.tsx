@@ -11,7 +11,7 @@ const modules = [
   { name: "الوارد", code: "Incoming", href: "/incoming", permission: "incoming.view", live: true, description: "عقود الجهة المالكة والمستخلصات والتحصيلات الفعلية.", icon: BanknoteArrowUp, color: "bg-blue-50 text-blue-700 ring-blue-100" },
   { name: "مستخلصات المقاولين", code: "Expenses", href: "/expenses", permission: "expenses.view", live: true, description: "حصر الأعمال والجوارى وتأمين الأعمال ومدفوعات المقاولين.", icon: FileSpreadsheet, color: "bg-indigo-50 text-indigo-700 ring-indigo-100" },
   { name: "المشتريات", code: "Purchases", href: "/purchases", permission: "purchases.view", live: true, description: "بنود وفواتير مشتريات المشروع المسجلة كتكلفة.", icon: ShoppingCart, color: "bg-amber-50 text-amber-700 ring-amber-100" },
-  { name: "المرتبات", code: "Salaries", href: "/#modules", permission: "salaries.view", live: false, description: "مرتبات ومكافآت وخصومات وسلف وتسكين الموظفين.", icon: UsersRound, color: "bg-violet-50 text-violet-700 ring-violet-100" },
+  { name: "المرتبات", code: "Salaries", href: "/salaries", permission: "salaries.view", live: true, description: "مرتبات ومكافآت وخصومات وسلف وتسكين الموظفين.", icon: UsersRound, color: "bg-violet-50 text-violet-700 ring-violet-100" },
   { name: "Petty Cash", code: "PettyCash", href: "/petty-cash", permission: "pettycash.view", live: true, description: "النثريات والمصروفات التشغيلية والتمويل والعهد وكشف الحركة.", icon: Vault, color: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
 ];
 

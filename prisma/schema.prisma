@@ -237,6 +237,7 @@ model EmployeeBonus {
   amountCents Float
   reason String
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  attachments SalaryAttachment[]
   createdAt DateTime @default(now())
   @@index([employeeId, month])
 }
@@ -249,6 +250,7 @@ model EmployeeDeduction {
   amountCents Float
   reason String
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  attachments SalaryAttachment[]
   createdAt DateTime @default(now())
   @@index([employeeId, month])
 }
@@ -320,6 +322,8 @@ model SalaryAttachment {
   id String @id @default(cuid())
   payrollRunId String?
   advanceId String?
+  bonusId String?
+  deductionId String?
   name String
   mime String
   size Int
@@ -327,9 +331,13 @@ model SalaryAttachment {
   actorId String
   payrollRun PayrollRun? @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
   advance EmployeeAdvance? @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  bonus EmployeeBonus? @relation(fields: [bonusId], references: [id], onDelete: Cascade)
+  deduction EmployeeDeduction? @relation(fields: [deductionId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   @@index([payrollRunId])
   @@index([advanceId])
+  @@index([bonusId])
+  @@index([deductionId])
 }
 
 model ProjectEngineerAssignment {
