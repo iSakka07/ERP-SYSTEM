@@ -342,16 +342,22 @@ try {
     reference: "TEST-ADVANCE",
   };
   assert.equal((await post(over, jars.accounting)).status, 400);
-  r = await post(
-    { ...over, confirmAdvance: true, notes: "دفعة مقدمة تجريبية موثقة" },
-    jars.accounting,
+  assert.equal(
+    (
+      await post(
+        { ...over, confirmAdvance: true, notes: "محاولة تجاوز تجريبية" },
+        jars.accounting,
+      )
+    ).status,
+    400,
+    "confirmed overpayment is still rejected",
   );
-  assert.equal(r.status, 200, JSON.stringify(r));
   all = await db.subcontractStatement.findMany({
     where: { accountId },
     include: { payments: true },
   });
-  assert.equal(expenseSummary(all).advanceCents, 600000);
+  assert.equal(expenseSummary(all).advanceCents, 0);
+  assert.equal(expenseSummary(all).remainingCents, 8400000);
   const third = {
     ...payload,
     items: [{ ...row, currentQuantity: 0, entitlementPercent: 100 }],
@@ -543,9 +549,14 @@ try {
     "withdrawal never changes approved work value",
   );
   assert.equal(
-    (await read(secondId)).payments.length,
+    (await read(firstId)).payments.length,
     1,
-    "historic actual payments preserved",
+    "historic actual payments preserved on the paid statement",
+  );
+  assert.equal(
+    (await read(secondId)).payments.length,
+    0,
+    "rejected overpayment does not create a payment on the current statement",
   );
   st = await read(thirdId);
   assert.equal(

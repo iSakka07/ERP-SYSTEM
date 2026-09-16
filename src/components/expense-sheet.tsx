@@ -7,6 +7,7 @@ import { useState } from "react";
 import type { DeductionInput, ExpenseItemInput } from "@/lib/expenses";
 import type { ExpenseAccount, ExpenseStatement } from "@/lib/expense-types";
 import {
+  calculateExpense,
   expenseSummary,
   expenseCumulativeQuantity,
   correctionDebtAfterApproval,
@@ -30,6 +31,7 @@ export const stageName = (key: string) =>
     EXECUTIVE: "اعتماد المدير التنفيذي",
     ACCOUNTING: "الحسابات",
   })[key] ?? key;
+type SheetRow = ExpenseItemInput & { priceVersionKey?: string | null };
 export function ExpenseFileInput({ required = true }: { required?: boolean }) {
   return (
     <UploadBox
@@ -74,7 +76,19 @@ export function ExpenseSheet({
       w.retainedItemKey &&
       !previousItems.some((i) => i.itemKey === w.retainedItemKey),
   );
-  const [rows, setRows] = useState<ExpenseItemInput[]>(
+  function blankRow(): SheetRow {
+    return {
+      itemKey: crypto.randomUUID(),
+      name: account.assignments?.[0]
+        ? `${account.assignments[0].itemName} — ${account.scope}`
+        : "",
+      unit: account.assignments?.[0]?.unit ?? "م2",
+      currentQuantity: 0,
+      price: 0,
+      entitlementPercent: 100,
+    };
+  }
+  const [rows, setRows] = useState<SheetRow[]>(
     statement
       ? statement.items.map((i) => ({
           itemKey: i.itemKey,
@@ -87,48 +101,35 @@ export function ExpenseSheet({
           priceChangeReason: i.priceChangeReason,
           correctionQuantity: i.correctionQuantity ?? 0,
           correctionReason: i.correctionReason,
-        }))
-      : previousItems.length
-        ? [
-            ...previousItems.map((i) => ({
-              itemKey: i.itemKey,
-              name: i.name,
-              unit: i.unit,
-              currentQuantity: 0,
-              price: i.unitPriceCents / 100,
-              entitlementPercent: i.entitlementPercent,
-              sourceItemKey: i.sourceItemKey,
-              priceChangeReason: i.priceChangeReason,
-            })),
-            ...remaining.map((w) => ({
-              itemKey: w.retainedItemKey!,
-              name: `${w.itemName} — ${w.retainedScope}`,
-              unit: w.unit,
-              currentQuantity: 0,
-              price:
-                (previousItems
-                  .filter((i) =>
-                    (JSON.parse(w.itemKeysJson) as string[]).includes(
-                      i.itemKey,
-                    ),
-                  )
-                  .at(-1)?.unitPriceCents ?? 0) / 100,
-              entitlementPercent: 100,
-            })),
-          ]
-        : [
-            {
-              itemKey: crypto.randomUUID(),
-              name: account.assignments?.[0]
-                ? `${account.assignments[0].itemName} — ${account.scope}`
-                : "",
-              unit: account.assignments?.[0]?.unit ?? "م2",
-              currentQuantity: 0,
-              price: 0,
-              entitlementPercent: 100,
-            },
-          ],
+        })).filter((i) => {
+          const savedPrevious = previousItems.find((p) => p.itemKey === i.itemKey);
+          return (
+            i.currentQuantity > 0 ||
+            Boolean(i.sourceItemKey) ||
+            (i.correctionQuantity ?? 0) > 0 ||
+            !savedPrevious
+          );
+        })
+      : [
+          blankRow(),
+          ...remaining.map((w) => ({
+            itemKey: w.retainedItemKey!,
+            name: `${w.itemName} — ${w.retainedScope}`,
+            unit: w.unit,
+            currentQuantity: 0,
+            price:
+              (previousItems
+                .filter((i) =>
+                  (JSON.parse(w.itemKeysJson) as string[]).includes(
+                    i.itemKey,
+                  ),
+                )
+                .at(-1)?.unitPriceCents ?? 0) / 100,
+            entitlementPercent: 100,
+          })),
+        ],
   );
+  const [selectedPrevious, setSelectedPrevious] = useState("");
   const [deductions, setDeductions] = useState<DeductionInput[]>(
     (
       statement?.deductions ??
@@ -152,6 +153,81 @@ export function ExpenseSheet({
         : null) !== (saved?.correctionReason ?? null)
     );
   });
+  const priceChanged = rows.some((i) => {
+    const old = previousItems.find((p) => p.itemKey === i.itemKey);
+    return old && Math.round(i.price * 100) !== old.unitPriceCents;
+  });
+  const availablePreviousItems = previousItems.filter(
+    (i) =>
+      !blocked.has(i.itemKey) &&
+      !rows.some((r) => r.itemKey === i.itemKey || r.sourceItemKey === i.itemKey),
+  );
+  function addPreviousItem(itemKey: string) {
+    const old = previousItems.find((i) => i.itemKey === itemKey);
+    if (!old) return;
+    setRows([
+      ...rows,
+      {
+        itemKey: old.itemKey,
+        name: old.name,
+        unit: old.unit,
+        currentQuantity: 0,
+        price: old.unitPriceCents / 100,
+        entitlementPercent: old.entitlementPercent,
+        sourceItemKey: old.sourceItemKey,
+        priceChangeReason: old.priceChangeReason,
+        correctionQuantity: 0,
+        correctionReason: null,
+        priceVersionKey: crypto.randomUUID(),
+      },
+    ]);
+    setSelectedPrevious("");
+  }
+  function buildSubmissionRows(sourceRows: SheetRow[], preview = false) {
+    return sourceRows.flatMap((row) => {
+      const old = previousItems.find((p) => p.itemKey === row.itemKey);
+      if (!old || Math.round(row.price * 100) === old.unitPriceCents) {
+        const clean = { ...row };
+        delete clean.priceVersionKey;
+        return [clean];
+      }
+      const oldCarry: ExpenseItemInput = {
+        itemKey: old.itemKey,
+        name: old.name,
+        unit: old.unit,
+        currentQuantity: 0,
+        price: old.unitPriceCents / 100,
+        entitlementPercent: old.entitlementPercent,
+        sourceItemKey: old.sourceItemKey ?? null,
+        priceChangeReason: old.priceChangeReason ?? null,
+        correctionQuantity: row.correctionQuantity ?? 0,
+        correctionReason: row.correctionReason ?? null,
+      };
+      const newVersion: ExpenseItemInput = {
+        itemKey: row.priceVersionKey ?? (preview ? `preview-${row.itemKey}` : crypto.randomUUID()),
+        name: row.name,
+        unit: row.unit,
+        currentQuantity: row.currentQuantity,
+        price: row.price,
+        entitlementPercent: row.entitlementPercent,
+        sourceItemKey: old.itemKey,
+        priceChangeReason: row.priceChangeReason ?? "",
+        correctionQuantity: 0,
+        correctionReason: null,
+      };
+      return [oldCarry, newVersion];
+    });
+  }
+  let submissionPreview: ReturnType<typeof calculateExpense> | null = null;
+  try {
+    submissionPreview = calculateExpense(
+      buildSubmissionRows(rows, true),
+      deductions,
+      previousItems,
+    );
+  } catch {
+    submissionPreview = null;
+  }
   const computed = rows.map((i) => {
     const old = previousItems.find((p) => p.itemKey === i.itemKey);
     const previousQuantity = old ? expenseCumulativeQuantity(old) : 0;
@@ -166,7 +242,7 @@ export function ExpenseSheet({
       old,
     };
   });
-  const gross = computed.reduce((s, i) => s + i.total, 0);
+  const gross = submissionPreview?.grossCents ?? computed.reduce((s, i) => s + i.total, 0);
   const discountAmounts = deductions.map((d) =>
     Math.round(d.kind === "PERCENT" ? (gross * d.value) / 100 : d.value * 100),
   );
@@ -223,7 +299,7 @@ export function ExpenseSheet({
                 kind: f.get("kind"),
                 statementDate: f.get("statementDate"),
                 notes: f.get("notes"),
-                items: rows,
+                items: buildSubmissionRows(rows),
                 deductions,
               },
               form,
@@ -237,7 +313,7 @@ export function ExpenseSheet({
         }}
         className="space-y-4"
       >
-        <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-3">
+        <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-2">
           <label className="text-xs font-bold">
             نوع المستخلص
             <ERPSelect
@@ -262,17 +338,8 @@ export function ExpenseSheet({
               className={`${expenseInput} mt-2`}
             />
           </label>
-          <div className="rounded-lg bg-slate-50 p-3 text-xs leading-6 text-slate-600">
-            الكمية: حصر فعلي. نسبة الاستحقاق: قيمة المرحلة المستحقة. السابق ثابت
-            من آخر جاري معتمد.
-          </div>
         </div>
         <div className="overflow-hidden rounded-xl border bg-white">
-          <p className="border-b bg-blue-50/40 p-3 text-xs leading-6 text-slate-600">
-            لتغيير سعر بند سابق، اضغط «سعر جديد للكميات الجديدة» تحت اسم البند.
-            السابق يبقى بسعره القديم، وأدخل السعر والكمية الجديدة وسبب التغيير
-            في السطر الجديد، مع إرفاق إثبات.
-          </p>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
             <h2 className="text-sm font-extrabold">شيت حصر الأعمال</h2>
             {previousItems.some((i) => expenseCumulativeQuantity(i) > 0) &&
@@ -285,10 +352,32 @@ export function ExpenseSheet({
                   تصحيح كميات الحصر السابق
                 </button>
               )}
-            <span className="text-[11px] text-slate-500">
-              اسحب الجدول أفقيًا لاستعراض كل الأعمدة
-            </span>
           </div>
+          {availablePreviousItems.length > 0 && (
+            <div className="grid gap-2 border-b bg-slate-50/60 p-3 md:grid-cols-[1fr_auto]">
+              <ERPSelect
+                aria-label="استدعاء بند سابق"
+                className={expenseInput}
+                value={selectedPrevious}
+                onValueChange={setSelectedPrevious}
+              >
+                <option value="">استدعاء بند سابق من آخر جاري معتمد</option>
+                {availablePreviousItems.map((i) => (
+                  <option key={i.itemKey} value={i.itemKey}>
+                    {i.name} · سابق {expenseCumulativeQuantity(i).toLocaleString("en-US")} {i.unit}
+                  </option>
+                ))}
+              </ERPSelect>
+              <button
+                type="button"
+                className={expenseButton}
+                disabled={!selectedPrevious}
+                onClick={() => addPreviousItem(selectedPrevious)}
+              >
+                إضافة للشيت
+              </button>
+            </div>
+          )}
           {showCorrections && (
             <p className="border-b bg-amber-50 p-3 text-xs leading-6 text-amber-900">
               أدخل كمية موجبة في «تصحيح (-)» لتخصم من السابق بسعره الأصلي، وليس
@@ -297,85 +386,29 @@ export function ExpenseSheet({
               المقاول ويتسوى في الجوارى القادمة.
             </p>
           )}
-          <div className="overflow-x-auto">
-            <table
-              className={`w-full ${showCorrections ? "min-w-[1260px]" : "min-w-[1060px]"} table-fixed text-xs`}
-            >
-              <colgroup>
-                <col className="w-10" />
-                <col className="w-64" />
-                <col className="w-20" />
-                <col className="w-24" />
-                <col className="w-24" />
-                {showCorrections && <col className="w-48" />}
-                <col className="w-24" />
-                <col className="w-28" />
-                <col className="w-28" />
-                <col className="w-32" />
-                <col className="w-12" />
-              </colgroup>
-              <thead className="bg-slate-100">
-                <tr>
-                  {[
-                    "#",
-                    "اسم البند",
-                    "الوحدة",
-                    "سابق",
-                    "حالي",
-                    ...(showCorrections ? ["تصحيح (-)"] : []),
-                    "تراكمي",
-                    "سعر الوحدة",
-                    "الاستحقاق %",
-                    "الإجمالي (ج.م)",
-                    "",
-                  ].map((h, n) => (
-                    <th className="border-b p-3 text-right" key={n}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, n) => (
-                  <tr key={r.itemKey} className="border-b last:border-0">
-                    <td className="p-2 text-center text-slate-400">{n + 1}</td>
-                    <td className="p-2">
+          <div className="divide-y">
+            {rows.map((r, n) => {
+              const old = computed[n].old;
+              const isPriceChanged =
+                old && Math.round(r.price * 100) !== old.unitPriceCents;
+              return (
+                <div
+                  key={r.itemKey}
+                  className="grid gap-3 p-3 text-xs xl:grid-cols-[44px_minmax(260px,1.7fr)_90px_100px_100px_100px_120px_120px_130px_44px]"
+                >
+                  <div className="flex items-center justify-center rounded-lg bg-slate-50 font-bold text-slate-400">
+                    {n + 1}
+                  </div>
+                  <label className="space-y-1 font-bold">
+                    <span>اسم البند</span>
                       <input
                         aria-label={`اسم البند ${n + 1}`}
                         className={expenseInput}
                         required
                         value={r.name}
-                        readOnly={Boolean(computed[n].old || r.sourceItemKey)}
+                        readOnly={Boolean(old || r.sourceItemKey)}
                         onChange={(e) => updateRow(n, { name: e.target.value })}
                       />
-                      {computed[n].old &&
-                        !blocked.has(r.itemKey) &&
-                        !rows.some((x) => x.sourceItemKey === r.itemKey) &&
-                        rows.length < 200 && (
-                          <button
-                            type="button"
-                            className="mt-2 text-[10px] font-bold text-blue-700 underline underline-offset-2"
-                            onClick={() =>
-                              setRows([
-                                ...rows.map((x, j) =>
-                                  j === n ? { ...x, currentQuantity: 0 } : x,
-                                ),
-                                {
-                                  itemKey: crypto.randomUUID(),
-                                  name: r.name,
-                                  unit: r.unit,
-                                  currentQuantity: r.currentQuantity,
-                                  price: r.price,
-                                  entitlementPercent: r.entitlementPercent,
-                                  sourceItemKey: r.itemKey,
-                                  priceChangeReason: "",
-                                },
-                              ])
-                            }
-                          >
-                            سعر جديد للكميات الجديدة
-                          </button>
-                        )}
                       {r.sourceItemKey && (
                         <p className="mt-1 text-[10px] text-amber-700">
                           إصدار سعر مرتبط بالبند السابق · السابق بسعره القديم
@@ -387,7 +420,7 @@ export function ExpenseSheet({
                           قابل للاستكمال بسعره القديم.
                         </p>
                       )}
-                      {r.sourceItemKey && !computed[n].old && (
+                      {isPriceChanged && (
                         <input
                           aria-label={`سبب تغيير السعر ${n + 1}`}
                           required
@@ -400,21 +433,31 @@ export function ExpenseSheet({
                           }
                         />
                       )}
-                    </td>
-                    <td className="p-2">
+                      {isPriceChanged && (
+                        <p className="mt-1 text-[10px] text-blue-700">
+                          السعر الجديد سيطبق على كمية هذا الجاري فقط.
+                        </p>
+                      )}
+                  </label>
+                  <label className="space-y-1 font-bold">
+                    <span>الوحدة</span>
                       <input
                         aria-label={`الوحدة ${n + 1}`}
                         required
                         className={expenseInput}
                         value={r.unit}
-                        readOnly={Boolean(computed[n].old || r.sourceItemKey)}
+                        readOnly={Boolean(old || r.sourceItemKey)}
                         onChange={(e) => updateRow(n, { unit: e.target.value })}
                       />
-                    </td>
-                    <td className="bg-slate-50 p-2 text-center tabular-nums">
+                  </label>
+                  <div className="space-y-1 font-bold">
+                    <span>سابق</span>
+                    <div className="rounded-lg bg-slate-50 px-3 py-2 text-center tabular-nums">
                       {computed[n].previousQuantity.toLocaleString("en-US")}
-                    </td>
-                    <td className="p-2">
+                    </div>
+                  </div>
+                  <label className="space-y-1 font-bold">
+                    <span>حالي</span>
                       <input
                         aria-label={`كمية الحالي ${n + 1}`}
                         readOnly={
@@ -434,10 +477,11 @@ export function ExpenseSheet({
                           })
                         }
                       />
-                    </td>
-                    {showCorrections && (
-                      <td className="bg-amber-50/30 p-2 align-top">
-                        {computed[n].old && computed[n].previousQuantity > 0 ? (
+                  </label>
+                  {showCorrections && (
+                    <label className="space-y-1 rounded-lg bg-amber-50/30 font-bold">
+                      <span>تصحيح (-)</span>
+                        {old && computed[n].previousQuantity > 0 ? (
                           <>
                             <input
                               aria-label={`كمية التصحيح ${n + 1}`}
@@ -480,30 +524,34 @@ export function ExpenseSheet({
                             — لا كمية سابقة
                           </span>
                         )}
-                      </td>
-                    )}
-                    <td className="bg-blue-50/40 p-2 text-center font-bold tabular-nums">
+                    </label>
+                  )}
+                  <div className="space-y-1 font-bold">
+                    <span>تراكمي</span>
+                    <div className="rounded-lg bg-blue-50/60 px-3 py-2 text-center tabular-nums text-blue-800">
                       {computed[n].quantity.toLocaleString("en-US")}
-                    </td>
-                    <td className="p-2">
+                    </div>
+                  </div>
+                  <label className="space-y-1 font-bold">
+                    <span>سعر الوحدة</span>
                       <CurrencyInput
                         aria-label={`سعر الوحدة ${n + 1}`}
                         min="0.01"
                         step="0.01"
                         required
-                        readOnly={Boolean(computed[n].old)}
                         className={expenseInput}
                         value={r.price}
                         onValueChange={(raw) =>
                           updateRow(n, { price: Number(raw) })
                         }
                       />
-                    </td>
-                    <td className="p-2">
+                  </label>
+                  <label className="space-y-1 font-bold">
+                    <span>الاستحقاق %</span>
                       <input
                         aria-label={`نسبة الاستحقاق ${n + 1}`}
                         type="number"
-                        min={computed[n].old?.entitlementPercent ?? 0}
+                        min={old?.entitlementPercent ?? 0}
                         max="100"
                         step="0.01"
                         required
@@ -515,15 +563,15 @@ export function ExpenseSheet({
                           })
                         }
                       />
-                    </td>
-                    <td
-                      className="p-2 text-center font-bold tabular-nums text-blue-700"
-                      dir="ltr"
-                    >
+                  </label>
+                  <div className="space-y-1 font-bold">
+                    <span>الإجمالي</span>
+                    <div className="rounded-lg bg-slate-50 px-3 py-2 text-center tabular-nums text-blue-700" dir="ltr">
                       {money(computed[n].total)}
-                    </td>
-                    <td className="p-2">
-                      {!computed[n].old && (
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-center">
+                      {!old && (
                         <button
                           type="button"
                           aria-label={`حذف البند ${n + 1}`}
@@ -535,11 +583,10 @@ export function ExpenseSheet({
                           <Trash2 className="size-4" />
                         </button>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <div className="border-t p-3">
             <button
@@ -549,20 +596,18 @@ export function ExpenseSheet({
               onClick={() =>
                 setRows([
                   ...rows,
-                  {
-                    itemKey: crypto.randomUUID(),
-                    name: "",
-                    unit: "م2",
-                    currentQuantity: 0,
-                    price: 0,
-                    entitlementPercent: 100,
-                  },
+                  { ...blankRow(), name: "", unit: "م2" },
                 ])
               }
             >
               <Plus className="size-4" />
               إضافة بند جديد
             </button>
+            <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs leading-6 text-blue-800">
+              لو استدعيت بند سابق وغيرت سعره، السعر الجديد يطبق على كمية الجاري
+              الحالي فقط. الأعمال السابقة تفضل محفوظة بسعرها القديم، والسبب
+              والإثبات مطلوبان عند الحفظ.
+            </p>
           </div>
         </div>
         <div className="grid items-start gap-4 xl:grid-cols-[1fr_340px]">
@@ -714,7 +759,7 @@ export function ExpenseSheet({
             تغيير تصحيح الحصر يحتاج مرفقًا جديدًا، حتى لو للمسودة مرفقات سابقة.
           </p>
         )}
-        <ExpenseFileInput required={!statement || correctionChanged} />
+        <ExpenseFileInput required={!statement || correctionChanged || priceChanged} />
         {error && (
           <p
             role="alert"

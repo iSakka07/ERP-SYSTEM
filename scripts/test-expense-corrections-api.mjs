@@ -341,20 +341,25 @@ try {
     reference: "TEST-EXPLICIT-ADVANCE",
   };
   assert.equal((await post(advance, jars.accounting)).status, 400);
-  response = await post(
-    {
-      ...advance,
-      confirmAdvance: true,
-      notes: "دفعة مقدمة منفصلة موثقة للاختبار",
-    },
-    jars.accounting,
+  assert.equal(
+    (
+      await post(
+        {
+          ...advance,
+          confirmAdvance: true,
+          notes: "محاولة تجاوز منفصلة موثقة للاختبار",
+        },
+        jars.accounting,
+      )
+    ).status,
+    400,
+    "confirmed overpayment is still rejected",
   );
-  assert.equal(response.status, 200, JSON.stringify(response));
   assert.equal((await balance()).debtCents, 1780000);
   assert.equal(
     (await balance()).advanceCents,
-    100000,
-    "new advance does not become correction debt",
+    0,
+    "overpayment no longer creates an advance",
   );
   const following = {
     ...unchanged,
@@ -383,7 +388,7 @@ try {
   assert.equal((await balance()).advanceCents, 0);
   assert.equal(
     (await balance()).remainingCents,
-    257500,
+    357500,
     "subsequent entitlement settles debt once",
   );
   response = await post(
@@ -415,8 +420,8 @@ try {
   ])
     await stage(finalId, key, jar);
   assert.equal((await balance()).netCents, 0);
-  assert.equal((await balance()).paidCents, 9100000);
-  assert.equal((await balance()).debtCents, 9100000);
+  assert.equal((await balance()).paidCents, 9000000);
+  assert.equal((await balance()).debtCents, 9000000);
   assert.equal(
     (await read(firstId)).payments[0].amountCents,
     9000000,

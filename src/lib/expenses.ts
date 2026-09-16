@@ -89,9 +89,27 @@ export function calculateExpense(
   if (!input.length || input.length > 200 || deductions.length > 30)
     throw new Error("راجع عدد البنود والخصومات.");
   const keys = new Set(input.map((i) => i.itemKey));
-  if (keys.size !== input.length || previous.some((i) => !keys.has(i.itemKey)))
-    throw new Error("لا يمكن تكرار أو حذف بند سابق؛ اترك كمية الحالي صفرًا.");
-  const items = input.map((i, position) => {
+  if (keys.size !== input.length)
+    throw new Error("لا يمكن تكرار البند داخل المستخلص.");
+  const carriedPrevious = previous
+    .filter((item) => !keys.has(item.itemKey))
+    .map((item) => ({
+      itemKey: item.itemKey,
+      name: item.name,
+      unit: item.unit,
+      currentQuantity: 0,
+      price: item.unitPriceCents / 100,
+      entitlementPercent: item.entitlementPercent,
+      sourceItemKey: item.sourceItemKey ?? null,
+      priceChangeReason: item.priceChangeReason ?? null,
+      correctionQuantity: 0,
+      correctionReason: null,
+    }));
+  const allInput = [...input, ...carriedPrevious];
+  const allKeys = new Set(allInput.map((i) => i.itemKey));
+  if (allKeys.size !== allInput.length)
+    throw new Error("لا يمكن تكرار البند داخل المستخلص.");
+  const items = allInput.map((i, position) => {
     if (
       !i.name.trim() ||
       !i.unit.trim() ||
@@ -132,7 +150,7 @@ export function calculateExpense(
       );
     if (!old && i.sourceItemKey) {
       const source = previous.find((p) => p.itemKey === i.sourceItemKey);
-      const sourceInput = input.find((p) => p.itemKey === i.sourceItemKey);
+      const sourceInput = allInput.find((p) => p.itemKey === i.sourceItemKey);
       if (previous.some((p) => p.sourceItemKey === i.sourceItemKey))
         throw new Error("اختر آخر إصدار سعر للبند، وليس إصدارًا أقدم.");
       if (
@@ -149,7 +167,7 @@ export function calculateExpense(
           "إصدار السعر الجديد يحتاج بندًا سابقًا ثابتًا، وكمية جديدة، وسعرًا مختلفًا وسببًا؛ كمية الحالي بسطر السعر القديم يجب أن تكون صفرًا.",
         );
       if (
-        input.filter(
+        allInput.filter(
           (p) =>
             !previous.some((old) => old.itemKey === p.itemKey) &&
             p.sourceItemKey === i.sourceItemKey,

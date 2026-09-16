@@ -73,9 +73,22 @@ assert.equal(
   5100000,
 );
 assert.equal(calculateExpense([item], []).netCents, 5200000);
-assert.throws(() =>
-  calculateExpense([{ ...item, itemKey: "different" }], retention, first.items),
+const newOnly = calculateExpense(
+  [{
+    ...item,
+    itemKey: "different",
+    name: "بند مستقل في جاري لاحق",
+    currentQuantity: 10,
+    price: 100,
+    entitlementPercent: 100,
+  }],
+  retention,
+  first.items,
 );
+assert.equal(newOnly.items.length, 2);
+assert.equal(newOnly.previousGrossCents, first.grossCents);
+assert.equal(newOnly.grossCents, 5300000);
+assert.equal(newOnly.items.find((i) => i.itemKey === item.itemKey).currentQuantity, 0);
 assert.throws(() =>
   calculateExpense([{ ...item, price: 401 }], retention, first.items),
 );

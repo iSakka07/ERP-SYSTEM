@@ -92,8 +92,8 @@ const schema = z.discriminatedUnion("action", [
     revision: z.number().int().positive(),
     amount: z.number().finite().positive().max(1e10),
     paymentDate: date,
-    method: z.enum(["CHEQUE", "TRANSFER", "CASH"]),
-    reference: text,
+    method: z.enum(["CHEQUE", "TRANSFER", "CASH", "ATTACHMENT"]).optional(),
+    reference: text.optional(),
     notes: z.string().trim().max(2000).optional(),
     confirmAdvance: z.boolean().optional(),
   }),
@@ -742,12 +742,9 @@ export async function POST(request: Request) {
               );
             const amountCents = safeCents(Math.round(data.amount * 100));
             if (!amountCents) throw new Error("قيمة الدفعة أصغر من قرش.");
-            if (
-              amountCents + summary.paidCents > summary.netCents &&
-              (!data.confirmAdvance || !data.notes)
-            )
+            if (amountCents + summary.paidCents > summary.netCents)
               throw new Error(
-                "الدفعة تتجاوز المستحق؛ أكد أنها رصيد مقدم مع كتابة السبب.",
+                "قيمة الدفعة تتجاوز صافي المستحق الحالي.",
               );
             const updated = await tx.subcontractStatement.updateMany({
               where: {
@@ -763,8 +760,8 @@ export async function POST(request: Request) {
                 statementId: st.id,
                 amountCents,
                 paymentDate: new Date(data.paymentDate),
-                method: data.method,
-                reference: data.reference,
+                method: data.method ?? "ATTACHMENT",
+                reference: data.reference ?? "مرفق",
                 notes: data.notes,
                 actorId: user.id,
               },

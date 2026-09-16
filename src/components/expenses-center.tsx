@@ -148,11 +148,13 @@ export function ExpensesCenter({
     a.statements.some((s) => s.id === selected),
   );
   const detail = detailAccount?.statements.find((s) => s.id === selected);
-  function paymentForm(st: ExpenseStatement) {
+  function paymentForm(st: ExpenseStatement, account: ExpenseAccount) {
+    const paymentSummary = expenseSummary(account.statements);
+    const dueCents =
+      paymentSummary.latest?.id === st.id ? paymentSummary.remainingCents : 0;
     return (
-      <DocumentLayout>
       <form
-        className="space-y-3 rounded-xl border border-blue-200 bg-white p-4"
+        className="space-y-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm"
         onSubmit={(e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
@@ -163,10 +165,7 @@ export function ExpensesCenter({
               revision: st.revision,
               amount: Number(f.get("amount")),
               paymentDate: f.get("paymentDate"),
-              method: f.get("method"),
-              reference: f.get("reference"),
               notes: f.get("notes"),
-              confirmAdvance: f.get("confirmAdvance") === "on",
             },
             e.currentTarget,
           );
@@ -184,6 +183,8 @@ export function ExpensesCenter({
               step="0.01"
               required
               className={`${expenseInput} mt-1`}
+              value={dueCents / 100}
+              max={dueCents / 100}
             />
           </label>
           <label className="text-xs">
@@ -196,37 +197,20 @@ export function ExpensesCenter({
               className={`${expenseInput} mt-1`}
             />
           </label>
-          <label className="text-xs">
-            وسيلة الصرف
-            <ERPSelect name="method" className={`${expenseInput} mt-1`}>
-              <option value="CHEQUE">شيك</option>
-              <option value="TRANSFER">تحويل</option>
-              <option value="CASH">نقدي / إيصال صرف</option>
-            </ERPSelect>
-          </label>
-          <label className="text-xs">
-            رقم الشيك / التحويل / الإيصال
-            <input
-              name="reference"
-              required
-              maxLength={300}
-              className={`${expenseInput} mt-1`}
-            />
-          </label>
         </div>
         <label className="block text-xs">
-          ملاحظات / سبب الرصيد المقدم
+          ملاحظات
           <textarea
             name="notes"
             maxLength={2000}
             className={`${expenseInput} mt-1`}
           />
         </label>
-        <label className="flex gap-2 text-xs leading-6">
-          <input type="checkbox" name="confirmAdvance" />
-          لو تجاوزت الدفعة صافي المستحق، أؤكد تسجيل الزيادة كرَصيد مقدم للمقاول
-          مع توضيح السبب.
-        </label>
+        <div className="rounded-lg bg-emerald-50 p-3 text-xs leading-6 text-emerald-800">
+          المستحق للتسجيل الآن:{" "}
+          <strong dir="ltr">{money(dueCents)} ج.م</strong>. الدفعة لا تتجاوز
+          صافي المستحق الحالي، والمرفق هو إثبات الصرف.
+        </div>
         <ExpenseFileInput />
         <div className="flex gap-2">
           <button
@@ -248,7 +232,6 @@ export function ExpensesCenter({
           المحاسبة.
         </p>
       </form>
-      </DocumentLayout>
     );
   }
   function statementDetail(st: ExpenseStatement, account: ExpenseAccount) {
@@ -327,12 +310,13 @@ export function ExpensesCenter({
             allowed("expenses.pay") && (
               <button
                 className={`${expenseButton} text-emerald-700`}
-                onClick={() => setPaymentId(st.id)}
+                onClick={() => setPaymentId(paymentId === st.id ? null : st.id)}
               >
                 تسجيل دفعة
               </button>
             )}
         </div>
+        {paymentId === st.id && paymentForm(st, account)}
         {returnId === st.id && (
           <form
             className="flex flex-wrap gap-2 rounded-lg border bg-white p-3"
@@ -504,7 +488,7 @@ export function ExpensesCenter({
                   </p>
                   <p className="mt-1 text-slate-500">
                     {p.paymentDate.slice(0, 10)} ·{" "}
-                    {{ CHEQUE: "شيك", TRANSFER: "تحويل", CASH: "نقدي" }[
+                    {{ CHEQUE: "شيك", TRANSFER: "تحويل", CASH: "نقدي", ATTACHMENT: "إثبات مرفق" }[
                       p.method
                     ] ?? p.method}{" "}
                     · {p.reference}
@@ -522,12 +506,6 @@ export function ExpensesCenter({
       </div>
     );
   }
-  const paymentStatement = accounts.flatMap(a => a.statements).find(s => s.id === paymentId);
-  if (paymentStatement) return <div className="space-y-4">
-    {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-    {notice && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
-    {paymentForm(paymentStatement)}
-  </div>;
   return (
     <div className="space-y-5">
       {!newAccount && (
