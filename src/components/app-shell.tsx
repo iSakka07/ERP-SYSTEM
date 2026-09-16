@@ -12,7 +12,7 @@ const navItems = [
   { label: "الإدارة والمشروعات", icon: Building2, href: "/management", permission: "masterdata.view" },
   { label: "الوارد", icon: BanknoteArrowUp, href: "/incoming", permission: "incoming.view" },
   { label: "مستخلصات المقاولين", icon: FileSpreadsheet, href: "/expenses", permission: "expenses.view" },
-  { label: "المشتريات", icon: ShoppingCart, href: "/#modules", permission: "purchases.view" },
+  { label: "المشتريات", icon: ShoppingCart, href: "/purchases", permission: "purchases.view" },
   { label: "النثريات", icon: ReceiptText, href: "/#modules", permission: "prose.view" },
   { label: "المرتبات", icon: UsersRound, href: "/#modules", permission: "salaries.view" },
   { label: "الخزنة", icon: Vault, href: "/#modules", permission: "treasury.view" },

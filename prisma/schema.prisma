@@ -72,6 +72,7 @@ model Company {
   sectors             Sector[]
   projects            Project[]
   subcontractAccounts SubcontractAccount[]
+  purchaseInvoices    PurchaseInvoice[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -102,6 +103,7 @@ model Project {
   supervisors         ProjectEngineerAssignment[]
   incomingContracts   IncomingContract[]
   subcontractAccounts SubcontractAccount[]
+  purchaseInvoices    PurchaseInvoice[]
   createdAt           DateTime                    @default(now())
   updatedAt           DateTime                    @updatedAt
 }
@@ -346,6 +348,51 @@ model WorkWithdrawal {
 }
 
 model ExpenseAttachment {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  name       String
+  mime       String
+  size       Int
+  data       Bytes
+  actorId    String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model PurchaseInvoice {
+  id          String             @id @default(cuid())
+  number      String             @unique
+  projectId   String
+  project     Project            @relation(fields: [projectId], references: [id])
+  supplierId  String?
+  supplier    Company?           @relation(fields: [supplierId], references: [id])
+  invoiceDate DateTime
+  notes       String?
+  totalCents  Float
+  actorId     String
+  items       PurchaseItem[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([projectId])
+  @@index([supplierId])
+}
+
+model PurchaseItem {
+  id             String          @id @default(cuid())
+  invoiceId      String
+  invoice        PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  position       Int
+  name           String
+  unit           String
+  quantity       Float
+  unitPriceCents Float
+  totalCents     Float
+}
+
+model PurchaseAttachment {
   id         String   @id @default(cuid())
   entityType String
   entityId   String
