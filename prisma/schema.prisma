@@ -25,6 +25,8 @@ model User {
   roleId       String?
   role         Role?    @relation(fields: [roleId], references: [id])
   pettyCashTransactions PettyCashTransaction[]
+  approvedPayrolls PayrollRun[] @relation("PayrollApprovedBy")
+  paidPayrolls PayrollRun[] @relation("PayrollPaidBy")
 }
 
 model Role {
@@ -207,6 +209,10 @@ model Employee {
   updatedAt    DateTime                    @updatedAt
   pettyCashAccounts PettyCashAccount[]
   salaryAllocations EmployeeSalaryAllocation[]
+  bonuses EmployeeBonus[]
+  deductions EmployeeDeduction[]
+  advances EmployeeAdvance[]
+  payrollLines PayrollLine[]
 }
 
 model EmployeeSalaryAllocation {
@@ -221,6 +227,109 @@ model EmployeeSalaryAllocation {
 
   @@index([employeeId, startDate])
   @@index([projectId, startDate])
+}
+
+model EmployeeBonus {
+  id String @id @default(cuid())
+  employeeId String
+  month String
+  name String
+  amountCents Float
+  reason String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([employeeId, month])
+}
+
+model EmployeeDeduction {
+  id String @id @default(cuid())
+  employeeId String
+  month String
+  name String
+  amountCents Float
+  reason String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([employeeId, month])
+}
+
+model EmployeeAdvance {
+  id String @id @default(cuid())
+  employeeId String
+  amountCents Float
+  remainingCents Float
+  issuedAt DateTime
+  repaymentMode String @default("NEXT_PAYROLL")
+  installmentCents Float?
+  source String @default("EXECUTIVE_DIRECTOR")
+  status String @default("OPEN")
+  note String?
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  installments AdvanceInstallment[]
+  attachments SalaryAttachment[]
+  createdAt DateTime @default(now())
+  @@index([employeeId, status])
+}
+
+model AdvanceInstallment {
+  id String @id @default(cuid())
+  advanceId String
+  payrollLineId String?
+  dueMonth String
+  amountCents Float
+  appliedCents Float @default(0)
+  advance EmployeeAdvance @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  payrollLine PayrollLine? @relation(fields: [payrollLineId], references: [id], onDelete: SetNull)
+  @@unique([advanceId, dueMonth])
+}
+
+model PayrollRun {
+  id String @id @default(cuid())
+  month String @unique
+  status String @default("APPROVED")
+  totalCents Float @default(0)
+  paymentSource String @default("EXECUTIVE_DIRECTOR")
+  approvedAt DateTime @default(now())
+  paidAt DateTime?
+  approvedById String
+  paidById String?
+  approvedBy User @relation("PayrollApprovedBy", fields: [approvedById], references: [id])
+  paidBy User? @relation("PayrollPaidBy", fields: [paidById], references: [id])
+  lines PayrollLine[]
+  attachments SalaryAttachment[]
+  createdAt DateTime @default(now())
+}
+
+model PayrollLine {
+  id String @id @default(cuid())
+  payrollRunId String
+  employeeId String
+  basicCents Float
+  bonusCents Float @default(0)
+  deductionCents Float @default(0)
+  advanceCents Float @default(0)
+  netCents Float
+  allocationJson String
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id])
+  installments AdvanceInstallment[]
+  @@unique([payrollRunId, employeeId])
+}
+
+model SalaryAttachment {
+  id String @id @default(cuid())
+  payrollRunId String?
+  advanceId String?
+  name String
+  mime String
+  size Int
+  data Bytes
+  actorId String
+  payrollRun PayrollRun? @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  advance EmployeeAdvance? @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([payrollRunId])
+  @@index([advanceId])
 }
 
 model ProjectEngineerAssignment {
