@@ -1,61 +1,116 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
-import { validatePettyInput, cents } from "@/lib/petty-cash";
+import { assertBalances, balanceForAccount, cents, isProjectCost, validatePettyInput } from "@/lib/petty-cash";
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status });
-async function mainAccount() { return prisma.pettyCashAccount.findFirst({ where: { type: "MAIN", active: true } }); }
 export async function GET() {
-  const user = await incomingUser("pettycash.view"); if (!user) return json({ error: "غير مصرح" }, 403);
-  const [accounts, categories, transactions, counts, projects, employees] = await Promise.all([
-    prisma.pettyCashAccount.findMany({ where: { active: true }, include: { employee: true }, orderBy: { createdAt: "asc" } }),
-    prisma.pettyCashCategory.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, include: { sourceAccount: true, destinationAccount: true, project: true, category: true, recordedBy: true, attachments: { select: { id: true, name: true } } }, orderBy: { transactionDate: "desc" }, take: 200 }),
-    prisma.pettyCashCount.findMany({ orderBy: { countedAt: "desc" }, take: 30 }),
-    prisma.project.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.employee.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  if (!(await incomingUser("pettycash.view"))) return json({ error: "غير مصرح" }, 403);
+  const [accounts, categories, transactions, counts, projects, employees, audit] = await Promise.all([
+    prisma.pettyCashAccount.findMany({ include: { employee: { select: { name: true } } }, orderBy: { createdAt: "asc" } }),
+    prisma.pettyCashCategory.findMany({ orderBy: { name: "asc" } }),
+    prisma.pettyCashTransaction.findMany({ include: { project: { select: { name: true } }, category: { select: { name: true } }, recordedBy: { select: { name: true } }, attachments: { select: { id: true, name: true } } }, orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }] }),
+    prisma.pettyCashCount.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.employee.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.auditLog.findMany({ where: { action: { startsWith: "pettycash." } }, orderBy: { createdAt: "desc" }, take: 100 }),
   ]);
-  return json({ accounts, categories, transactions, counts, projects, employees, canManage: !!(await incomingUser("pettycash.manage")) });
+  return json({ accounts: accounts.map(a => ({ ...a, balanceCents: balanceForAccount(transactions, a.id) })), categories, transactions, counts, projects, employees, audit, canManage: !!(await incomingUser("pettycash.manage")) });
 }
 export async function POST(req: Request) {
-  const user = await incomingUser("pettycash.manage"); if (!user) return json({ error: "غير مصرح" }, 403);
+  const user = await incomingUser("pettycash.manage");
+  if (!user) return json({ error: "غير مصرح" }, 403);
+  const origin = req.headers.get("origin");
+  if (origin && new URL(origin).host !== req.headers.get("host")) return json({ error: "طلب غير مسموح" }, 403);
+  if (Number(req.headers.get("content-length") || 0) > 11 * 1024 * 1024) return json({ error: "حجم الطلب كبير" }, 413);
   try {
-    const form = await req.formData(); const action = String(form.get("action") ?? ""); const type = String(form.get("type") ?? "");
-    if (action === "cash-count") {
-      const accountId = String(form.get("accountId") ?? ""); const actualCents = cents(form.get("actual"));
-      const account = await prisma.pettyCashAccount.findUnique({ where: { id: accountId } }); if (!account) throw new Error("الخزنة غير موجودة.");
-      const movements = await prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { status: true, amountCents: true, sourceAccountId: true, destinationAccountId: true } });
-      const expectedCents = movements.reduce((s,t)=>s+(t.destinationAccountId===accountId?t.amountCents:0)-(t.sourceAccountId===accountId?t.amountCents:0),0);
-      const count = await prisma.pettyCashCount.create({ data: { accountId, expectedCents, actualCents, differenceCents: actualCents - expectedCents, countedAt: new Date(), notes: String(form.get("notes") ?? "") || null, actorId: user.id } });
-      await prisma.auditLog.create({ data: { actorId: user.id, action: "pettycash.cash_count", target: count.id, details: JSON.stringify({ expectedCents, actualCents }) } }); return json({ ok: true, id: count.id });
-    }
-    if (action === "category") {
-      const name = String(form.get("name") ?? "").trim(); if (!name) throw new Error("اسم التصنيف مطلوب."); const key = name.toLowerCase().replace(/[^a-z0-9]+/g,"_") || `category_${Date.now()}`;
-      const category = await prisma.pettyCashCategory.create({ data: { key: `${key}_${Date.now()}`, name, requiresAttachment: true } }); return json({ ok: true, id: category.id });
-    }
-    if (action === "reverse") {
-      const id = String(form.get("id") ?? ""); const reason = String(form.get("reason") ?? "").trim(); if (!reason) throw new Error("سبب العكس مطلوب."); const files = await readIncomingFiles(form, "files"); if (!files.length) throw new Error("مرفق إثبات العكس مطلوب.");
-      const original = await prisma.pettyCashTransaction.findUnique({ where: { id } }); if (!original || original.status !== "POSTED") throw new Error("الحركة غير قابلة للعكس.");
-      const reversed = await prisma.pettyCashTransaction.update({ where: { id }, data: { status: "REVERSED", reversedAt: new Date(), reversalReason: reason } }); await prisma.auditLog.create({ data: { actorId: user.id, action: "pettycash.reverse", target: id, details: JSON.stringify({ reason }) } }); return json({ ok: true, id: reversed.id });
-    }
-    const amount = cents(form.get("amount")); const projectId = String(form.get("projectId") ?? "") || null;
-    const categoryId = String(form.get("categoryId") ?? "") || null; const description = String(form.get("description") ?? "");
-    const documentNumber = String(form.get("documentNumber") ?? "") || null; const sourceAccountId = String(form.get("sourceAccountId") ?? "") || null; const employeeId = String(form.get("employeeId") ?? "") || null;
-    const destinationAccountId = String(form.get("destinationAccountId") ?? "") || null;
-    const category = categoryId ? await prisma.pettyCashCategory.findUnique({ where: { id: categoryId } }) : null;
-    const files = await readIncomingFiles(form, "files");
-    validatePettyInput({ type, amount, projectId, allocation: String(form.get("allocation") ?? ""), sourceAccountId, destinationAccountId: destinationAccountId || employeeId, description, documentNumber, hasAttachment: files.length > 0, requiresDocument: !!category?.requiresDocument, requiresAttachment: category?.requiresAttachment ?? true });
-    const main = await mainAccount(); if (!main) throw new Error("لم يتم إعداد الخزنة الرئيسية.");
-    let from = sourceAccountId, to = destinationAccountId;
-    if (type === "FUNDING" || type === "OPENING_BALANCE") { from = null; to = main.id; }
-    if (type === "DIRECT_EXPENSE") { from = main.id; to = null; }
-    if (type === "CUSTODY_RETURN") { to = main.id; }
-    if (type === "CUSTODY_ISSUE") { from = main.id; if (!to) { if (!employeeId) throw new Error("اختر الموظف."); const employee = await prisma.employee.findUnique({ where: { id: employeeId } }); const custody = await prisma.pettyCashAccount.create({ data: { name: `عهدة ${employee?.name ?? "موظف"} — ${new Date().toLocaleDateString("ar-EG")}`, type: "CUSTODY", employeeId } }); to = custody.id; } }
-    const existing = await prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { amountCents: true, sourceAccountId: true, destinationAccountId: true, status: true } });
-    if (from && from === main.id && ["DIRECT_EXPENSE", "CUSTODY_ISSUE"].includes(type) && existing.reduce((s, t) => s + (t.destinationAccountId === main.id ? t.amountCents : 0) - (t.sourceAccountId === main.id ? t.amountCents : 0), 0) < amount) throw new Error("لا يمكن الصرف أكبر من رصيد الخزنة.");
-    if (from && type === "CUSTODY_EXPENSE" && existing.reduce((s, t) => s + (t.destinationAccountId === from ? t.amountCents : 0) - (t.sourceAccountId === from ? t.amountCents : 0), 0) < amount) throw new Error("المصروف أكبر من رصيد العهدة.");
-    const tx = await prisma.pettyCashTransaction.create({ data: { number: `PC-${Date.now()}`, type, amountCents: amount, transactionDate: new Date(String(form.get("date") ?? new Date().toISOString())), sourceAccountId: from, destinationAccountId: to, projectId, categoryId, description, documentNumber, fundingSource: ["FUNDING", "OPENING_BALANCE"].includes(type) ? "EXECUTIVE_DIRECTOR" : null, recordedById: user.id, attachments: { create: files.map((f) => ({ ...f, actorId: user.id })) } } });
-    await prisma.auditLog.create({ data: { actorId: user.id, action: `pettycash.${type.toLowerCase()}`, target: tx.id, details: JSON.stringify({ amount, projectId }) } });
-    return json({ ok: true, id: tx.id });
-  } catch (e) { return json({ error: e instanceof Error ? e.message : "تعذر حفظ الحركة" }, 400); }
+    const form = await req.formData();
+    const str = (key: string) => String(form.get(key) ?? "").trim();
+    const action = str("action");
+    const files = await readIncomingFiles(form);
+    const date = () => { const raw = str("date"); if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(new Date(raw).getTime()) || new Date(raw).toISOString().slice(0,10) !== raw) throw new Error("التاريخ غير صحيح."); return new Date(raw); };
+    const result = await prisma.$transaction(async tx => {
+      // Acquire the SQLite write lock before reading balances (also serializes retries).
+      await tx.systemMetadata.upsert({ where: { key: "pettycash-write-lock" }, create: { key: "pettycash-write-lock", value: randomUUID() }, update: { value: randomUUID() } });
+      const audit = async (verb: string, target: string, details: unknown) => tx.auditLog.create({ data: { actorId: user.id, action: "pettycash." + verb, target, details: JSON.stringify(details) } });
+      if (action === "category") {
+        const name = str("name"); if (!name || name.length > 150) throw new Error("اسم التصنيف مطلوب وبحد أقصى 150 حرفًا.");
+        const data = { name, active: str("active") === "true", requiresDocument: str("requiresDocument") === "true", requiresAttachment: str("requiresAttachment") === "true" };
+        const id = str("id");
+        const category = id ? await tx.pettyCashCategory.update({ where: { id }, data }) : await tx.pettyCashCategory.create({ data: { ...data, key: randomUUID() } });
+        await audit("category", category.id, data); return { id: category.id };
+      }
+      const movements = await tx.pettyCashTransaction.findMany();
+      const accounts = await tx.pettyCashAccount.findMany();
+      const main = accounts.find(a => a.type === "MAIN" && a.active);
+      if (!main) throw new Error("لم يتم إعداد الصندوق.");
+      if (action === "cash-count") {
+        const accountId = str("accountId"); if (!accounts.some(a => a.id === accountId && a.active)) throw new Error("اختر صندوقًا أو عهدة صحيحة.");
+        const expectedCents = balanceForAccount(movements, accountId), actualCents = cents(str("actual"), true);
+        const count = await tx.pettyCashCount.create({ data: { accountId, expectedCents, actualCents, differenceCents: actualCents - expectedCents, countedAt: date(), notes: str("notes"), actorId: user.id } });
+        await audit("cash_count", count.id, { expectedCents, actualCents }); return { id: count.id };
+      }
+      if (action === "reverse") {
+        const id = str("id"), reason = str("reason");
+        if (!reason || !files.length) throw new Error("سبب العكس ومرفقه مطلوبان.");
+        const original = movements.find(t => t.id === id && t.status === "POSTED"); if (!original) throw new Error("الحركة معكوسة بالفعل أو غير موجودة.");
+        assertBalances(movements.filter(t => t.id !== id));
+        await tx.pettyCashTransaction.update({ where: { id }, data: { status: "REVERSED", reversedAt: new Date(), reversalReason: reason, attachments: { create: files.map(f => ({ ...f, name: "إثبات العكس - " + f.name, actorId: user.id })) } } });
+        await audit("reverse", id, { reason, original }); return { id };
+      }
+      let type = str("type"), amountCents = 0, sourceAccountId: string | null = null, destinationAccountId: string | null = null;
+      let projectId: string | null = null, categoryId: string | null = null, documentNumber = str("documentNumber") || null;
+      const description = str("description"); if (!description || description.length > 2000) throw new Error("البيان مطلوب وبحد أقصى 2000 حرف.");
+      if (action === "adjust") {
+        if (!files.length) throw new Error("إثبات التسوية مطلوب.");
+        const count = await tx.pettyCashCount.findUnique({ where: { id: str("countId") } });
+        if (!count || count.differenceCents === 0) throw new Error("اختر جردًا له فرق.");
+        documentNumber = "COUNT:" + count.id;
+        if (movements.some(t => t.documentNumber === documentNumber && t.status === "POSTED")) throw new Error("تمت تسوية هذا الجرد.");
+        if (balanceForAccount(movements, count.accountId) !== count.expectedCents) throw new Error("الرصيد تغير؛ سجل جردًا جديدًا قبل التسوية.");
+        type = count.differenceCents > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT";
+        amountCents = Math.abs(count.differenceCents);
+        if (count.differenceCents > 0) destinationAccountId = count.accountId; else sourceAccountId = count.accountId;
+      } else {
+        if (action && action !== "transaction") throw new Error("إجراء غير معروف.");
+        const expense = isProjectCost(type);
+        const category = expense ? await tx.pettyCashCategory.findUnique({ where: { id: str("categoryId") } }) : null;
+        if (expense && !category?.active) throw new Error("اختر تصنيفًا نشطًا.");
+        if (expense) {
+          const allocation = str("allocation");
+          if (!["PROJECT", "GENERAL"].includes(allocation)) throw new Error("حدد جهة التحميل.");
+          if (allocation === "PROJECT") {
+            const project = await tx.project.findFirst({ where: { id: str("projectId"), active: true } });
+            if (!project) throw new Error("اختر مشروعًا صحيحًا."); projectId = project.id;
+          } else if (str("projectId")) throw new Error("المصروف العام لا يرتبط بمشروع.");
+          categoryId = category!.id;
+        } else if (str("projectId") || str("categoryId")) throw new Error("التحميل والتصنيف للمصروف الفعلي فقط.");
+        amountCents = validatePettyInput({ type, amount: str("amount"), projectId, allocation: str("allocation"), description, documentNumber, hasAttachment: files.length > 0, requiresAttachment: category?.requiresAttachment ?? true, requiresDocument: category?.requiresDocument });
+        if (type === "OPENING_BALANCE" && movements.some(t => t.status === "POSTED" && (t.sourceAccountId === main.id || t.destinationAccountId === main.id))) throw new Error("الرصيد الافتتاحي يسبق جميع حركات الصندوق.");
+        if (type === "FUNDING" || type === "OPENING_BALANCE") destinationAccountId = main.id;
+        if (type === "DIRECT_EXPENSE" || type === "CUSTODY_ISSUE") sourceAccountId = main.id;
+        if (type === "CUSTODY_EXPENSE" || type === "CUSTODY_RETURN") {
+          const custody = accounts.find(a => a.id === str("sourceAccountId") && a.type === "CUSTODY" && a.active);
+          if (!custody) throw new Error("اختر عهدة صحيحة."); sourceAccountId = custody.id;
+          if (type === "CUSTODY_RETURN") destinationAccountId = main.id;
+        }
+        if (type === "CUSTODY_ISSUE") {
+          const employee = await tx.employee.findFirst({ where: { id: str("employeeId"), active: true } });
+          if (!employee) throw new Error("اختر موظفًا نشطًا.");
+          const custody = await tx.pettyCashAccount.create({ data: { name: str("custodyName") || "عهدة " + employee.name + " — " + str("date"), type: "CUSTODY", employeeId: employee.id } });
+          destinationAccountId = custody.id;
+        }
+      }
+      const transactionDate = date();
+      const id = randomUUID();
+      const movement = { id, number: "PC-" + id, type, amountCents, transactionDate, sourceAccountId, destinationAccountId, projectId, categoryId, description, documentNumber, fundingSource: type === "FUNDING" ? "EXECUTIVE_DIRECTOR" : null, recordedById: user.id, status: "POSTED" };
+      assertBalances([...movements, movement]);
+      await tx.pettyCashTransaction.create({ data: { ...movement, attachments: { create: files.map(f => ({ ...f, actorId: user.id })) } } });
+      await audit(action === "adjust" ? "adjust" : type.toLowerCase(), id, movement);
+      return { id };
+    }, { maxWait: 10000, timeout: 20000 });
+    return json({ ok: true, ...result });
+  } catch (e) { return json({ error: e instanceof Error ? e.message : "تعذر حفظ الحركة." }, 400); }
 }
+
