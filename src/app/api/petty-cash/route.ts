@@ -20,7 +20,24 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await incomingUser("pettycash.manage"); if (!user) return json({ error: "غير مصرح" }, 403);
   try {
-    const form = await req.formData(); const type = String(form.get("type") ?? "");
+    const form = await req.formData(); const action = String(form.get("action") ?? ""); const type = String(form.get("type") ?? "");
+    if (action === "cash-count") {
+      const accountId = String(form.get("accountId") ?? ""); const actualCents = cents(form.get("actual"));
+      const account = await prisma.pettyCashAccount.findUnique({ where: { id: accountId } }); if (!account) throw new Error("الخزنة غير موجودة.");
+      const movements = await prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { status: true, amountCents: true, sourceAccountId: true, destinationAccountId: true } });
+      const expectedCents = movements.reduce((s,t)=>s+(t.destinationAccountId===accountId?t.amountCents:0)-(t.sourceAccountId===accountId?t.amountCents:0),0);
+      const count = await prisma.pettyCashCount.create({ data: { accountId, expectedCents, actualCents, differenceCents: actualCents - expectedCents, countedAt: new Date(), notes: String(form.get("notes") ?? "") || null, actorId: user.id } });
+      await prisma.auditLog.create({ data: { actorId: user.id, action: "pettycash.cash_count", target: count.id, details: JSON.stringify({ expectedCents, actualCents }) } }); return json({ ok: true, id: count.id });
+    }
+    if (action === "category") {
+      const name = String(form.get("name") ?? "").trim(); if (!name) throw new Error("اسم التصنيف مطلوب."); const key = name.toLowerCase().replace(/[^a-z0-9]+/g,"_") || `category_${Date.now()}`;
+      const category = await prisma.pettyCashCategory.create({ data: { key: `${key}_${Date.now()}`, name, requiresAttachment: true } }); return json({ ok: true, id: category.id });
+    }
+    if (action === "reverse") {
+      const id = String(form.get("id") ?? ""); const reason = String(form.get("reason") ?? "").trim(); if (!reason) throw new Error("سبب العكس مطلوب."); const files = await readIncomingFiles(form, "files"); if (!files.length) throw new Error("مرفق إثبات العكس مطلوب.");
+      const original = await prisma.pettyCashTransaction.findUnique({ where: { id } }); if (!original || original.status !== "POSTED") throw new Error("الحركة غير قابلة للعكس.");
+      const reversed = await prisma.pettyCashTransaction.update({ where: { id }, data: { status: "REVERSED", reversedAt: new Date(), reversalReason: reason } }); await prisma.auditLog.create({ data: { actorId: user.id, action: "pettycash.reverse", target: id, details: JSON.stringify({ reason }) } }); return json({ ok: true, id: reversed.id });
+    }
     const amount = cents(form.get("amount")); const projectId = String(form.get("projectId") ?? "") || null;
     const categoryId = String(form.get("categoryId") ?? "") || null; const description = String(form.get("description") ?? "");
     const documentNumber = String(form.get("documentNumber") ?? "") || null; const sourceAccountId = String(form.get("sourceAccountId") ?? "") || null; const employeeId = String(form.get("employeeId") ?? "") || null;
