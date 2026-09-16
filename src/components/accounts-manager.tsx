@@ -12,7 +12,7 @@ type User = { id: string; name: string; email: string; active: boolean; roleId: 
 
 const moduleNames: Record<string, string> = {
   dashboard: "لوحة الإدارة", incoming: "الوارد", expenses: "مستخلصات المقاولين", purchases: "المشتريات",
-  prose: "النثريات", salaries: "المرتبات", treasury: "الخزنة", accounts: "الحسابات والصلاحيات",
+  pettycash: "Petty Cash", salaries: "المرتبات", treasury: "الخزنة", accounts: "الحسابات والصلاحيات",
 };
 
 export function AccountsManager({ users, roles, permissions, currentUserId }: { users: User[]; roles: Role[]; permissions: Permission[]; currentUserId: string }) {

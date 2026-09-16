@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { BanknoteArrowUp, Building2, FileSpreadsheet, LayoutDashboard, LockKeyhole, Menu, Paperclip, ReceiptText, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
+import { BanknoteArrowUp, Building2, FileSpreadsheet, LayoutDashboard, LockKeyhole, Menu, Paperclip, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { can } from "@/lib/permissions";
 
@@ -13,9 +13,8 @@ const navItems = [
   { label: "الوارد", icon: BanknoteArrowUp, href: "/incoming", permission: "incoming.view" },
   { label: "مستخلصات المقاولين", icon: FileSpreadsheet, href: "/expenses", permission: "expenses.view" },
   { label: "المشتريات", icon: ShoppingCart, href: "/purchases", permission: "purchases.view" },
-  { label: "النثريات", icon: ReceiptText, href: "/#modules", permission: "prose.view" },
   { label: "المرتبات", icon: UsersRound, href: "/#modules", permission: "salaries.view" },
-  { label: "الخزنة التشغيلية", icon: Vault, href: "/petty-cash", permission: "pettycash.view" },
+  { label: "Petty Cash", icon: Vault, href: "/petty-cash", permission: "pettycash.view" },
   { label: "المرفقات", icon: Paperclip, href: "/#modules", permission: "dashboard.view" },
   { label: "إدارة الحسابات", icon: Settings2, href: "/admin/accounts", permission: "accounts.manage" },
 ];

@@ -12,7 +12,6 @@ const permissions = [
   ["expenses.pay", "استلام الحسابات وتسجيل دفعات المقاولين", "expenses"],
   ["expenses.return", "رد مستخلص للمراجعة", "expenses"],
   ["purchases.view", "عرض المشتريات", "purchases"], ["purchases.manage", "إدارة المشتريات", "purchases"],
-  ["prose.view", "عرض النثريات", "prose"], ["prose.manage", "إدارة النثريات", "prose"],
   ["salaries.view", "عرض المرتبات", "salaries"], ["salaries.manage", "إدارة المرتبات", "salaries"],
   ["treasury.view", "عرض الخزنة", "treasury"], ["treasury.manage", "إدارة الخزنة", "treasury"],
   ["pettycash.view", "عرض Petty Cash", "pettycash"], ["pettycash.manage", "إدارة Petty Cash", "pettycash"],
