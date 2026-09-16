@@ -5,6 +5,7 @@ import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { financials, money } from "@/lib/incoming";
 import { expenseSummary } from "@/lib/expenses";
+import { isProjectCost } from "@/lib/petty-cash";
 
 const modules = [
   { name: "الوارد", code: "Incoming", href: "/incoming", permission: "incoming.view", live: true, description: "عقود الجهة المالكة والمستخلصات والتحصيلات الفعلية.", icon: BanknoteArrowUp, color: "bg-blue-50 text-blue-700 ring-blue-100" },
@@ -12,17 +13,18 @@ const modules = [
   { name: "المشتريات", code: "Purchases", href: "/purchases", permission: "purchases.view", live: true, description: "بنود وفواتير مشتريات المشروع المسجلة كتكلفة.", icon: ShoppingCart, color: "bg-amber-50 text-amber-700 ring-amber-100" },
   { name: "النثريات", code: "Prose", href: "/#modules", permission: "prose.view", live: false, description: "مصروفات المشروعات والمصروفات العامة بمرفقاتها.", icon: ReceiptText, color: "bg-rose-50 text-rose-700 ring-rose-100" },
   { name: "المرتبات", code: "Salaries", href: "/#modules", permission: "salaries.view", live: false, description: "مرتبات ومكافآت وخصومات وسلف وتسكين الموظفين.", icon: UsersRound, color: "bg-violet-50 text-violet-700 ring-violet-100" },
-  { name: "الخزنة", code: "Treasur", href: "/#modules", permission: "treasury.view", live: false, description: "حركة الخزائن والعهد والإضافات والمصروفات الفعلية.", icon: Vault, color: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
+  { name: "الخزنة التشغيلية", code: "PettyCash", href: "/petty-cash", permission: "pettycash.view", live: true, description: "التمويل والمصروفات والعهد وكشف حركة الرصيد.", icon: Vault, color: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
 ];
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   const session = await auth();
   const requestedProject = (await searchParams).project ?? "";
-  const [projects, contracts, accounts, invoices] = await Promise.all([
+  const [projects, contracts, accounts, invoices, petty] = await Promise.all([
     prisma.project.findMany({ where: { active: true }, include: { company: true, sector: true }, orderBy: { name: "asc" } }),
     prisma.incomingContract.findMany({ include: { memos: true, statements: { orderBy: { sequence: "asc" }, include: { materials: true } } } }),
     prisma.subcontractAccount.findMany({ include: { statements: { include: { payments: true } } } }),
     prisma.purchaseInvoice.findMany(),
+    prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { type: true, amountCents: true, projectId: true } }),
   ]);
   const projectId = projects.some((project) => project.id === requestedProject) ? requestedProject : "";
   const rows = projects.filter((project) => !projectId || project.id === projectId).map((project) => {
@@ -31,13 +33,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ p
     const subcontract = accounts.filter((account) => account.projectId === project.id).reduce((sum, account) => sum + expenseSummary(account.statements).netCents, 0);
     const subcontractPaid = accounts.filter((account) => account.projectId === project.id).reduce((sum, account) => sum + expenseSummary(account.statements).paidCents, 0);
     const purchases = invoices.filter((invoice) => invoice.projectId === project.id).reduce((sum, invoice) => sum + invoice.totalCents, 0);
-    return { project, incoming, contractValue, subcontract, subcontractPaid, purchases, cost: subcontract + purchases };
+    const pettyCost = petty.filter((t) => t.projectId === project.id && isProjectCost(t.type)).reduce((sum, t) => sum + t.amountCents, 0);
+    return { project, incoming, contractValue, subcontract, subcontractPaid, purchases, pettyCost, cost: subcontract + purchases + pettyCost, pettyPaid: pettyCost };
   });
   const totals = rows.reduce((sum, row) => ({
     contracts: sum.contracts + row.contractValue,
     incoming: sum.incoming + row.incoming,
     cost: sum.cost + row.cost,
-    paid: sum.paid + row.subcontractPaid,
+    paid: sum.paid + row.subcontractPaid + row.pettyPaid,
   }), { contracts: 0, incoming: 0, cost: 0, paid: 0 });
   const metrics = [
     { label: "قيمة العقود الواردة", value: money(totals.contracts), icon: Building2, hint: "القيمة الحالية للعقود بعد المذكرات" },

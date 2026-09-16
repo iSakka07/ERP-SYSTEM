@@ -15,6 +15,7 @@ const permissions = [
   ["prose.view", "عرض النثريات", "prose"], ["prose.manage", "إدارة النثريات", "prose"],
   ["salaries.view", "عرض المرتبات", "salaries"], ["salaries.manage", "إدارة المرتبات", "salaries"],
   ["treasury.view", "عرض الخزنة", "treasury"], ["treasury.manage", "إدارة الخزنة", "treasury"],
+  ["pettycash.view", "عرض Petty Cash", "pettycash"], ["pettycash.manage", "إدارة Petty Cash", "pettycash"],
   ["accounts.manage", "إدارة الحسابات والصلاحيات", "accounts"],
   ["masterdata.view", "عرض البيانات الأساسية", "masterdata"], ["masterdata.manage", "إدارة البيانات الأساسية", "masterdata"],
 ];
@@ -55,6 +56,9 @@ try {
   const engineer = await prisma.employee.upsert({ where: { employeeCode: "ENG-001" }, update: { active: true }, create: { employeeCode: "ENG-001", name: "أحمد محمد", jobTitle: "مهندس موقع" } });
   const assignment = await prisma.projectEngineerAssignment.findFirst({ where: { projectId: project.id, employeeId: engineer.id, active: true } });
   if (!assignment) await prisma.projectEngineerAssignment.create({ data: { projectId: project.id, employeeId: engineer.id } });
+  await prisma.pettyCashAccount.upsert({ where: { id: "petty-main" }, update: { name: "الخزنة الرئيسية", active: true, type: "MAIN" }, create: { id: "petty-main", name: "الخزنة الرئيسية", type: "MAIN" } });
+  const categories = [["workers_daily", "يوميات عمال"], ["project_admin", "إداريات مشروع"], ["transport", "انتقالات"], ["diesel", "سولار"], ["maintenance", "صيانة"], ["hospitality", "ضيافة"], ["small_purchases", "مشتريات صغيرة"], ["tools", "أدوات ومهمات"], ["petty", "نثريات"], ["general", "مصروفات عمومية"], ["other", "أخرى"]];
+  for (const [key, name] of categories) await prisma.pettyCashCategory.upsert({ where: { key }, update: { name, active: true }, create: { key, name, requiresAttachment: true } });
   console.log("Phase 3 roles and master-data demo records are ready.");
 } finally {
   await prisma.$disconnect();

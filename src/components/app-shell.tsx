@@ -15,7 +15,7 @@ const navItems = [
   { label: "المشتريات", icon: ShoppingCart, href: "/purchases", permission: "purchases.view" },
   { label: "النثريات", icon: ReceiptText, href: "/#modules", permission: "prose.view" },
   { label: "المرتبات", icon: UsersRound, href: "/#modules", permission: "salaries.view" },
-  { label: "الخزنة", icon: Vault, href: "/#modules", permission: "treasury.view" },
+  { label: "الخزنة التشغيلية", icon: Vault, href: "/petty-cash", permission: "pettycash.view" },
   { label: "المرفقات", icon: Paperclip, href: "/#modules", permission: "dashboard.view" },
   { label: "إدارة الحسابات", icon: Settings2, href: "/admin/accounts", permission: "accounts.manage" },
 ];

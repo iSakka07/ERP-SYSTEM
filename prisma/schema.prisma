@@ -24,6 +24,7 @@ model User {
   updatedAt    DateTime @updatedAt
   roleId       String?
   role         Role?    @relation(fields: [roleId], references: [id])
+  pettyCashTransactions PettyCashTransaction[]
 }
 
 model Role {
@@ -104,6 +105,7 @@ model Project {
   incomingContracts   IncomingContract[]
   subcontractAccounts SubcontractAccount[]
   purchaseInvoices    PurchaseInvoice[]
+  pettyCashTransactions PettyCashTransaction[]
   createdAt           DateTime                    @default(now())
   updatedAt           DateTime                    @updatedAt
 }
@@ -201,6 +203,7 @@ model Employee {
   supervisors  ProjectEngineerAssignment[]
   createdAt    DateTime                    @default(now())
   updatedAt    DateTime                    @updatedAt
+  pettyCashAccounts PettyCashAccount[]
 }
 
 model ProjectEngineerAssignment {
@@ -404,4 +407,85 @@ model PurchaseAttachment {
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
+}
+
+model PettyCashCategory {
+  id               String                 @id @default(cuid())
+  key              String                 @unique
+  name             String
+  requiresDocument Boolean                @default(false)
+  requiresAttachment Boolean              @default(true)
+  active           Boolean                @default(true)
+  transactions     PettyCashTransaction[]
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+}
+
+model PettyCashAccount {
+  id              String                 @id @default(cuid())
+  name            String
+  type            String                 @default("MAIN")
+  employeeId      String?
+  employee        Employee?              @relation(fields: [employeeId], references: [id])
+  active          Boolean                @default(true)
+  fromTransactions PettyCashTransaction[] @relation("PettyCashFrom")
+  toTransactions   PettyCashTransaction[] @relation("PettyCashTo")
+  counts          PettyCashCount[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  @@index([type, employeeId])
+}
+
+model PettyCashTransaction {
+  id                 String               @id @default(cuid())
+  number             String               @unique
+  type               String
+  status             String               @default("POSTED")
+  amountCents        Float
+  transactionDate    DateTime
+  sourceAccountId    String?
+  sourceAccount      PettyCashAccount?    @relation("PettyCashFrom", fields: [sourceAccountId], references: [id])
+  destinationAccountId String?
+  destinationAccount PettyCashAccount?    @relation("PettyCashTo", fields: [destinationAccountId], references: [id])
+  projectId          String?
+  project            Project?             @relation(fields: [projectId], references: [id])
+  categoryId         String?
+  category           PettyCashCategory?   @relation(fields: [categoryId], references: [id])
+  description        String
+  documentNumber     String?
+  fundingSource      String?
+  recordedById       String
+  recordedBy         User                 @relation(fields: [recordedById], references: [id])
+  reversedAt         DateTime?
+  reversalReason     String?
+  attachments        PettyCashAttachment[]
+  createdAt          DateTime             @default(now())
+  @@index([transactionDate, type])
+  @@index([projectId])
+}
+
+model PettyCashAttachment {
+  id            String               @id @default(cuid())
+  transactionId String
+  transaction   PettyCashTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  name          String
+  mime          String
+  size          Int
+  data          Bytes
+  actorId       String
+  createdAt     DateTime             @default(now())
+}
+
+model PettyCashCount {
+  id             String            @id @default(cuid())
+  accountId      String
+  account        PettyCashAccount @relation(fields: [accountId], references: [id])
+  expectedCents  Float
+  actualCents    Float
+  differenceCents Float
+  countedAt      DateTime
+  notes          String?
+  actorId        String
+  createdAt      DateTime          @default(now())
+  @@index([accountId, countedAt])
 }
