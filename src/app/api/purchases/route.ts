@@ -19,7 +19,7 @@ const schema = z.object({
     const date = new Date(value);
     return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
   }),
-  number: z.string().trim().optional(),
+  name: z.string().trim().min(1).max(160),
   notes: z.string().trim().max(2000).optional(),
   items: z.array(itemSchema).min(1).max(200),
 });
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       });
       if (!supplier) throw new Error("اختر موردًا صحيحًا.");
     }
-    const number = data.number?.trim() || nextNumber();
+    const number = nextNumber();
     const exists = await prisma.purchaseInvoice.findUnique({ where: { number } });
     if (exists) throw new Error("رقم فاتورة المشتريات مستخدم بالفعل.");
     const items = data.items.map((item, position) => {
@@ -90,6 +90,7 @@ export async function POST(request: Request) {
       const created = await tx.purchaseInvoice.create({
         data: {
           number,
+          name: data.name,
           projectId: data.projectId,
           supplierId: data.supplierId || null,
           invoiceDate: new Date(data.invoiceDate),
@@ -115,6 +116,7 @@ export async function POST(request: Request) {
           details: JSON.stringify({
             input: {
               number,
+              name: data.name,
               projectId: data.projectId,
               supplierId: data.supplierId || null,
               totalCents,
