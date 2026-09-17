@@ -66,6 +66,6 @@ export function financials(c: {
     remaining: value - latestGross,
     pct: value ? (gross / value) * 100 : 0,
     pending: Math.max(0, latestGross - gross),
-    pendingNet: Math.max(0, latestGross - materials - (gross - effectiveMaterials)),
+    pendingNet: Math.max(0, latestUnpaid?.grossCents ?? 0),
   };
 }
