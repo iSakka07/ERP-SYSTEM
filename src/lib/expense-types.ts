@@ -35,6 +35,7 @@ export type ExpenseStatement = {
 };
 export type ExpenseAccount = {
   id: string;
+  active: boolean;
   name: string;
   companyId: string;
   projectId: string;

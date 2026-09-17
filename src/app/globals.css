@@ -66,6 +66,13 @@ button, input, select, textarea { font: inherit; }
 
 /* Approved Technical Hub document/control pattern; shared by every module. */
 .erp-document-layout { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:24px; align-items:stretch; }
+.erp-document-layout-bottom { grid-template-columns:minmax(0,1fr); }
+.erp-document-layout-bottom .erp-movement-card { min-height:0; }
+.expense-sheet-row { display:grid; gap:10px; padding:12px; font-size:12px; }
+@media(min-width:1200px) {
+  .expense-sheet-row { grid-template-columns:36px minmax(170px,1.6fr) 68px 76px 80px 88px 98px 98px minmax(112px,1fr) 36px; align-items:start; }
+  .expense-sheet-row-correction { grid-template-columns:36px minmax(160px,1.45fr) 64px 72px 76px 92px 84px 92px 92px minmax(105px,1fr) 36px; }
+}
 .erp-document-data { min-width:0; }
 .erp-document-data > form { background:white; border:1px solid #d9e1ea; border-radius:10px; padding:24px; }
 .erp-movement-card { background:white; border:1px solid #d9e1ea; border-radius:10px; padding:24px; min-height:360px; }

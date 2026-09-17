@@ -108,3 +108,39 @@ No unresolved P0/P1/P2 in this stage. The next page, Incoming, remains intention
 - Browser visual, responsive and accessibility-tree review — passed for the Incoming stage.
 
 No unresolved P0/P1/P2 in the Incoming stage. The next page, Subcontractor Statements, is intentionally not started until this page is reviewed and approved by the user.
+
+## UX/UI page review — Subcontractor Statements
+
+### Scope and evidence
+
+- Source visual truth: `qa-artifacts/incoming-mobile.png` for the approved ERP mobile language, `qa-artifacts/expense-sheet-desktop.png` for the established sheet content, and the Product Bible Phase 5 UX update for the page-specific target.
+- Rendered implementation: in-app browser captures of `/expenses`, `/expenses/new`, the expanded statement cards, the work-measurement sheet and the partial-payment box were emitted during this task. The in-app browser does not expose an additional local screenshot path.
+- Final responsive measurement: 319×920 CSS px, DPR 1, document scroll width 304px. No page-level horizontal overflow. The approved mobile source is 375×812 px; comparison is for the established component language and hierarchy, not a pixel clone of a different workflow.
+
+### Findings and iterations
+
+1. The old summary cards were plain, inconsistent and repeated filter helper text. Replaced them with the shared icon/border KPI cards and exact two-decimal `ج.م` values.
+2. Long links and workflow buttons made each account row tall and difficult to scan. Moved viewing, new/draft statements, withdrawal/reassignment, attachments and safe removal into one accessible icon-actions column.
+3. Statement status did not distinguish accounting receipt from actual payment. Statement cards and detail headers now derive calm green `تم الصرف` and amber `صرف جزئي` states from cumulative payments.
+4. Accounting approval could be recorded without its first payment. The accounting transition and first payment now execute atomically with a mandatory proof; excess payment remains rejected.
+5. Adding an account competed with the overview. `/expenses/new` is now a separate focused page that returns directly into Jari 1 after saving.
+6. The sheet lost usable width to the movement tracker and required repeated pointer use. It now occupies the full content width, puts movements below it and adds a new row with Enter from the last line while retaining the explicit add button.
+7. Main and statement tables produced horizontal drag on narrow screens. Both use the shared labelled-card responsive table behavior; the final 319px review had no page-level overflow.
+8. Legacy cheque/transfer/reference text conflicted with the approved proof-only payment flow. It is hidden from the payment UI; new subcontractor payments are explicitly documented as executive-director payments outside Petty Cash.
+
+### Required fidelity surfaces
+
+- Typography: Cairo family, weight hierarchy and Arabic wrapping remain consistent with the approved ERP surfaces.
+- Spacing/layout: card rhythm, 10px radii, compact table rows and mobile labelled records match the shared system; statement cards wrap instead of forcing page scrolling.
+- Colors/tokens: navy shell, blue money values and blue/emerald/amber/rose semantic tokens reuse the shared components.
+- Image quality/assets: no raster imagery is required in this operational screen; all interface icons use the existing Lucide system with accessible labels.
+- Copy/content: technical attachment filenames are removed from the list, action labels live in tooltips/accessibility text, and payment language matches the executive-director source rule.
+
+### Verification
+
+- Browser interactions passed: separate account creation route, statement expansion, statement detail, partial-payment box, attachment icons and Enter-to-add-row.
+- Browser console reported no errors or warnings.
+- `pnpm lint`, `pnpm build`, `pnpm test:expenses`, `pnpm test:expenses-api`, `pnpm test:expense-corrections-api` and `pnpm prisma validate` passed.
+- API coverage includes atomic accounting payment, partial/full status inputs, payment ceilings, evidence, RBAC, safe deletion/audit, historical price versions, correction debt and withdrawals.
+
+No unresolved P0/P1/P2 in this stage. The deep spreadsheet redesign remains the explicitly deferred dedicated session; the next page-review stage is Purchases.

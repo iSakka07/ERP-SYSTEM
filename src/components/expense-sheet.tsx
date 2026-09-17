@@ -3,7 +3,7 @@ import { ERPSelect } from "@/components/erp-select";
 import { CurrencyInput } from "@/components/currency-input";
 import { DocumentLayout } from "@/components/document-layout";
 import { UploadBox } from "@/components/upload-box";
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import type { DeductionInput, ExpenseItemInput } from "@/lib/expenses";
 import type { ExpenseAccount, ExpenseStatement } from "@/lib/expense-types";
 import {
@@ -256,6 +256,29 @@ export function ExpenseSheet({
   function updateRow(index: number, patch: Partial<ExpenseItemInput>) {
     setRows(rows.map((r, n) => (n === index ? { ...r, ...patch } : r)));
   }
+  function addBlankRow() {
+    setRows((current) =>
+      current.length >= 200
+        ? current
+        : [...current, { ...blankRow(), name: "", unit: "م2" }],
+    );
+  }
+  function handleSheetKeyDown(event: KeyboardEvent<HTMLDivElement>, rowIndex: number) {
+    const target = event.target as HTMLElement;
+    if (target.tagName === "TEXTAREA") return;
+    const isLast = rowIndex === rows.length - 1;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (isLast) addBlankRow();
+    } else if (
+      event.key === "Tab" &&
+      !event.shiftKey &&
+      isLast &&
+      target.getAttribute("aria-label") === `نسبة الاستحقاق ${rowIndex + 1}`
+    ) {
+      addBlankRow();
+    }
+  }
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -281,7 +304,7 @@ export function ExpenseSheet({
           الحفظ كمسودة — لا تأثير مالي قبل اعتماد المدير التنفيذي
         </span>
       </div>
-      <DocumentLayout movements={statement?.approvals.map(a => ({ id:a.id, label:`${stageName(a.toStage)} · ${a.actorName}`, date:a.createdAt, note:a.reason || undefined }))}>
+      <DocumentLayout movementPosition="bottom" movements={statement?.approvals.map(a => ({ id:a.id, label:`${stageName(a.toStage)} · ${a.actorName}`, date:a.createdAt, note:a.reason || undefined }))}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -394,7 +417,8 @@ export function ExpenseSheet({
               return (
                 <div
                   key={r.itemKey}
-                  className="grid gap-3 p-3 text-xs xl:grid-cols-[44px_minmax(260px,1.7fr)_90px_100px_100px_100px_120px_120px_130px_44px]"
+                  className={`expense-sheet-row ${showCorrections ? "expense-sheet-row-correction" : ""}`}
+                  onKeyDown={(event) => handleSheetKeyDown(event, n)}
                 >
                   <div className="flex items-center justify-center rounded-lg bg-slate-50 font-bold text-slate-400">
                     {n + 1}
@@ -593,16 +617,12 @@ export function ExpenseSheet({
               type="button"
               disabled={rows.length >= 200}
               className={expenseButton}
-              onClick={() =>
-                setRows([
-                  ...rows,
-                  { ...blankRow(), name: "", unit: "م2" },
-                ])
-              }
+              onClick={addBlankRow}
             >
               <Plus className="size-4" />
               إضافة بند جديد
             </button>
+            <span className="mr-3 text-[10px] text-slate-500">اضغط Enter في آخر سطر لإضافة سطر جديد تلقائيًا.</span>
             <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs leading-6 text-blue-800">
               لو استدعيت بند سابق وغيرت سعره، السعر الجديد يطبق على كمية الجاري
               الحالي فقط. الأعمال السابقة تفضل محفوظة بسعرها القديم، والسبب

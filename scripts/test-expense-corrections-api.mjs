@@ -162,11 +162,10 @@ try {
     ["TECHNICAL", jars.technical],
     ["SITE", jars.site],
     ["EXECUTIVE", jars.executive],
-    ["ACCOUNTING", jars.accounting],
   ])
     await stage(firstId, key, jar);
   const payment = {
-    action: "payment",
+    action: "accountingPayment",
     statementId: firstId,
     revision: (await read(firstId)).revision,
     amount: 90000,
@@ -329,7 +328,6 @@ try {
     ["TECHNICAL", jars.technical],
     ["SITE", jars.site],
     ["EXECUTIVE", jars.executive],
-    ["ACCOUNTING", jars.accounting],
   ])
     await stage(thirdId, key, jar);
   assert.equal((await balance()).debtCents, 1780000);

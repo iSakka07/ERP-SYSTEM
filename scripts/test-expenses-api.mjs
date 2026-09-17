@@ -56,6 +56,14 @@ async function post(payload, jar, files = true, origin = base) {
   });
   return { status: r.status, ...(await r.json()) };
 }
+async function remove(id, jar, origin = base) {
+  const response = await fetch(`${base}/api/expenses`, {
+    method: "DELETE",
+    headers: { ...headers(jar), Origin: origin, "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  return { status: response.status, ...(await response.json()) };
+}
 async function read(id) {
   return db.subcontractStatement.findUniqueOrThrow({
     where: { id },
@@ -226,10 +234,9 @@ try {
   assert.equal(expenseSummary([await read(firstId)]).grossCents, 0);
   await stage(firstId, "EXECUTIVE", jars.executive);
   assert.equal(expenseSummary([await read(firstId)]).grossCents, 5200000);
-  await stage(firstId, "ACCOUNTING", jars.accounting);
   st = await read(firstId);
   const payment = {
-    action: "payment",
+    action: "accountingPayment",
     statementId: firstId,
     revision: st.revision,
     amount: 30000,
@@ -332,7 +339,6 @@ try {
   });
   assert.equal(expenseSummary(all).grossCents, 12000000);
   assert.equal(expenseSummary(all).remainingCents, 8400000);
-  await stage(secondId, "ACCOUNTING", jars.accounting);
   st = await read(secondId);
   const over = {
     ...payment,
@@ -808,8 +814,13 @@ try {
   const html = await page.text();
   assert.ok(html.includes("مستخلصات مقاولي الباطن"));
   assert.ok(!html.includes("إضافة مقاولة جديدة</button>"));
+  assert.equal((await remove(accountId, jars.forbidden)).status, 403);
+  assert.equal((await remove(accountId, jars.manager, "https://invalid.example")).status, 403);
+  assert.equal((await remove(accountId, jars.manager)).status, 200);
+  assert.equal((await db.subcontractAccount.findUniqueOrThrow({ where: { id: accountId } })).active, false);
+  assert.ok(await db.auditLog.findFirst({ where: { action: "expenses.account.delete", target: accountId } }));
   console.log(
-    "API passed: approval permissions, cumulative values, actual payment, prospective prices, partial/full withdrawal, cancellation, immediate/later reassignment, evidence, price bypass protection, immutable history and restricted UI.",
+    "API passed: approval permissions, atomic accounting payment, cumulative values, safe deletion, prospective prices, withdrawals, evidence, immutable history and restricted UI.",
   );
 } finally {
   if (accountId)

@@ -349,10 +349,13 @@ model SubcontractAccount {
   project     Project                @relation(fields: [projectId], references: [id])
   scope       String
   notes       String?
+  active      Boolean                @default(true)
   statements  SubcontractStatement[]
   withdrawals WorkWithdrawal[]       @relation("WithdrawalSource")
   assignments WorkWithdrawal[]       @relation("WithdrawalDestination")
   createdAt   DateTime               @default(now())
+
+  @@index([active])
 }
 
 model SubcontractStatement {

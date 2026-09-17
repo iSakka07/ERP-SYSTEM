@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
 export type Movement = { id: string; label: string; date?: string; note?: string };
-export function DocumentLayout({ children, movements = [] }: { children: ReactNode; movements?: Movement[] }) {
-  return <div className="erp-document-layout" dir="rtl">
+export function DocumentLayout({ children, movements = [], movementPosition = "side" }: { children: ReactNode; movements?: Movement[]; movementPosition?: "side" | "bottom" }) {
+  return <div className={`erp-document-layout ${movementPosition === "bottom" ? "erp-document-layout-bottom" : ""}`} dir="rtl">
     <div className="erp-document-data">{children}</div>
     <aside className="erp-movement-card" aria-label="سجل الحركات">
       <h2>سجل الحركات</h2>

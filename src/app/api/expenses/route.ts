@@ -98,6 +98,14 @@ const schema = z.discriminatedUnion("action", [
     notes: z.string().trim().max(2000).optional(),
     confirmAdvance: z.boolean().optional(),
   }),
+  z.object({
+    action: z.literal("accountingPayment"),
+    statementId: text,
+    revision: z.number().int().positive(),
+    amount: z.number().finite().positive().max(1e10),
+    paymentDate: date,
+    notes: z.string().trim().max(2000).optional(),
+  }),
 ]);
 const relations = {
   items: { orderBy: { position: "asc" as const } },
@@ -105,20 +113,27 @@ const relations = {
   payments: true,
   approvals: true,
 };
+const deleteSchema = z.object({ id: text });
+
+function validOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    const source = new URL(origin).host;
+    const configuredHost = process.env.AUTH_URL
+      ? new URL(process.env.AUTH_URL).host
+      : null;
+    return source === request.headers.get("host") || source === configuredHost;
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(request: Request) {
   try {
     if (!(await incomingUser("expenses.view")))
       return NextResponse.json({ error: "غير مسموح." }, { status: 403 });
-    const origin = request.headers.get("origin");
-    const configuredHost = process.env.AUTH_URL
-      ? new URL(process.env.AUTH_URL).host
-      : null;
-    if (
-      origin &&
-      new URL(origin).host !== request.headers.get("host") &&
-      new URL(origin).host !== configuredHost
-    )
+    if (!validOrigin(request))
       return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
     if (Number(request.headers.get("content-length") || 0) > 11 * 1024 * 1024)
       return NextResponse.json(
@@ -144,7 +159,7 @@ export async function POST(request: Request) {
             ? data.stage === "DRAFT"
               ? "expenses.return"
               : approvalPermissions[data.stage]
-            : data.action === "payment"
+            : data.action === "payment" || data.action === "accountingPayment"
               ? "expenses.pay"
               : "expenses.manage";
     const user = await incomingUser(permission);
@@ -169,6 +184,7 @@ export async function POST(request: Request) {
           });
           const source = account.statements.at(-1);
           if (
+            !account.active ||
             !account.company.active ||
             !account.project.active ||
             !source ||
@@ -453,7 +469,7 @@ export async function POST(request: Request) {
               statements: { orderBy: { sequence: "asc" }, include: relations },
             },
           });
-          if (!account || !account.company.active || !account.project.active)
+          if (!account || !account.active || !account.company.active || !account.project.active)
             throw new Error("أعمال المقاول أو المشروع غير نشط.");
           if (
             account.withdrawals.some(
@@ -658,8 +674,12 @@ export async function POST(request: Request) {
           });
           if (!st || st.revision !== data.revision)
             throw new Error("المستخلص تغير. حدث الصفحة قبل الاستمرار.");
+          if (!st.account.active)
+            throw new Error("أعمال المقاول ممسوحة من القوائم ولا تقبل حركات جديدة.");
           if (data.action === "stage") {
             const index = expenseStages.findIndex((s) => s[0] === st.stage);
+            if (data.stage === "ACCOUNTING")
+              throw new Error("اعتماد الحسابات لا يكتمل دون تسجيل دفعة وإرفاق إثبات الصرف.");
             if (data.stage === "DRAFT") {
               if (
                 await tx.workWithdrawal.count({
@@ -731,6 +751,50 @@ export async function POST(request: Request) {
             });
             id = st.id;
             entityType = "statement";
+          } else if (data.action === "accountingPayment") {
+            if (st.stage !== "EXECUTIVE")
+              throw new Error("اعتماد الحسابات بالدفع يبدأ من اعتماد المدير التنفيذي.");
+            if (!files.length)
+              throw new Error("اعتماد الحسابات يحتاج إثبات الصرف المرفق.");
+            const paidCents = st.account.statements.reduce(
+              (sum, statement) =>
+                sum + statement.payments.reduce((value, payment) => value + payment.amountCents, 0),
+              0,
+            );
+            const payableCents = Math.max(0, st.netCents - paidCents);
+            const amountCents = safeCents(Math.round(data.amount * 100));
+            if (!amountCents || amountCents > payableCents)
+              throw new Error("قيمة الدفعة يجب أن تكون موجبة ولا تتجاوز صافي المستحق الحالي.");
+            const updated = await tx.subcontractStatement.updateMany({
+              where: { id: st.id, revision: data.revision, stage: "EXECUTIVE" },
+              data: { stage: "ACCOUNTING", revision: { increment: 1 } },
+            });
+            if (updated.count !== 1)
+              throw new Error("تعارض اعتماد الحسابات. حدث الصفحة.");
+            const actor = await tx.user.findUniqueOrThrow({ where: { id: user.id } });
+            await tx.subcontractApproval.create({
+              data: {
+                statementId: st.id,
+                fromStage: "EXECUTIVE",
+                toStage: "ACCOUNTING",
+                actorId: user.id,
+                actorName: actor.name,
+                revision: st.revision,
+              },
+            });
+            const payment = await tx.subcontractPayment.create({
+              data: {
+                statementId: st.id,
+                amountCents,
+                paymentDate: new Date(data.paymentDate),
+                method: "ATTACHMENT",
+                reference: "مرفق",
+                notes: data.notes,
+                actorId: user.id,
+              },
+            });
+            id = payment.id;
+            entityType = "payment";
           } else {
             if (st.stage !== "ACCOUNTING")
               throw new Error("الصرف متاح بعد وصول المستخلص للحسابات فقط.");
@@ -806,6 +870,40 @@ export async function POST(request: Request) {
             ? error.message
             : "تعذر حفظ العملية.",
       },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const user = await incomingUser("expenses.manage");
+  if (!user)
+    return NextResponse.json({ error: "ليس لديك صلاحية مسح أعمال المقاول." }, { status: 403 });
+  if (!validOrigin(request))
+    return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
+  try {
+    const parsed = deleteSchema.safeParse(await request.json());
+    if (!parsed.success)
+      return NextResponse.json({ error: "أعمال المقاول غير صالحة." }, { status: 400 });
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.subcontractAccount.updateMany({
+        where: { id: parsed.data.id, active: true },
+        data: { active: false },
+      });
+      if (!updated.count) throw new Error("أعمال المقاول غير موجودة أو ممسوحة بالفعل.");
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          action: "expenses.account.delete",
+          target: parsed.data.id,
+          details: JSON.stringify({ safeDelete: true }),
+        },
+      });
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "تعذر مسح أعمال المقاول." },
       { status: 400 },
     );
   }

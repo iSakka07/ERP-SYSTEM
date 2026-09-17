@@ -5,6 +5,7 @@ import { DocumentLayout } from "@/components/document-layout";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { WorkWithdrawalsCenter } from "./work-withdrawals-center";
+import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
 import {
   Plus,
   ChevronDown,
@@ -13,6 +14,14 @@ import {
   Check,
   FileSpreadsheet,
   Paperclip,
+  BriefcaseBusiness,
+  WalletCards,
+  HandCoins,
+  CircleDollarSign,
+  Scissors,
+  Trash2,
+  FilePlus2,
+  Eye,
 } from "lucide-react";
 import {
   approvalPermissions,
@@ -44,6 +53,7 @@ export function ExpensesCenter({
   attachments,
   permissions,
   initialProjectId = "",
+  initialEditorAccountId = "",
 }: {
   accounts: ExpenseAccount[];
   projects: { id: string; name: string }[];
@@ -51,6 +61,7 @@ export function ExpensesCenter({
   attachments: ExpenseAttachmentInfo[];
   permissions: string[];
   initialProjectId?: string;
+  initialEditorAccountId?: string;
 }) {
   const router = useRouter();
   const allowed = (p: string) => permissions.includes(p);
@@ -62,7 +73,7 @@ export function ExpensesCenter({
   const [editor, setEditor] = useState<{
     accountId: string;
     statementId?: string;
-  } | null>(null);
+  } | null>(initialEditorAccountId ? { accountId: initialEditorAccountId } : null);
   const [newAccount, setNewAccount] = useState(false);
   const [changeAccountId, setChangeAccountId] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
@@ -106,10 +117,55 @@ export function ExpensesCenter({
       setBusy(false);
     }
   }
-  function files(type: string, id: string) {
+  async function removeAccount(account: ExpenseAccount) {
+    if (!window.confirm(`مسح «${account.name}» من القوائم؟ سيظل تاريخه المالي محفوظًا.`)) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/expenses", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: account.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "تعذر المسح.");
+      setExpanded(null);
+      setNotice("تم مسح أعمال المقاول من القوائم مع الاحتفاظ بالتاريخ المالي.");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر المسح.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  function files(type: string, id: string, compact = false) {
     const list = attachments.filter(
       (f) => f.entityType === type && f.entityId === id,
     );
+    if (!list.length)
+      return compact ? null : <p className="text-xs text-slate-400">لا توجد مرفقات.</p>;
+    if (compact)
+      return (
+        <details className="relative">
+          <summary
+            className="erp-icon-action erp-icon-action-default cursor-pointer list-none"
+            aria-label={`عرض ${list.length} مرفق`}
+            title={`عرض ${list.length} مرفق`}
+          >
+            <Paperclip className="size-4" />
+            {list.length > 1 && <span className="text-[9px] font-black">{list.length}</span>}
+          </summary>
+          <div className="absolute left-0 z-30 mt-2 w-64 space-y-1 rounded-lg border bg-white p-2 shadow-xl">
+            {list.map((f) => (
+              <a key={f.id} className="flex items-center gap-2 rounded px-2 py-2 text-xs text-blue-700 hover:bg-blue-50" href={`/api/expenses/attachments/${f.id}`}>
+                <Paperclip className="size-3" />
+                <span className="truncate">{f.name}</span>
+              </a>
+            ))}
+          </div>
+        </details>
+      );
     return (
       <div className="flex flex-wrap gap-2">
         {list.map((f) => (
@@ -152,7 +208,15 @@ export function ExpensesCenter({
   );
   const detail = detailAccount?.statements.find((s) => s.id === selected);
   function paymentForm(st: ExpenseStatement, account: ExpenseAccount) {
-    const dueCents = expensePayableCents(account.statements, st.id);
+    const paidCents = account.statements.reduce(
+      (sum, statement) =>
+        sum + statement.payments.reduce((value, payment) => value + payment.amountCents, 0),
+      0,
+    );
+    const approvingAccounting = st.stage === "EXECUTIVE";
+    const dueCents = approvingAccounting
+      ? Math.max(0, st.netCents - paidCents)
+      : expensePayableCents(account.statements, st.id);
     return (
       <form
         className="space-y-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm"
@@ -161,7 +225,7 @@ export function ExpensesCenter({
           const f = new FormData(e.currentTarget);
           void perform(
             {
-              action: "payment",
+              action: approvingAccounting ? "accountingPayment" : "payment",
               statementId: st.id,
               revision: st.revision,
               amount: Number(f.get("amount")),
@@ -173,7 +237,7 @@ export function ExpensesCenter({
         }}
       >
         <h3 className="text-sm font-extrabold">
-          تسجيل دفعة فعلية · جاري {st.sequence}
+          {approvingAccounting ? "اعتماد الحسابات وتسجيل الدفعة" : "استكمال الصرف"} · جاري {st.sequence}
         </h3>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs">
@@ -218,7 +282,7 @@ export function ExpensesCenter({
             disabled={busy}
             className={`${expenseButton} bg-blue-700 text-white`}
           >
-            تسجيل الصرف
+            {approvingAccounting ? "اعتماد وتسجيل الصرف" : "تسجيل الصرف"}
           </button>
           <button
             type="button"
@@ -229,8 +293,7 @@ export function ExpensesCenter({
           </button>
         </div>
         <p className="text-[10px] text-slate-500">
-          دفعة تشغيلية موثقة؛ الربط الفعلي بالخزنة والقيد اليومي في مرحلة
-          المحاسبة.
+          دفعة موثقة من المدير التنفيذي؛ لا تمر عبر Petty Cash ولا تكرر تكلفة المشروع.
         </p>
       </form>
     );
@@ -239,6 +302,17 @@ export function ExpensesCenter({
     const index = expenseStages.findIndex((s) => s[0] === st.stage);
     const next = expenseStages[index + 1];
     const summary = expenseSummary(account.statements);
+    const paidCents = account.statements.reduce(
+      (sum, statement) => sum + statement.payments.reduce((value, payment) => value + payment.amountCents, 0),
+      0,
+    );
+    const paymentStatus = st.stage === "ACCOUNTING"
+      ? paidCents >= st.netCents
+        ? { label: "تم الصرف", className: "border-emerald-200 bg-emerald-50 text-emerald-800" }
+        : paidCents > 0
+          ? { label: "صرف جزئي", className: "border-amber-200 bg-amber-50 text-amber-800" }
+          : { label: "الحسابات", className: "border-blue-200 bg-blue-50 text-blue-800" }
+      : { label: stageName(st.stage), className: "border-blue-200 bg-blue-50 text-blue-800" };
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -252,8 +326,8 @@ export function ExpensesCenter({
               {st.statementDate.slice(0, 10)}
             </p>
           </div>
-          <span className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800">
-            {stageName(st.stage)}
+          <span className={`rounded-lg border px-3 py-2 text-xs font-bold ${paymentStatus.className}`}>
+            {paymentStatus.label}
           </span>
         </div>
         <ol className="grid gap-2 sm:grid-cols-5">
@@ -282,17 +356,21 @@ export function ExpensesCenter({
             <button
               disabled={busy}
               className={`${expenseButton} border-blue-200 text-blue-700`}
-              onClick={() =>
+              onClick={() => {
+                if (next[0] === "ACCOUNTING") {
+                  setPaymentId(st.id);
+                  return;
+                }
                 void perform({
                   action: "stage",
                   id: st.id,
                   revision: st.revision,
                   stage: next[0],
-                })
-              }
+                });
+              }}
             >
               <Check className="size-4" />
-              {next[0] === "ACCOUNTING" ? "استلام الحسابات" : next[1]}
+              {next[0] === "ACCOUNTING" ? "اعتماد الحسابات والصرف" : next[1]}
             </button>
           )}
           {st.stage !== "DRAFT" &&
@@ -354,8 +432,9 @@ export function ExpensesCenter({
             </button>
           </form>
         )}
-        <div className="overflow-x-auto rounded-xl border bg-white">
-          <table className="w-full min-w-[900px] text-xs">
+        <div className="erp-table-shell">
+          <div className="erp-table-scroll">
+          <table className="erp-data-table erp-responsive-table text-xs">
             <thead className="bg-slate-100">
               <tr>
                 {[
@@ -379,8 +458,8 @@ export function ExpensesCenter({
             <tbody>
               {st.items.map((i, n) => (
                 <tr key={i.itemKey} className="border-t">
-                  <td className="p-3 text-slate-400">{n + 1}</td>
-                  <td className="p-3 font-semibold">
+                  <td data-label="#" className="p-3 text-slate-400">{n + 1}</td>
+                  <td data-label="بيان الأعمال" className="p-3 font-semibold">
                     {i.name}
                     {i.sourceItemKey && (
                       <p className="mt-1 text-[10px] text-amber-700">
@@ -389,25 +468,25 @@ export function ExpensesCenter({
                     )}
                     {(i.correctionQuantity ?? 0) > 0 && <p className="mt-1 text-[10px] text-amber-800">تصحيح الحصر: {i.correctionReason}</p>}
                   </td>
-                  <td className="p-3">{i.unit}</td>
-                  <td className="p-3">{i.previousQuantity}</td>
-                  <td className="p-3">{i.currentQuantity}</td>
+                  <td data-label="الوحدة" className="p-3">{i.unit}</td>
+                  <td data-label="سابق" className="p-3">{i.previousQuantity}</td>
+                  <td data-label="حالي" className="p-3">{i.currentQuantity}</td>
                   {st.items.some(item => (item.correctionQuantity ?? 0) > 0) &&
-                    <td className="p-3 text-amber-800" dir="ltr">{i.correctionQuantity ? `−${i.correctionQuantity}` : "—"}</td>}
-                  <td className="p-3 font-bold">
+                    <td data-label="تصحيح (-)" className="p-3 text-amber-800" dir="ltr">{i.correctionQuantity ? `−${i.correctionQuantity}` : "—"}</td>}
+                  <td data-label="تراكمي" className="p-3 font-bold">
                     {expenseCumulativeQuantity(i)}
                   </td>
-                  <td className="p-3" dir="ltr">
-                    {money(i.unitPriceCents)}
+                  <td data-label="سعر الوحدة" className="p-3 text-center">
+                    <MoneyValue>{money(i.unitPriceCents)} ج.م</MoneyValue>
                   </td>
-                  <td className="p-3">{i.entitlementPercent}%</td>
-                  <td className="p-3 font-bold text-blue-700" dir="ltr">
-                    {money(i.totalCents)}
+                  <td data-label="استحقاق %" className="p-3">{i.entitlementPercent}%</td>
+                  <td data-label="الإجمالي" className="p-3 text-center">
+                    <MoneyValue>{money(i.totalCents)} ج.م</MoneyValue>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 rounded-xl border bg-white p-4">
@@ -488,11 +567,7 @@ export function ExpensesCenter({
                     {money(p.amountCents)} ج.م · جاري {s.sequence}
                   </p>
                   <p className="mt-1 text-slate-500">
-                    {p.paymentDate.slice(0, 10)} ·{" "}
-                    {{ CHEQUE: "شيك", TRANSFER: "تحويل", CASH: "نقدي", ATTACHMENT: "إثبات مرفق" }[
-                      p.method
-                    ] ?? p.method}{" "}
-                    · {p.reference}
+                    {p.paymentDate.slice(0, 10)} · إثبات الصرف مرفق
                   </p>
                   {p.notes && <p className="mt-1 text-slate-500">{p.notes}</p>}
                 </div>
@@ -521,9 +596,8 @@ export function ExpensesCenter({
           <button
             className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-3 text-sm font-bold text-white"
             onClick={() => {
-              setNewAccount(true);
-              setError("");
-              setNotice("");
+              const returnHref = `/expenses${project ? `?project=${encodeURIComponent(project)}` : ""}`;
+              router.push(`/expenses/new?return=${encodeURIComponent(returnHref)}`);
             }}
           >
             <Plus className="size-4" />
@@ -687,38 +761,13 @@ export function ExpensesCenter({
           ) : (
           <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              [
-                "تكلفة الأعمال المعتمدة",
-                totals.reduce((s, t) => s + t.grossCents, 0),
-              ],
-              [
-                "صافي مستحق المقاولين",
-                totals.reduce((s, t) => s + t.netCents, 0),
-              ],
-              ["المدفوع فعليًا", totals.reduce((s, t) => s + t.paidCents, 0)],
-              [
-                "المتبقي للمقاولين",
-                totals.reduce((s, t) => s + t.remainingCents, 0),
-              ],
-              ...(totals.some(t => t.debtCents > 0) ? [["مديونية على المقاولين", totals.reduce((s,t) => s + t.debtCents,0)]] : []),
-            ].map(([label, value]) => (
-              <article
-                key={String(label)}
-                className="rounded-xl border bg-white p-4"
-              >
-                <p className="text-xs text-slate-500">{label}</p>
-                <p
-                  className="mt-2 text-xl font-extrabold text-blue-800"
-                  dir="ltr"
-                >
-                  {money(Number(value))}
-                </p>
-                <p className="mt-2 text-[10px] text-slate-400">
-                  ج.م · حسب الفلاتر الحالية
-                </p>
-              </article>
-            ))}
+            <KpiCard label="تكلفة الأعمال المعتمدة" value={`${money(totals.reduce((s, t) => s + t.grossCents, 0))} ج.م`} icon={BriefcaseBusiness} tone="blue" />
+            <KpiCard label="صافي مستحق المقاولين" value={`${money(totals.reduce((s, t) => s + t.netCents, 0))} ج.م`} icon={WalletCards} tone="violet" />
+            <KpiCard label="المدفوع فعليًا" value={`${money(totals.reduce((s, t) => s + t.paidCents, 0))} ج.م`} icon={HandCoins} tone="emerald" />
+            <KpiCard label="المتبقي للمقاولين" value={`${money(totals.reduce((s, t) => s + t.remainingCents, 0))} ج.م`} icon={CircleDollarSign} tone="amber" />
+            {totals.some((total) => total.debtCents > 0) && (
+              <KpiCard label="مديونية على المقاولين" value={`${money(totals.reduce((sum, total) => sum + total.debtCents, 0))} ج.م`} icon={CircleDollarSign} tone="rose" />
+            )}
           </div>
           <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-[2fr_1fr_1fr]">
             <input
@@ -761,7 +810,7 @@ export function ExpensesCenter({
           </div>
           <div className="erp-table-shell">
             <div className="erp-table-scroll">
-              <table className="erp-data-table min-w-[900px]">
+              <table className="erp-data-table erp-responsive-table">
                 <thead>
                   <tr>
                     {[
@@ -773,10 +822,9 @@ export function ExpensesCenter({
                       "المدفوع",
                       "المتبقي / المديونية / المقدم",
                       "الجوارى",
+                      "الإجراءات",
                     ].map((h) => (
-                      <th key={h}>
-                        {h}
-                      </th>
+                      <th key={h}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -788,80 +836,23 @@ export function ExpensesCenter({
                       (w) => !["EXECUTIVE", "CANCELLED"].includes(w.stage),
                     ) ? "أكمل اعتماد أو إلغاء طلب السحب المعلق أولًا."
                       : newExpenseStatementBlockReason(last);
+                    const draft = last?.stage === "DRAFT" ? last : undefined;
                     return (
                       <Row key={a.id}>
                         <tr>
-                          <td>
+                          <td data-label="المقاولة / النطاق">
                             <p className="font-bold">{a.name}</p>
                             <p className="mt-1 text-[10px] text-slate-400">
                               {a.scope}
                             </p>
-                            <button type="button"
-                              className="mt-2 block text-[11px] font-bold text-blue-700 underline"
-                              onClick={() => setChangeAccountId(a.id)}>
-                              سحب وإعادة إسناد الأعمال
-                            </button>
-                            {allowed("expenses.manage") && (
-                              <div className="mt-2 space-y-2">
-                                <button
-                                  type="button"
-                                  disabled={Boolean(blockReason)}
-                                  title={blockReason || "فتح شيت مستخلص جديد"}
-                                  className={`${expenseButton} border-blue-200 text-blue-700 whitespace-nowrap`}
-                                  onClick={() => setEditor({ accountId: a.id })}
-                                >
-                                  <Plus className="size-3" />
-                                  إضافة مستخلص
-                                </button>
-                                {blockReason && (
-                                  <p className="max-w-56 text-[10px] leading-5 text-slate-500">
-                                    {blockReason}
-                                  </p>
-                                )}
-                                {last && last.stage === "DRAFT" && (
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1 text-[11px] font-bold text-blue-700 underline underline-offset-4"
-                                    onClick={() =>
-                                      setEditor({
-                                        accountId: a.id,
-                                        statementId: last.id,
-                                      })
-                                    }
-                                  >
-                                    <FileSpreadsheet className="size-3" />
-                                    فتح شيت جاري {last.sequence}
-                                  </button>
-                                )}
-                                {last &&
-                                  last.stage !== "DRAFT" &&
-                                  blockReason && (
-                                    <button
-                                      type="button"
-                                      className="text-[11px] font-bold text-blue-700 underline underline-offset-4"
-                                      onClick={() => setSelected(last.id)}
-                                    >
-                                      متابعة المستخلص السابق
-                                    </button>
-                                  )}
-                              </div>
-                            )}
                           </td>
-                          <td>{a.company.name}</td>
-                          <td>{a.project.name}</td>
-                          {[s.grossCents, s.netCents, s.paidCents].map(
-                            (v, n) => (
-                              <td className="font-bold" key={n} dir="ltr">
-                                {money(v)}
-                              </td>
-                            ),
-                          )}
-                          <td
-                            className={`font-bold ${s.advanceCents || s.debtCents ? "text-amber-700" : "text-slate-700"}`}
-                          >
-                            <span dir="ltr">
-                              {money(s.debtCents || s.advanceCents || s.remainingCents)}
-                            </span>
+                          <td data-label="المقاول">{a.company.name}</td>
+                          <td data-label="المشروع">{a.project.name}</td>
+                          <td data-label="تكلفة الأعمال" className="text-center"><MoneyValue>{money(s.grossCents)} ج.م</MoneyValue></td>
+                          <td data-label="صافي المستحق" className="text-center"><MoneyValue>{money(s.netCents)} ج.م</MoneyValue></td>
+                          <td data-label="المدفوع" className="text-center"><MoneyValue>{money(s.paidCents)} ج.م</MoneyValue></td>
+                          <td data-label="المتبقي / المديونية / المقدم" className={`text-center font-bold ${s.advanceCents || s.debtCents ? "text-amber-700" : "text-slate-700"}`}>
+                            <MoneyValue>{money(s.debtCents || s.advanceCents || s.remainingCents)} ج.م</MoneyValue>
                             {s.debtCents > 0 && <span className="block text-[10px]">مديونية على المقاول</span>}
                             {s.advanceCents > 0 && (
                               <span className="block text-[10px]">
@@ -869,7 +860,7 @@ export function ExpensesCenter({
                               </span>
                             )}
                           </td>
-                          <td>
+                          <td data-label="الجوارى">
                             <button
                               aria-expanded={expanded === a.id}
                               className={`${expenseButton} text-blue-700`}
@@ -885,45 +876,66 @@ export function ExpensesCenter({
                               )}
                             </button>
                           </td>
+                          <td data-label="الإجراءات">
+                            <div className="flex flex-wrap items-center gap-1">
+                              {last && <IconAction label="عرض آخر جاري" icon={Eye} onClick={() => setSelected(last.id)} />}
+                              {allowed("expenses.manage") && (
+                                <IconAction
+                                  label={draft ? `فتح شيت جاري ${draft.sequence}` : blockReason || `إضافة جاري ${(last?.sequence ?? 0) + 1}`}
+                                  icon={draft ? FileSpreadsheet : FilePlus2}
+                                  disabled={Boolean(!draft && blockReason)}
+                                  onClick={() => setEditor({ accountId: a.id, ...(draft ? { statementId: draft.id } : {}) })}
+                                />
+                              )}
+                              <IconAction label="سحب وإعادة إسناد الأعمال" icon={Scissors} onClick={() => setChangeAccountId(a.id)} />
+                              {files("account", a.id, true)}
+                              {allowed("expenses.manage") && <IconAction label="مسح أعمال المقاول" icon={Trash2} tone="danger" disabled={busy} onClick={() => void removeAccount(a)} />}
+                            </div>
+                          </td>
                         </tr>
                         {expanded === a.id && (
                           <tr>
                             <td
-                              colSpan={8}
+                              colSpan={9}
                               className="erp-table-details"
                             >
-                              <div className="mb-3 flex items-center justify-between gap-3">
-                                {files("account", a.id)}
-                              </div>
-                              <div className="flex gap-3 overflow-x-auto pb-2">
-                                {a.statements.map((st) => (
+                              <div className="flex flex-wrap gap-3 pb-2">
+                                {a.statements.map((st) => {
+                                  const paidThrough = a.statements
+                                    .filter((statement) => statement.sequence <= st.sequence)
+                                    .reduce((sum, statement) => sum + statement.payments.reduce((value, payment) => value + payment.amountCents, 0), 0);
+                                  const status = st.stage === "ACCOUNTING"
+                                    ? paidThrough >= st.netCents
+                                      ? { label: "تم الصرف", cls: "border-emerald-200 bg-emerald-50 text-emerald-800" }
+                                      : paidThrough > 0
+                                        ? { label: "صرف جزئي", cls: "border-amber-200 bg-amber-50 text-amber-800" }
+                                        : { label: "الحسابات", cls: "border-blue-200 bg-blue-50 text-blue-800" }
+                                    : { label: stageName(st.stage), cls: "border-slate-200 bg-white text-slate-600" };
+                                  return (
+                                    <article className={`min-w-[180px] rounded-xl border p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${status.cls}`} key={st.id}>
+                                      <button className="w-full" onClick={() => { setSelected(st.id); setError(""); }}>
+                                        <p className="text-xs font-extrabold">{st.kind === "FINAL" ? "ختامي" : "جاري"} {st.sequence}</p>
+                                        <MoneyValue className="mt-2 block">{money(st.grossCents)} ج.م</MoneyValue>
+                                        <p className="mt-2 text-[10px] font-bold">{status.label}</p>
+                                      </button>
+                                      <div className="mt-3 flex justify-center gap-1 border-t border-current/10 pt-2">
+                                        {files("statement", st.id, true)}
+                                        {st.payments.map((payment) => <span key={payment.id}>{files("payment", payment.id, true)}</span>)}
+                                      </div>
+                                    </article>
+                                  );
+                                })}
+                                {allowed("expenses.manage") && (
                                   <button
-                                    className="min-w-[185px] rounded-lg border bg-white p-3 text-right hover:border-blue-400"
-                                    key={st.id}
-                                    onClick={() => {
-                                      setSelected(st.id);
-                                      setError("");
-                                    }}
+                                    type="button"
+                                    disabled={Boolean(blockReason)}
+                                    title={blockReason || `إضافة جاري ${(last?.sequence ?? 0) + 1}`}
+                                    className="min-w-[180px] rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/40 p-4 text-center text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    onClick={() => setEditor({ accountId: a.id })}
                                   >
-                                    <p className="text-xs font-extrabold">
-                                      {st.kind === "FINAL" ? "ختامي" : "جاري"}{" "}
-                                      {st.sequence}
-                                    </p>
-                                    <p
-                                      className="mt-2 font-extrabold text-blue-800"
-                                      dir="ltr"
-                                    >
-                                      {money(st.grossCents)}
-                                    </p>
-                                    <p className="mt-2 text-[10px] text-slate-500">
-                                      {stageName(st.stage)}
-                                    </p>
+                                    <Plus className="mx-auto size-5" />
+                                    <span className="mt-2 block text-xs font-extrabold">إضافة جاري {(last?.sequence ?? 0) + 1}</span>
                                   </button>
-                                ))}
-                                {!a.statements.length && (
-                                  <p className="text-xs text-slate-500">
-                                    ابدأ بإضافة مستخلص من الحصر الفعلي.
-                                  </p>
                                 )}
                               </div>
                             </td>
