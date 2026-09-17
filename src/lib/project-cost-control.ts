@@ -9,10 +9,10 @@ const sum = (values: number[]) => Math.round(values.reduce((total, value) => tot
 
 export type ProjectCostControl = {
   project: { id: string; code: string; name: string };
-  revenue: { contractValueCents: number; certifiedRevenueCents: number; collectedCents: number; outstandingCents: number; executionPercent: number | null; collectionPercent: number | null };
-  cost: { subcontractorsCents: number; purchasesCents: number; salariesCents: number; pettyCashCents: number; totalCostCents: number };
+  revenue: { contractValueCents: number; certifiedRevenueCents: number; collectedCents: number; outstandingCents: number; executionPercent: number | null; collectionPercent: number | null; contractsCount: number; statementsCount: number; paidStatementsCount: number; pendingStatementsCount: number; materialsCount: number; materialsCents: number };
+  cost: { subcontractorsCents: number; purchasesCents: number; salariesCents: number; pettyCashCents: number; totalCostCents: number; subcontractorsCount: number; subcontractStatementsCount: number; purchaseInvoicesCount: number; payrollRunsCount: number; pettyExpensesCount: number };
   performance: { profitToDateCents: number; marginPercent: number | null; costRatioPercent: number | null };
-  cash: { cashInCents: number; cashOutCents: number; netCashPositionCents: number; companyFinancingCents: number; supplierPaymentsIncluded: false };
+  cash: { cashInCents: number; cashOutCents: number; netCashPositionCents: number; companyFinancingCents: number; supplierPaymentsIncluded: false; subcontractPaymentsCount: number; paidPayrollRunsCount: number; pettyExpensesCount: number };
 };
 
 function payrollShare(lines: { allocationJson: string }[], projectId: string) {
@@ -38,5 +38,10 @@ export async function getProjectCostControl(projectId: string): Promise<ProjectC
   const pettyCashCents = sum(petty.filter((transaction) => isProjectCost(transaction.type)).map((transaction) => transaction.amountCents));
   const salariesCents = sum(payrollRuns.map((run) => payrollShare(run.lines, projectId)));
   const paidSalariesCents = sum(payrollRuns.filter((run) => run.status === "PAID").map((run) => payrollShare(run.lines, projectId)));
-  return { project, ...buildCostControlTotals({ contractValueCents, certifiedRevenueCents, collectedCents, subcontractorsCents, subcontractorCashCents, purchasesCents, salariesCents, paidSalariesCents, pettyCashCents }) };
+  const base = buildCostControlTotals({ contractValueCents, certifiedRevenueCents, collectedCents, subcontractorsCents, subcontractorCashCents, purchasesCents, salariesCents, paidSalariesCents, pettyCashCents });
+  const statements = contracts.flatMap((contract) => contract.statements);
+  const paidStatementsCount = statements.filter((statement) => statement.stage === "PAID").length;
+  const pettyExpensesCount = petty.filter((transaction) => isProjectCost(transaction.type)).length;
+  const subcontractPaymentsCount = accounts.flatMap((account) => account.statements).reduce((total, statement) => total + statement.payments.length, 0);
+  return { project, ...base, revenue: { ...base.revenue, contractsCount: contracts.length, statementsCount: statements.length, paidStatementsCount, pendingStatementsCount: statements.length - paidStatementsCount, materialsCount: statements.reduce((total, statement) => total + statement.materials.length, 0), materialsCents: sum(statements.flatMap((statement) => statement.materials.map((material) => material.totalCents))) }, cost: { ...base.cost, subcontractorsCount: accounts.length, subcontractStatementsCount: accounts.reduce((total, account) => total + account.statements.length, 0), purchaseInvoicesCount: purchases.length, payrollRunsCount: payrollRuns.length, pettyExpensesCount }, cash: { ...base.cash, subcontractPaymentsCount, paidPayrollRunsCount: payrollRuns.filter((run) => run.status === "PAID").length, pettyExpensesCount } };
 }

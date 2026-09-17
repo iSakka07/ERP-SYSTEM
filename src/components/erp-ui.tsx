@@ -1,8 +1,8 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
-export function KpiCard({ label, value, icon: Icon, tone = "blue", hint }: { label: string; value: string; icon: LucideIcon; tone?: "blue" | "emerald" | "amber" | "violet" | "rose"; hint?: string }) {
-  return <article className={`erp-kpi-card erp-kpi-${tone}`}><div className="erp-kpi-icon"><Icon className="size-5" /></div><p className="erp-kpi-label">{label}</p><strong className="erp-kpi-value" dir="ltr">{value}</strong>{hint && <p className="erp-kpi-hint">{hint}</p>}</article>;
+export function KpiCard({ label, value, icon: Icon, tone = "blue", hint, details }: { label: string; value: string; icon: LucideIcon; tone?: "blue" | "emerald" | "amber" | "violet" | "rose"; hint?: string; details?: ReactNode }) {
+  return <article tabIndex={details ? 0 : undefined} className={`erp-kpi-card relative ${details ? "group cursor-help outline-none focus-visible:ring-2 focus-visible:ring-blue-500" : ""} erp-kpi-${tone}`}><div className="erp-kpi-icon"><Icon className="size-5" /></div><p className="erp-kpi-label">{label}</p><strong className="erp-kpi-value" dir="ltr">{value}</strong>{hint && <p className="erp-kpi-hint">{hint}</p>}{details && <div role="tooltip" className="pointer-events-none absolute inset-x-2 top-[calc(100%+0.4rem)] z-30 rounded-xl border border-slate-200 bg-white p-3 text-right text-xs leading-6 text-slate-600 opacity-0 shadow-xl transition duration-150 group-hover:opacity-100 group-focus:opacity-100">{details}</div>}</article>;
 }
 
 export function MoneyValue({ children, className = "" }: { children: ReactNode; className?: string }) {

@@ -36,6 +36,9 @@ try {
   const data = await response.json();
   assert.equal(data.project.id, project.id);
   assert.equal(typeof data.cost.totalCostCents, "number");
+  assert.equal(typeof data.revenue.contractsCount, "number");
+  assert.equal(typeof data.revenue.materialsCents, "number");
+  assert.equal(typeof data.cash.subcontractPaymentsCount, "number");
   assert.equal(data.cash.supplierPaymentsIncluded, false);
   console.log("Project Cost Control API passed: validation, RBAC and data contract.");
 } finally {
