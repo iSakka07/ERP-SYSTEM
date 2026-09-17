@@ -56,6 +56,10 @@ async function post(payload, files = true, jar = cookieMap) {
   const result = await r.json();
   return { status: r.status, ...result };
 }
+async function remove(id, jar = cookieMap) {
+  const response = await fetch(`${base}/api/incoming`, { method: "DELETE", headers: { "Content-Type": "application/json", Cookie: cookies(jar), Origin: base }, body: JSON.stringify({ id }) });
+  return { status: response.status, ...(await response.json()) };
+}
 let proof;
 let testContractId;
 try {
@@ -309,8 +313,13 @@ try {
   );
   assert.equal(financials(await load()).net, 0);
   assert.ok(await db.auditLog.count({ where: { target: first } }));
+  assert.equal((await remove(contractId, sales)).status, 403, "forbidden safe delete");
+  assert.equal((await remove(contractId)).status, 200, "safe delete linked contract");
+  assert.equal((await db.incomingContract.findUniqueOrThrow({ where: { id: contractId } })).active, false);
+  assert.equal((await post({ ...contract, id: contractId, name: "لا يجب تعديله" }, false)).status, 400, "safe-deleted contract is locked");
+  assert.ok(await db.auditLog.count({ where: { target: contractId, action: "incoming.contract.delete" } }));
   console.log(
-    "PASS: API RBAC, attachment access, contract edits, duplicate validation, statement/material CRUD, nine-stage cycle, financial gate, cumulative net, memo, locks and audited rollback.",
+    "PASS: API RBAC, attachment access, contract edits, duplicate validation, statement/material CRUD, nine-stage cycle, financial gate, cumulative net, memo, locks, audited rollback and safe delete.",
   );
 } finally {
   if (testContractId) {

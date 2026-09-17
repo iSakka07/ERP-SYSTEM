@@ -19,12 +19,14 @@ function movementLabel(action: string, details: string) {
   } catch { return { label: labels[action] || action }; }
 }
 
-export default async function IncomingPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
+export default async function IncomingPage({ searchParams }: { searchParams: Promise<{ project?: string; owner?: string; stage?: string; q?: string }> }) {
   if (!(await incomingUser("incoming.view"))) redirect("/");
-  const requestedProject = (await searchParams).project ?? "";
+  const requested = await searchParams;
+  const requestedProject = requested.project ?? "";
   const manager = await incomingUser("incoming.manage");
   const [contracts, projects, attachments, movements] = await Promise.all([
     prisma.incomingContract.findMany({
+      where: { active: true },
       include: {
         project: {
           include: {
@@ -72,6 +74,9 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
       canManage={Boolean(manager)}
       isAdmin={Boolean(manager?.admin)}
       initialProjectId={projects.some((project) => project.id === requestedProject) ? requestedProject : ""}
+      initialOwnerId={requested.owner ?? ""}
+      initialStage={requested.stage ?? ""}
+      initialQuery={requested.q ?? ""}
       movements={movements.map(m => ({
         id: m.id, entityId: m.target || "", date: m.createdAt.toISOString(),
         ...movementLabel(m.action, m.details || "{}"),

@@ -106,10 +106,13 @@ model IncomingContract {
   estimateReference String?
   estimateCents     Float?
   notes             String?
+  active            Boolean             @default(true)
   statements        IncomingStatement[]
   memos             IncomingMemo[]
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
+
+  @@index([active])
 }
 
 model IncomingStatement {

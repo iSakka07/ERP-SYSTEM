@@ -12,7 +12,7 @@ export const incomingStages = [
 export const grossNotice =
   "أدخل إجمالي المستخلص التراكمي قبل خصم الخامات. تُضاف الخامات في مربع منفصل، والنظام يحسب الصافي تلقائيًا. لا تخصم الخامات يدويًا من قيمة المستخلص.";
 export const money = (cents: number) =>
-  `${new Intl.NumberFormat("en-EG", { maximumFractionDigits: 2 }).format(cents / 100)} ج.م`;
+  `${new Intl.NumberFormat("en-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100)} ج.م`;
 export const statementLabel = (s: { kind: string; sequence: number }) =>
   s.kind === "FINAL" ? `ختامي (${s.sequence})` : `جاري ${s.sequence}`;
 export function financials(c: {
@@ -34,7 +34,9 @@ export function financials(c: {
     );
   const ordered = [...c.statements].sort((a, b) => a.sequence - b.sequence);
   const lastPaid = ordered.filter((s) => s.stage === "PAID").at(-1);
+  const latest = ordered.at(-1);
   const gross = lastPaid?.grossCents ?? 0;
+  const latestGross = latest?.grossCents ?? 0;
   const materials = ordered.reduce(
     (sum, s) => sum + s.materials.reduce((n, m) => n + m.totalCents, 0),
     0,
@@ -48,11 +50,14 @@ export function financials(c: {
   return {
     value,
     gross,
+    latestGross,
     materials,
     effectiveMaterials,
+    entitlement: Math.max(0, latestGross - materials),
     net: gross - effectiveMaterials,
-    remaining: value - gross,
+    remaining: value - latestGross,
     pct: value ? (gross / value) * 100 : 0,
-    pending: Math.max(0, (ordered.at(-1)?.grossCents ?? 0) - gross),
+    pending: Math.max(0, latestGross - gross),
+    pendingNet: Math.max(0, latestGross - materials - (gross - effectiveMaterials)),
   };
 }

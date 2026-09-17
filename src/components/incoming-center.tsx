@@ -8,12 +8,23 @@ import { Fragment, FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
-  ChevronDown,
+  Banknote,
+  CircleDollarSign,
+  ClipboardList,
   FileDown,
+  FilePenLine,
+  Landmark,
+  ListChecks,
+  PackageOpen,
   Paperclip,
+  Pencil,
+  Percent,
   Plus,
+  RefreshCcw,
+  Scale,
   Trash2,
 } from "lucide-react";
+import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
 import {
   financials,
   grossNotice,
@@ -22,7 +33,7 @@ import {
   statementLabel,
 } from "@/lib/incoming";
 
-type Project = {
+export type Project = {
   id: string;
   name: string;
   company: { id: string; name: string };
@@ -53,7 +64,7 @@ type Statement = {
   paymentReference: string | null;
   materials: Material[];
 };
-type Contract = {
+export type Contract = {
   id: string;
   name: string;
   number: string;
@@ -66,14 +77,14 @@ type Contract = {
   statements: Statement[];
   memos: { id: string; kind: string; amountCents: number; reason: string }[];
 };
-type Attachment = {
+export type Attachment = {
   id: string;
   entityId: string;
   entityType: string;
   name: string;
   size: number;
 };
-type Editor = {
+export type Editor = {
   action: "contract" | "statement" | "material" | "memo" | "stage";
   contract?: Contract;
   statement?: Statement;
@@ -95,6 +106,9 @@ export function IncomingCenter({
   canManage,
   isAdmin,
   initialProjectId = "",
+  initialOwnerId = "",
+  initialStage = "",
+  initialQuery = "",
   movements = [],
 }: {
   contracts: Contract[];
@@ -103,13 +117,16 @@ export function IncomingCenter({
   canManage: boolean;
   isAdmin: boolean;
   initialProjectId?: string;
+  initialOwnerId?: string;
+  initialStage?: string;
+  initialQuery?: string;
   movements?: (Movement & { entityId: string })[];
 }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [project, setProject] = useState(initialProjectId);
-  const [owner, setOwner] = useState("");
-  const [stage, setStage] = useState("");
+  const [owner, setOwner] = useState(initialOwnerId);
+  const [stage, setStage] = useState(initialStage);
   const [expanded, setExpanded] = useState("");
   const [editor, setEditor] = useState<Editor | null>(null);
   const [busy, setBusy] = useState(false);
@@ -126,20 +143,46 @@ export function IncomingCenter({
       const f = financials(c);
       return {
         value: n.value + f.value,
-        gross: n.gross + f.gross,
+        entitlement: n.entitlement + f.entitlement,
+        materials: n.materials + f.materials,
         net: n.net + f.net,
         remaining: n.remaining + f.remaining,
       };
     },
-    { value: 0, gross: 0, net: 0, remaining: 0 },
+    { value: 0, entitlement: 0, materials: 0, net: 0, remaining: 0 },
   );
   const unique = (items: { id: string; name: string }[]) => [
     ...new Map(items.map((i) => [i.id, i])).values(),
   ];
   const open = (e: Editor) => {
     setMessage("");
+    const returnParams = new URLSearchParams();
+    if (project) returnParams.set("project", project);
+    if (owner) returnParams.set("owner", owner);
+    if (stage) returnParams.set("stage", stage);
+    if (query) returnParams.set("q", query);
+    const returnHref = `/incoming${returnParams.size ? `?${returnParams}` : ""}`;
+    if (e.action === "contract" && !e.edit) {
+      router.push(`/incoming/new?return=${encodeURIComponent(returnHref)}`);
+      return;
+    }
+    if (e.action === "statement" && !e.edit && e.contract) {
+      router.push(`/incoming/${e.contract.id}/statements/new?return=${encodeURIComponent(returnHref)}`);
+      return;
+    }
     setEditor(e);
   };
+  async function removeContract(contract: Contract) {
+    if (!window.confirm(`مسح «${contract.name}» من القوائم؟ سيظل تاريخه المالي محفوظًا.`)) return;
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch("/api/incoming", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: contract.id }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "تعذر مسح العقد.");
+      setExpanded(""); setMessage("تم مسح العقد من القوائم مع الاحتفاظ بتاريخه المالي."); router.refresh();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر مسح العقد."); }
+    finally { setBusy(false); }
+  }
   async function save(payload: object, files: File[], estimateFiles: File[] = []) {
     setBusy(true);
     setMessage("");
@@ -174,9 +217,9 @@ export function IncomingCenter({
         "المشروع",
         "الجهة المالكة",
         "قيمة العقد",
-        "الوارد قبل الخامات",
+        "المستحق بعد الخامات",
         "الخامات المسجلة",
-        "صافي الوارد",
+        "الوارد",
         "المتبقي",
       ],
       ...filtered.map((c) => {
@@ -187,7 +230,7 @@ export function IncomingCenter({
           c.project.name,
           c.project.company.name,
           f.value / 100,
-          f.gross / 100,
+          f.entitlement / 100,
           f.materials / 100,
           f.net / 100,
           f.remaining / 100,
@@ -216,7 +259,7 @@ export function IncomingCenter({
     URL.revokeObjectURL(url);
   }
   const fileLinks = (entityId: string) => (
-    <Files files={attachments.filter((f) => f.entityId === entityId)} />
+    <Files compact files={attachments.filter((f) => f.entityId === entityId)} />
   );
   return (
     <div className="space-y-5">
@@ -269,27 +312,17 @@ export function IncomingCenter({
             setMessage("");
           }}
           onSave={save}
+          onOpen={setEditor}
           movements={movements}
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            {[
-              ["قيمة العقود", totals.value],
-              ["الوارد قبل الخامات", totals.gross],
-              ["صافي الوارد النقدي", totals.net],
-              ["المتبقي من العقود", totals.remaining],
-            ].map(([label, value]) => (
-              <div
-                key={String(label)}
-                className="rounded-xl border border-slate-200 bg-white p-4"
-              >
-                <p className="text-xs text-slate-500">{label}</p>
-                <p className="mt-2 text-lg font-extrabold tabular-nums text-slate-950">
-                  {money(Number(value))}
-                </p>
-              </div>
-            ))}
+          <div className="incoming-kpi-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <KpiCard label="القيمة التعاقدية" value={money(totals.value)} icon={Landmark} tone="blue" />
+            <KpiCard label="المستحقات بعد الخامات" value={money(totals.entitlement)} icon={ClipboardList} tone="violet" />
+            <KpiCard label="الخامات" value={money(totals.materials)} icon={PackageOpen} tone="amber" />
+            <KpiCard label="الوارد" value={money(totals.net)} icon={Banknote} tone="emerald" />
+            <KpiCard label="المتبقي من القيمة التعاقدية" value={money(totals.remaining)} icon={Scale} tone="rose" />
           </div>
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="grid gap-3 md:grid-cols-4">
@@ -328,11 +361,12 @@ export function IncomingCenter({
           </section>
           <section className="erp-table-shell">
             <div className="erp-table-scroll">
-              <table className="erp-data-table min-w-[1120px]">
+              <table className="erp-data-table erp-responsive-table min-w-[1180px]">
                 <thead>
                   <tr>
                     {[
-                      "العقد",
+                      "اسم العقد",
+                      "رقم العقد",
                       "المشروع",
                       "الجهة المالكة",
                       "قيمة العقد",
@@ -352,7 +386,7 @@ export function IncomingCenter({
                   {!filtered.length && (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={10}
                         className="py-16 text-center text-slate-400"
                       >
                         لا توجد عقود. أضف أول عقد لبدء متابعة الوارد.
@@ -365,7 +399,7 @@ export function IncomingCenter({
                     return (
                       <Fragment key={c.id}>
                         <tr>
-                          <td className="max-w-[220px]">
+                          <td data-label="اسم العقد" className="max-w-[220px]">
                             <button
                               onClick={() => setExpanded(show ? "" : c.id)}
                               aria-expanded={show}
@@ -373,274 +407,67 @@ export function IncomingCenter({
                             >
                               {c.name}
                             </button>
-                            <p className="mt-1 text-[10px] text-slate-400">
-                              {c.number}
-                            </p>
                           </td>
-                          <td>{c.project.name}</td>
-                          <td>
+                          <td data-label="رقم العقد"><code dir="ltr" className="text-xs font-bold text-slate-600">{c.number}</code></td>
+                          <td data-label="المشروع">{c.project.name}</td>
+                          <td data-label="الجهة المالكة">
                             {c.project.company.name}
                           </td>
-                          <td className="whitespace-nowrap font-bold text-blue-700">
-                            {money(f.value)}
+                          <td data-label="قيمة العقد" className="text-center">
+                            <MoneyValue>{money(f.value)}</MoneyValue>
                           </td>
-                          <td>
-                            <button
-                              className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1.5 text-blue-800"
+                          <td data-label="موقف المستخلصات">
+                            {c.statements.at(-1) ? <button
+                              className={`incoming-latest-statement ${stageClass(c.statements.at(-1)!.stage)}`}
                               onClick={() => setExpanded(show ? "" : c.id)}
                               aria-expanded={show}
                             >
-                              {c.statements.length} مستخلص
-                              <ChevronDown
-                                className={`size-3 ${show ? "rotate-180" : ""}`}
-                              />
-                            </button>
+                              <strong>{statementLabel(c.statements.at(-1)!)}</strong>
+                              <MoneyValue>{money(c.statements.at(-1)!.grossCents)}</MoneyValue>
+                              <span>{stageLabel(c.statements.at(-1)!.stage)}</span>
+                            </button> : <span className="text-xs text-slate-400">لا يوجد جاري</span>}
                           </td>
-                          <td className="whitespace-nowrap font-bold">
-                            {money(f.gross)}
-                            <p className="mt-1 text-[9px] font-normal text-slate-400">
-                              قبل خصم الخامات
-                            </p>
+                          <td data-label="إجمالي الوارد" className="text-center">
+                            <MoneyValue>{money(f.net)}</MoneyValue>
                           </td>
-                          <td className="whitespace-nowrap">
-                            <span className="rounded bg-amber-50 px-2 py-1 text-amber-800">
-                              {money(f.materials)}
-                            </span>
+                          <td data-label="الخامات" className="text-center">
+                            <MoneyValue>{money(f.materials)}</MoneyValue>
                           </td>
-                          <td className="whitespace-nowrap font-bold">
-                            {money(f.remaining)}
+                          <td data-label="المتبقي" className="text-center">
+                            <MoneyValue>{money(f.remaining)}</MoneyValue>
                           </td>
-                          <td>
-                            <details>
-                              <summary className="cursor-pointer text-blue-700">
-                                إجراءات
-                              </summary>
-                              <div className="mt-2 flex flex-col items-start gap-2">
-                                {canManage && (
-                                  <>
-                                    <button
-                                      onClick={() =>
-                                        open({
-                                          action: "contract",
-                                          contract: c,
-                                          edit: true,
-                                        })
-                                      }
-                                    >
-                                      تعديل العقد
-                                    </button>
-                                    <button
-                                      onClick={() =>
-                                        open({
-                                          action: "statement",
-                                          contract: c,
-                                        })
-                                      }
-                                    >
-                                      إضافة مستخلص
-                                    </button>
-                                    <button
-                                      onClick={() =>
-                                        open({ action: "memo", contract: c })
-                                      }
-                                    >
-                                      مذكرة رفع / خفض
-                                    </button>
-                                  </>
-                                )}
-                                {fileLinks(c.id)}
-                              </div>
-                            </details>
+                          <td data-label="الإجراءات">
+                            <div className="flex items-center justify-center gap-1">
+                              <IconAction label="فتح إدارة الجواري" icon={ListChecks} onClick={() => setExpanded(show ? "" : c.id)} />
+                              {fileLinks(c.id)}
+                              {canManage && <IconAction label={`مسح ${c.name}`} icon={Trash2} tone="danger" disabled={busy} onClick={() => removeContract(c)} />}
+                            </div>
                           </td>
                         </tr>
                         {show && (
                           <tr>
                             <td
-                              colSpan={9}
+                              colSpan={10}
+                              data-label="تفاصيل العقد"
                               className="erp-table-details"
                             >
                               <div className="space-y-4">
-                                <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                                  {[
-                                    ["صافي الوارد النقدي", money(f.net)],
-                                    [
-                                      "خامات محتسبة حتى آخر مصروف",
-                                      money(f.effectiveMaterials),
-                                    ],
-                                    [
-                                      "الجاري تحت التحصيل (قبل الخامات)",
-                                      money(f.pending),
-                                    ],
-                                    [
-                                      "نسبة الصرف من العقد",
-                                      `${f.pct.toFixed(1)}%`,
-                                    ],
-                                    [
-                                      "نسبة صافي النقدية",
-                                      `${(f.value ? (f.net / f.value) * 100 : 0).toFixed(1)}%`,
-                                    ],
-                                    [
-                                      "نسبة الخامات المحتسبة",
-                                      `${(f.value ? (f.effectiveMaterials / f.value) * 100 : 0).toFixed(1)}%`,
-                                    ],
-                                    ["القيمة الأصلية", money(c.originalCents)],
-                                  ].map(([label, value]) => (
-                                    <div
-                                      key={label}
-                                      className="rounded-lg border border-slate-200 bg-white p-3"
-                                    >
-                                      <p className="text-[10px] text-slate-500">
-                                        {label}
-                                      </p>
-                                      <p className="mt-2 font-bold">{value}</p>
-                                    </div>
-                                  ))}
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                                  <p className="text-xs text-slate-500">المهندس المشرف: <b className="text-slate-800">{[...new Set(c.project.supervisors?.map((x) => x.employee.name))].join("، ") || "غير محدد"}</b></p>
+                                  {canManage && <div className="flex gap-1"><IconAction label="تعديل العقد" icon={FilePenLine} onClick={() => open({ action: "contract", contract: c, edit: true })} /><IconAction label="مذكرة رفع أو خفض" icon={CircleDollarSign} onClick={() => open({ action: "memo", contract: c })} /></div>}
                                 </div>
-                                <p className="text-[10px] text-slate-500">
-                                  الخامات الظاهرة في الجدول تشمل جميع الشهادات؛
-                                  صافي الوارد يحتسب فقط الخامات حتى آخر مستخلص
-                                  مصروف. المهندس المشرف:{" "}
-                                  {c.project.supervisors
-                                    ?.map((x) => x.employee.name)
-                                    .join("، ") || "غير محدد"}
-                                  {c.estimateReference &&
-                                    ` · مرجع المقايسة: ${c.estimateReference}`}
-                                  {c.estimateCents != null && ` · قيمة المقايسة: ${money(c.estimateCents)} · الفرق عن أصل العقد: ${money(c.originalCents - c.estimateCents)}`}
-                                </p>
                                 <div className="flex gap-3 overflow-x-auto pb-2">
                                   {c.statements.map((s) => (
-                                    <div
+                                    <StatementCard
                                       key={s.id}
-                                      className={`min-w-[230px] rounded-lg border p-3 ${s.stage === "PAID" ? "border-emerald-200 bg-emerald-50" : "border-blue-200 bg-white"}`}
-                                    >
-                                      <div className="flex justify-between gap-3">
-                                        <strong>{statementLabel(s)}</strong>
-                                        <span
-                                          className={`rounded px-2 py-1 text-[10px] ${s.stage === "PAID" ? "bg-emerald-100 text-emerald-800" : "bg-blue-50 text-blue-700"}`}
-                                        >
-                                          {
-                                            incomingStages.find(
-                                              (x) => x[0] === s.stage,
-                                            )?.[1]
-                                          }
-                                        </span>
-                                      </div>
-                                      <p className="my-3 text-sm font-extrabold">
-                                        {money(s.grossCents)}
-                                      </p>
-                                      {s.paidAt && (
-                                        <p className="mb-2 text-[10px] text-emerald-700">
-                                          {s.paymentMethod === "CHEQUE"
-                                            ? "شيك"
-                                            : "تحويل"}{" "}
-                                          {s.paymentReference} ·{" "}
-                                          {s.paidAt.slice(0, 10)}
-                                        </p>
-                                      )}
-                                      <div className="flex flex-wrap gap-2">
-                                        {canManage && (
-                                          <>
-                                            <button
-                                              className={secondary}
-                                              onClick={() =>
-                                                open({
-                                                  action: "stage",
-                                                  contract: c,
-                                                  statement: s,
-                                                })
-                                              }
-                                            >
-                                              تغيير المرحلة
-                                            </button>
-                                            {!c.statements.some(
-                                              (x) =>
-                                                x.sequence >= s.sequence &&
-                                                x.stage === "PAID",
-                                            ) && (
-                                              <>
-                                                <button
-                                                  className={secondary}
-                                                  onClick={() =>
-                                                    open({
-                                                      action: "statement",
-                                                      contract: c,
-                                                      statement: s,
-                                                      edit: true,
-                                                    })
-                                                  }
-                                                >
-                                                  تعديل
-                                                </button>
-                                                <button
-                                                  className={secondary}
-                                                  onClick={() =>
-                                                    open({
-                                                      action: "material",
-                                                      contract: c,
-                                                      statement: s,
-                                                    })
-                                                  }
-                                                >
-                                                  إضافة شهادة خامات
-                                                </button>
-                                              </>
-                                            )}
-                                          </>
-                                        )}
-                                        {fileLinks(s.id)}
-                                      </div>
-                                      <div className="mt-3 space-y-2">
-                                        {s.materials.map((m) => (
-                                          <div
-                                            key={m.id}
-                                            className="rounded border border-amber-200 bg-amber-50 p-2"
-                                          >
-                                            <p className="font-bold text-amber-900">
-                                              خامات {m.number} ·{" "}
-                                              {money(m.totalCents)}
-                                            </p>
-                                            <details className="mt-2">
-                                              <summary className="cursor-pointer text-amber-800">
-                                                الأصناف والمرفقات
-                                              </summary>
-                                              {m.items.map((i, index) => (
-                                                <p
-                                                  key={index}
-                                                  className="mt-1 text-[10px]"
-                                                >
-                                                  {i.name} · {i.quantity}{" "}
-                                                  {i.unit} ×{" "}
-                                                  {money(i.unitPriceCents)} ={" "}
-                                                  {money(i.totalCents)}
-                                                </p>
-                                              ))}
-                                              {fileLinks(m.id)}
-                                              {canManage &&
-                                                !c.statements.some(
-                                                  (x) =>
-                                                    x.sequence >= s.sequence &&
-                                                    x.stage === "PAID",
-                                                ) && (
-                                                  <button
-                                                    className="mt-2 text-blue-700"
-                                                    onClick={() =>
-                                                      open({
-                                                        action: "material",
-                                                        contract: c,
-                                                        statement: s,
-                                                        material: m,
-                                                        edit: true,
-                                                      })
-                                                    }
-                                                  >
-                                                    تعديل الشهادة
-                                                  </button>
-                                                )}
-                                            </details>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
+                                      statement={s}
+                                      locked={c.statements.some((x) => x.sequence >= s.sequence && x.stage === "PAID")}
+                                      canManage={canManage}
+                                      statementFiles={attachments.filter((f) => f.entityId === s.id)}
+                                      materialFiles={attachments}
+                                      onStage={() => open({ action: "stage", contract: c, statement: s })}
+                                      onEdit={() => open({ action: "statement", contract: c, statement: s, edit: true })}
+                                    />
                                   ))}
                                   {canManage &&
                                     !c.statements.some(
@@ -656,9 +483,16 @@ export function IncomingCenter({
                                         className="min-w-[180px] rounded-lg border-2 border-dashed border-slate-200 bg-white p-4 text-blue-700"
                                       >
                                         <Plus className="mx-auto mb-2 size-5" />
-                                        إضافة الجاري التالي
+                                        إضافة جاري {(c.statements.at(-1)?.sequence ?? 0) + 1}
                                       </button>
                                     )}
+                                </div>
+                                <div className="incoming-kpi-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                                  <KpiCard label="صافي الوارد النقدي" value={money(f.net)} icon={Banknote} tone="emerald" />
+                                  <KpiCard label="الخامات" value={money(f.materials)} icon={PackageOpen} tone="amber" />
+                                  <KpiCard label="الجاري تحت التحصيل" value={money(f.pendingNet)} icon={ClipboardList} tone="violet" />
+                                  <KpiCard label="نسبة الصرف من العقد" value={`${f.pct.toFixed(1)}%`} icon={Percent} tone="blue" />
+                                  <KpiCard label="نسبة الخامات" value={`${(f.value ? (f.materials / f.value) * 100 : 0).toFixed(1)}%`} icon={Scale} tone="rose" />
                                 </div>
                                 {c.memos.length > 0 && (
                                   <details>
@@ -692,13 +526,19 @@ export function IncomingCenter({
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="bg-blue-50/70 font-extrabold">
+                    <td data-label="عدد العقود">{filtered.length} عقد</td>
+                    <td colSpan={3}></td>
+                    <td data-label="إجمالي قيمة العقود" className="text-center"><MoneyValue>{money(totals.value)}</MoneyValue></td>
+                    <td></td>
+                    <td data-label="إجمالي الوارد" className="text-center"><MoneyValue>{money(totals.net)}</MoneyValue></td>
+                    <td data-label="إجمالي الخامات" className="text-center"><MoneyValue>{money(totals.materials)}</MoneyValue></td>
+                    <td data-label="إجمالي المتبقي" className="text-center"><MoneyValue>{money(totals.remaining)}</MoneyValue></td>
+                    <td></td>
+                  </tr>
+                </tfoot>
               </table>
-            </div>
-            <div className="erp-table-summary">
-              <span>{filtered.length} عقد</span>
-              <span>القيمة: {money(totals.value)}</span>
-              <span>الوارد قبل الخامات: {money(totals.gross)}</span>
-              <span>الصافي: {money(totals.net)}</span>
             </div>
           </section>
         </>
@@ -707,7 +547,42 @@ export function IncomingCenter({
   );
 }
 
-function IncomingEditor({
+const stageStyles: Record<string, string> = {
+  COMPANY: "border-slate-300 bg-slate-50 text-slate-700",
+  BATTALION: "border-sky-200 bg-sky-50 text-sky-800",
+  BRIGADE: "border-blue-200 bg-blue-50 text-blue-800",
+  ADMINISTRATION: "border-indigo-200 bg-indigo-50 text-indigo-800",
+  CONSULTANT: "border-violet-200 bg-violet-50 text-violet-800",
+  SUPPLY: "border-cyan-200 bg-cyan-50 text-cyan-800",
+  FINANCE: "border-amber-200 bg-amber-50 text-amber-800",
+  CENTRAL: "border-orange-200 bg-orange-50 text-orange-800",
+  PAID: "border-emerald-200 bg-emerald-50 text-emerald-800",
+};
+function stageClass(stage: string) { return stageStyles[stage] || stageStyles.COMPANY; }
+function stageLabel(stage: string) { return incomingStages.find(([id]) => id === stage)?.[1] || stage; }
+
+function StatementCard({ statement, locked, canManage, statementFiles, materialFiles, onStage, onEdit }: { statement: Statement; locked: boolean; canManage: boolean; statementFiles: Attachment[]; materialFiles: Attachment[]; onStage: () => void; onEdit: () => void }) {
+  const [open, setOpen] = useState(false);
+  const materialTotal = statement.materials.reduce((sum, material) => sum + material.totalCents, 0);
+  return <article className={`group relative min-w-[220px] max-w-[260px] rounded-xl border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${stageClass(statement.stage)}`}>
+    <button type="button" className="w-full text-right" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+      <div className="flex items-start justify-between gap-3"><strong className="text-sm text-slate-950">{statementLabel(statement)}</strong><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${stageClass(statement.stage)}`}>{stageLabel(statement.stage)}</span></div>
+      <MoneyValue className="mt-3 w-full text-center text-base">{money(statement.grossCents)}</MoneyValue>
+    </button>
+    <div className={`${open ? "block" : "hidden group-hover:block group-focus-within:block"} mt-3 rounded-xl border border-slate-200 bg-white p-3 text-slate-700 shadow-lg`}>
+      <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">الخامات</span><MoneyValue>{money(materialTotal)}</MoneyValue></div>
+      {statement.materials.length ? <div className="mt-2 space-y-2">{statement.materials.map(material => <div key={material.id} className="rounded-lg bg-amber-50 p-2"><p className="text-[10px] font-bold text-amber-900">تفاصيل الشهادة</p>{material.items.map((item, index) => <p key={index} className="mt-1 text-[10px] text-slate-600">{item.name} · {item.quantity} {item.unit} × {money(item.unitPriceCents)} = {money(item.totalCents)}</p>)}<Files compact files={materialFiles.filter(file => file.entityId === material.id)} /></div>)}</div> : <p className="mt-2 text-[10px] text-slate-400">لا توجد شهادة خامات.</p>}
+      {statement.paidAt && <div className="mt-3 border-t border-slate-200 pt-3 text-[10px]"><b>{statement.paymentMethod === "CHEQUE" ? "شيك" : "تحويل"}</b> · {statement.paidAt.slice(0, 10)}</div>}
+      <div className="mt-3 flex items-center gap-1 border-t border-slate-100 pt-3">
+        {canManage && <IconAction label="تغيير المرحلة" icon={RefreshCcw} onClick={onStage} />}
+        {canManage && !locked && <IconAction label={`تعديل ${statementLabel(statement)}`} icon={Pencil} onClick={onEdit} />}
+        <Files compact files={statementFiles} />
+      </div>
+    </div>
+  </article>;
+}
+
+export function IncomingEditor({
   editor: e,
   projects,
   attachments,
@@ -715,6 +590,7 @@ function IncomingEditor({
   isAdmin,
   onCancel,
   onSave,
+  onOpen,
   movements,
 }: {
   editor: Editor;
@@ -724,6 +600,7 @@ function IncomingEditor({
   isAdmin: boolean;
   onCancel: () => void;
   onSave: (payload: object, files: File[], estimateFiles?: File[]) => Promise<void>;
+  onOpen?: (editor: Editor) => void;
   movements: (Movement & { entityId: string })[];
 }) {
   const c = e.contract;
@@ -948,9 +825,12 @@ function IncomingEditor({
               </p>
             </div>
             <div className="rounded-lg border-2 border-dashed border-slate-200 p-4 text-xs text-slate-500">
-              الخامات تُضاف بشكل منفصل من «إضافة شهادة خامات» بعد حفظ المستخلص.
-              لا تخصمها هنا.
+              إجمالي المستخلص يُدخل قبل خصم الخامات. الخامات مرتبطة بالمستخلص وتدار من هذا القسم بعد حفظ الجاري.
             </div>
+            {e.edit && s && onOpen && <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold text-slate-900">شهادات الخامات</h3><p className="mt-1 text-xs text-slate-500">الإضافة والتعديل متاحان من داخل تعديل المستخلص فقط.</p></div><button type="button" className={secondary} onClick={() => onOpen({ action: "material", contract: c, statement: s })}><Plus className="size-3" />إضافة شهادة خامات</button></div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">{s.materials.length ? s.materials.map(material => <div key={material.id} className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white p-3"><div><p className="text-xs font-bold text-slate-800">شهادة خامات</p><MoneyValue className="mt-1">{money(material.totalCents)}</MoneyValue></div><IconAction label="تعديل شهادة الخامات" icon={Pencil} onClick={() => onOpen({ action: "material", contract: c, statement: s, material, edit: true })} /></div>) : <p className="text-xs text-slate-500">لم تُضف شهادة خامات لهذا المستخلص.</p>}</div>
+            </section>}
           </>
         )}
         {e.action === "material" && (
@@ -1317,7 +1197,12 @@ function Filter({
     </label>
   );
 }
-function Files({ files }: { files: Attachment[] }) {
+function Files({ files, compact = false }: { files: Attachment[]; compact?: boolean }) {
+  if (!files.length) return compact ? <span className="inline-grid size-[34px] place-items-center text-slate-300" aria-label="لا توجد مرفقات"><Paperclip className="size-4" /></span> : null;
+  if (compact) return <details className="relative">
+    <summary className="erp-icon-action relative list-none cursor-pointer" aria-label={`عرض ${files.length} مرفق`} title={`عرض ${files.length} مرفق`}><Paperclip className="size-4" />{files.length > 1 && <span className="absolute -left-1 -top-1 grid size-4 place-items-center rounded-full bg-blue-700 text-[9px] font-bold text-white">{files.length}</span>}</summary>
+    <div className="absolute left-0 top-10 z-40 min-w-56 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">{files.map(file => <a key={file.id} className="block rounded-md px-2 py-2 text-xs text-blue-700 hover:bg-blue-50" href={`/api/incoming/attachments/${file.id}`}>{file.name}</a>)}</div>
+  </details>;
   return (
     <span className="inline-flex flex-wrap gap-2">
       {files.map((f) => (

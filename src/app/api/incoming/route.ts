@@ -74,6 +74,17 @@ const include = {
     include: { materials: true },
   },
 };
+const deleteSchema = z.object({ id: z.string().min(1) });
+
+function validOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    const source = new URL(origin).host;
+    const configuredHost = process.env.AUTH_URL ? new URL(process.env.AUTH_URL).host : null;
+    return source === request.headers.get("host") || source === configuredHost;
+  } catch { return false; }
+}
 
 export async function POST(request: Request) {
   const user = await incomingUser("incoming.manage");
@@ -83,9 +94,7 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   try {
-    const origin = request.headers.get("origin");
-    const configuredHost = process.env.AUTH_URL ? new URL(process.env.AUTH_URL).host : null;
-    if (origin && new URL(origin).host !== request.headers.get("host") && new URL(origin).host !== configuredHost)
+    if (!validOrigin(request))
       return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
     if (Number(request.headers.get("content-length") || 0) > 11 * 1024 * 1024)
       return NextResponse.json(
@@ -114,8 +123,8 @@ export async function POST(request: Request) {
         if (!files.length) throw new Error("المرفق إلزامي قبل الحفظ.");
       };
       async function contract(id: string) {
-        const c = await tx.incomingContract.findUnique({
-          where: { id },
+        const c = await tx.incomingContract.findFirst({
+          where: { id, active: true },
           include,
         });
         if (!c) throw new Error("العقد غير موجود.");
@@ -404,4 +413,20 @@ export async function POST(request: Request) {
           : "تعذر الحفظ.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
+}
+
+export async function DELETE(request: Request) {
+  const user = await incomingUser("incoming.manage");
+  if (!user) return NextResponse.json({ error: "غير مسموح بإدارة الوارد." }, { status: 403 });
+  if (!validOrigin(request)) return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
+  const parsed = deleteSchema.safeParse(await request.json());
+  if (!parsed.success) return NextResponse.json({ error: "العقد غير صالح." }, { status: 400 });
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.incomingContract.updateMany({ where: { id: parsed.data.id, active: true }, data: { active: false } });
+    if (!updated.count) throw new Error("العقد غير موجود أو ممسوح بالفعل.");
+    await tx.auditLog.create({ data: { actorId: user.id, action: "incoming.contract.delete", target: parsed.data.id, details: JSON.stringify({ safeDelete: true }) } });
+    return updated.count;
+  }).catch((error: unknown) => error instanceof Error ? error : new Error("تعذر مسح العقد."));
+  if (result instanceof Error) return NextResponse.json({ error: result.message }, { status: 400 });
+  return NextResponse.json({ ok: true });
 }

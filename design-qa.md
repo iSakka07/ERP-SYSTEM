@@ -77,3 +77,34 @@ Read Product Bible 26.9.1. All future additions reuse DocumentLayout, CurrencyIn
 - Browser visual and accessibility-tree review of `/management` — passed for the first page-review stage.
 
 No unresolved P0/P1/P2 in this stage. The next page, Incoming, remains intentionally unchanged beyond removing the deleted Sector dependency until Management is reviewed by the user.
+
+## UX/UI page review — Incoming Module
+
+### Scope and evidence
+
+- Reviewed `/incoming`, `/incoming/new`, the separate new-statement page, expanded statement cards and statement editing in the in-app browser.
+- Used `qa-artifacts/incoming-desktop-final.png` as the approved ERP visual-language reference and Product Bible section 8.3.2 as the page-specific functional target. This is a system-language comparison, not a pixel clone of a different workflow.
+- Final responsive review used a CSS viewport width of 835px at DPR 1. The implementation and approved visual reference were emitted together for comparison; the in-app browser capture does not expose an additional local screenshot path.
+
+### Findings and fixes
+
+1. The old headline metrics did not express the agreed financial model. Replaced them with contractual value, entitlement after materials, materials, actual incoming and remaining contractual value, while keeping incoming dependent on `PAID` status only.
+2. The old table exposed too much detail and scattered actions. Rebuilt it with the exact ten agreed columns, aligned totals, a compact latest-statement card and icon-only actions with tooltips and accessible names.
+3. Statement history was visually dense. The expanded row now presents compact, stage-coloured statement cards, a contextual `إضافة جاري X` card, hidden internal certificate codes and secondary financial indicators beneath the cards.
+4. Material certificates could be managed outside their statement context. Addition and editing are now available only while editing the related statement; material values and certificate details remain discoverable from its card by hover, focus or click.
+5. Contract and statement creation competed with the list. Both now use separate creation pages and return to the preserved list filters after save or cancel.
+6. The desktop table became horizontally constrained on narrower screens. At 1100px and below it now transforms into labelled record cards; the final 835px review showed no page-level horizontal drag and preserved readable values/actions.
+7. Safe removal was required without erasing financial history. Incoming contracts now disappear from active lists through a soft delete with audit logging, while linked statements and financial records remain retained.
+
+### Verification
+
+- `pnpm lint` — passed.
+- `pnpm build` — passed, including the new `/incoming/new` and `/incoming/[contractId]/statements/new` routes.
+- `pnpm prisma validate` — passed; migration applied after a database backup.
+- `pnpm test:incoming` — passed the revised entitlement, incoming and remaining-value rules.
+- `pnpm test:incoming-api` — passed permissions, soft deletion, edit rejection after deletion and audit coverage.
+- `pnpm test:design-inputs` — passed unchanged shared-control and exact-money rules.
+- `PRAGMA foreign_key_check` — returned no violations.
+- Browser visual, responsive and accessibility-tree review — passed for the Incoming stage.
+
+No unresolved P0/P1/P2 in the Incoming stage. The next page, Subcontractor Statements, is intentionally not started until this page is reviewed and approved by the user.
