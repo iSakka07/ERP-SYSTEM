@@ -23,7 +23,7 @@ assert.equal(f.gross, 100_000_000);
 assert.equal(f.net, 90_000_000);
 assert.equal(f.materials, 15_000_000);
 assert.equal(f.effectiveMaterials, 10_000_000);
-assert.equal(f.entitlement, 145_000_000);
+assert.equal(f.entitlement, 155_000_000);
 assert.equal(f.remaining, 840_000_000);
 assert.equal(f.pending, 60_000_000);
 assert.equal(f.pendingNet, 55_000_000);
@@ -32,12 +32,20 @@ c.statements[1].stage = "PAID";
 f = financials(c);
 assert.equal(f.gross, 160_000_000);
 assert.equal(f.net, 145_000_000);
-assert.equal(f.entitlement, 145_000_000);
+assert.equal(f.entitlement, 0);
 assert.equal(f.remaining, 840_000_000);
 assert.equal(f.pct, 16);
 assert.notEqual(f.gross, 260_000_000);
 c.statements[1].stage = "CENTRAL";
 assert.equal(financials(c).net, 90_000_000);
+c.statements.push({
+  sequence: 3,
+  stage: "FINANCE",
+  grossCents: 180_000_000,
+  materials: [{ totalCents: 2_000_000 }],
+});
+assert.equal(financials(c).entitlement, 178_000_000);
+c.statements.pop();
 c.memos.push({ kind: "INCREASE", amountCents: 100_000_000 });
 assert.equal(financials(c).value, 1_100_000_000);
 c.statements[0].stage = "CENTRAL";

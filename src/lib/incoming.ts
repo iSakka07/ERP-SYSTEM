@@ -35,8 +35,13 @@ export function financials(c: {
   const ordered = [...c.statements].sort((a, b) => a.sequence - b.sequence);
   const lastPaid = ordered.filter((s) => s.stage === "PAID").at(-1);
   const latest = ordered.at(-1);
+  const latestUnpaid = ordered.filter((s) => s.stage !== "PAID").at(-1);
   const gross = lastPaid?.grossCents ?? 0;
   const latestGross = latest?.grossCents ?? 0;
+  const latestUnpaidMaterials = latestUnpaid?.materials.reduce(
+    (sum, material) => sum + material.totalCents,
+    0,
+  ) ?? 0;
   const materials = ordered.reduce(
     (sum, s) => sum + s.materials.reduce((n, m) => n + m.totalCents, 0),
     0,
@@ -53,7 +58,10 @@ export function financials(c: {
     latestGross,
     materials,
     effectiveMaterials,
-    entitlement: Math.max(0, latestGross - materials),
+    entitlement: Math.max(
+      0,
+      (latestUnpaid?.grossCents ?? 0) - latestUnpaidMaterials,
+    ),
     net: gross - effectiveMaterials,
     remaining: value - latestGross,
     pct: value ? (gross / value) * 100 : 0,
