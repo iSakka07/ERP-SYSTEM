@@ -190,7 +190,7 @@ final result: passed
 
 1. The former single page mixed employee setup, adjustments, advances, payroll and project cost into a dense sequence. It is now divided into two explicit tabs: employees/assignment and payroll runs.
 2. Salary and current assignment are one full-width operation. The user selects the employee, project or General, and salary; date ranges stay internal. A new assignment closes the former period automatically, while another same-day change updates the open record rather than creating an invalid overlap.
-3. Bonuses and deductions now use one compact card with a type selector, month filter and optional proof, rather than competing cards.
+3. Bonuses and deductions moved into separate icon actions in the employee row, matching the advance flow. Each opens a compact employee-specific popup with month, name, value and optional proof.
 4. The employee table follows the common list pattern with exactly the requested financial columns, current-month filtering and icon actions. Safe deletion hides the employee without erasing financial history or audit data.
 5. Advance entry is a focused popup from the employee row. It preserves the required proof, recovery rule and approved cash source without opening a separate page.
 6. Payroll creation, approval, executive-director payment and approved project-cost summary remain in their own tab so operational employee work is not obscured.
