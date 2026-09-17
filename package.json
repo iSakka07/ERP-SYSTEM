@@ -18,10 +18,13 @@
     "test:petty-cash": "node scripts/test-petty-cash.mjs",
     "test:salaries": "node scripts/test-salaries.mjs",
     "test:petty-cash-api": "node scripts/test-petty-cash-api.mjs",
+    "test:project-cost-control": "node scripts/test-project-cost-control.mjs",
+    "test:project-cost-control-api": "node scripts/test-project-cost-control-api.mjs",
     "test:expenses-api": "node scripts/test-expenses-api.mjs",
     "test:expense-corrections-api": "node scripts/test-expense-corrections-api.mjs",
     "test:purchases-api": "node scripts/test-purchases-api.mjs",
     "db:expenses-permissions": "node scripts/expenses-permissions.mjs",
+    "db:project-cost-control-permissions": "node scripts/project-cost-control-permissions.mjs",
     "db:demo-expenses": "node scripts/seed-expenses-demo.mjs",
     "db:setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed"
   },
