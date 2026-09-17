@@ -178,3 +178,36 @@ No unresolved P0/P1/P2 in this stage. The deep spreadsheet redesign remains the 
 No unresolved P0/P1/P2 in this stage. The next page-review stage is Salaries.
 
 final result: passed
+
+## UX/UI page review — Salaries
+
+### Scope and evidence
+
+- Source visual truth: `qa-artifacts/incoming-desktop-final.png` for the approved ERP component language, together with the accepted Salaries rules in Product Bible section 39.2.
+- Rendered implementation: in-app browser review of `http://localhost:3090/salaries`, including the employees tab, payroll tab and the advance popup. The browser capture surface emitted the reviewed desktop image but does not expose an additional local image path.
+
+### Findings and fixes
+
+1. The former single page mixed employee setup, adjustments, advances, payroll and project cost into a dense sequence. It is now divided into two explicit tabs: employees/assignment and payroll runs.
+2. Salary and current assignment are one full-width operation. The user selects the employee, project or General, and salary; date ranges stay internal. A new assignment closes the former period automatically, while another same-day change updates the open record rather than creating an invalid overlap.
+3. Bonuses and deductions now use one compact card with a type selector, month filter and optional proof, rather than competing cards.
+4. The employee table follows the common list pattern with exactly the requested financial columns, current-month filtering and icon actions. Safe deletion hides the employee without erasing financial history or audit data.
+5. Advance entry is a focused popup from the employee row. It preserves the required proof, recovery rule and approved cash source without opening a separate page.
+6. Payroll creation, approval, executive-director payment and approved project-cost summary remain in their own tab so operational employee work is not obscured.
+
+### Required fidelity surfaces
+
+- Typography and spacing reuse the Cairo hierarchy, compact control rhythm and clear Arabic labels of the approved ERP pages.
+- Financial values use the shared bold blue, two-decimal `ج.م` treatment; status and action colors retain their existing semantic meaning.
+- Cards, tables, select controls, upload boxes, icon actions and the advance popup all reuse the shared system instead of introducing a separate salary-specific visual language.
+- The advance popup remains keyboard-discoverable and its primary save action was visually confirmed after correcting its contrast treatment.
+
+### Verification
+
+- Browser interaction review passed: switching between both tabs, employee setup surfaces, the monthly table and opening the required-proof advance popup.
+- Browser console returned no errors.
+- `pnpm lint`, `pnpm test:salaries`, `pnpm build`, `pnpm prisma validate` and `git diff --check` passed.
+
+No unresolved P0/P1/P2 in this stage. The next page-review stage is Accounts and Permissions.
+
+final result: passed

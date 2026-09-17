@@ -33,9 +33,37 @@ export async function POST(request: Request) {
   const session = await currentUser("salaries.manage"); if (!session) return json({ error: "غير مصرح" }, 403);
   try {
     const form = await request.formData(); const action = String(form.get("action") || ""); const payload = JSON.parse(String(form.get("payload") || "{}")); const files = await readIncomingFiles(form);
-    const requiredFiles = new Set(["create-payroll", "advance", "bonus", "deduction"]); if (requiredFiles.has(action) && !files.length) throw new Error("المرفق إلزامي لهذه العملية.");
+    const requiredFiles = new Set(["create-payroll", "advance"]); if (requiredFiles.has(action) && !files.length) throw new Error("المرفق إلزامي لهذه العملية.");
     const result = await prisma.$transaction(async (tx) => {
       const audit = (actionName: string, target: string, details: unknown) => tx.auditLog.create({ data: { actorId: session.user.id, action: actionName, target, details: JSON.stringify(details) } });
+      if (action === "employee-config") {
+        const employee = await tx.employee.findFirst({ where: { id: String(payload.employeeId), active: true } });
+        const project = payload.projectId ? await tx.project.findFirst({ where: { id: String(payload.projectId), active: true } }) : true;
+        if (!employee || !project) throw new Error("الموظف أو المشروع غير صحيح.");
+        const monthlySalaryCents = money(payload.monthlySalaryCents);
+        const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+        const activeAllocation = await tx.employeeSalaryAllocation.findFirst({ where: { employeeId: employee.id, endDate: null }, orderBy: { startDate: "desc" } });
+        const nextProjectId = payload.projectId ? String(payload.projectId) : null;
+        if (!activeAllocation || activeAllocation.projectId !== nextProjectId) {
+          const startsToday = activeAllocation?.startDate.toISOString().slice(0, 10) === today.toISOString().slice(0, 10);
+          if (activeAllocation && startsToday) {
+            await tx.employeeSalaryAllocation.update({ where: { id: activeAllocation.id }, data: { projectId: nextProjectId } });
+          } else {
+            if (activeAllocation) { const yesterday = new Date(today); yesterday.setUTCDate(yesterday.getUTCDate() - 1); await tx.employeeSalaryAllocation.update({ where: { id: activeAllocation.id }, data: { endDate: yesterday } }); }
+            await tx.employeeSalaryAllocation.create({ data: { employeeId: employee.id, projectId: nextProjectId, startDate: today } });
+          }
+        }
+        await tx.employee.update({ where: { id: employee.id }, data: { monthlySalaryCents } });
+        await audit("salary.employee.configure", employee.id, { monthlySalaryCents, projectId: nextProjectId, effectiveDate: today.toISOString() });
+        return { id: employee.id };
+      }
+      if (action === "employee-delete") {
+        const employee = await tx.employee.findFirst({ where: { id: String(payload.employeeId), active: true } });
+        if (!employee) throw new Error("الموظف غير موجود أو تم مسحه بالفعل.");
+        await tx.employee.update({ where: { id: employee.id }, data: { active: false } });
+        await audit("salary.employee.delete", employee.id, { safeDelete: true });
+        return { id: employee.id };
+      }
       if (action === "salary") {
         const value = money(payload.monthlySalaryCents); const employee = await tx.employee.update({ where: { id: String(payload.employeeId) }, data: { monthlySalaryCents: value } }); await audit("salary.employee.update", employee.id, { value }); return { id: employee.id };
       }
