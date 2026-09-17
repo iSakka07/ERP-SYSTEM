@@ -144,3 +144,37 @@ No unresolved P0/P1/P2 in the Incoming stage. The next page, Subcontractor State
 - API coverage includes atomic accounting payment, partial/full status inputs, payment ceilings, evidence, RBAC, safe deletion/audit, historical price versions, correction debt and withdrawals.
 
 No unresolved P0/P1/P2 in this stage. The deep spreadsheet redesign remains the explicitly deferred dedicated session; the next page-review stage is Purchases.
+
+## UX/UI page review — Purchases Module
+
+### Scope and evidence
+
+- Source visual truth: `qa-artifacts/incoming-desktop-final.png` for the approved ERP cards, controls and table language, plus the user-approved Purchases UX rules in Product Bible section 39.1. This is a shared-system comparison, not a clone of a different business screen.
+- Rendered implementation: in-app browser at `http://localhost:3090/purchases` and `/purchases/new`, authenticated as the system administrator. The browser capture surface emitted screenshots during review but does not expose an additional local screenshot file path.
+- States reviewed: invoice list, KPI cards, expanded invoice-item details, focused new-invoice page and Enter-to-add-row behavior.
+
+### Findings and fixes
+
+1. Creating a purchase invoice previously expanded an editor above the live table. Moved it to a focused `/purchases/new` page so the list is not visible during entry and saving/canceling returns to the list.
+2. User-facing invoice numbers did not match the agreed model. Added required `name` for new invoices, kept `number` as an internal unique audit identifier, and migrated legacy names from their prior numbers.
+3. Item count and attachments did not give a quick detail path. Count now opens an in-row invoice detail table; attachments are represented by accessible paperclip icons and a compact file menu.
+4. Purchase KPIs and table styling were visually separate from Incoming and subcontractor works. Reused shared icon/border cards, shared money values, responsive table shell and tooltip-bearing icon actions.
+5. Item entry required explicit pointer use for each row. Enter on any field in the last item line appends a fresh row and focuses its item-name field; the visible add button remains.
+
+### Required fidelity surfaces
+
+- Typography: Cairo hierarchy and compact numeric weights follow the approved ERP screen.
+- Spacing/layout: separate entry and list routes preserve a scan-first list and a focused entry surface; fields retain the shared 8–10px control rhythm.
+- Colors/tokens: KPI borders/icons, blue money values, controls and hover actions use the existing ERP tokens.
+- Image quality/assets: no imagery is required; existing Lucide icons are retained consistently with other modules.
+- Copy/content: Arabic labels use `اسم الفاتورة`, and legacy technical identifiers are deliberately not presented as a primary business field.
+
+### Verification
+
+- Browser interactions passed: open dedicated creation page, expand item details, open attachment action, and append a second item by pressing Enter in the final row.
+- `pnpm lint`, `pnpm build`, `pnpm prisma validate` and `pnpm test:purchases-api` passed.
+- The API test verifies RBAC, required proof and invoice name, valid dates/cents, unique internal numbering, total calculation and attachment access.
+
+No unresolved P0/P1/P2 in this stage. The next page-review stage is Salaries.
+
+final result: passed
