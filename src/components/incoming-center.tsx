@@ -490,7 +490,7 @@ export function IncomingCenter({
                                 <div className="incoming-kpi-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                                   <KpiCard label="صافي الوارد النقدي" value={money(f.net)} icon={Banknote} tone="emerald" />
                                   <KpiCard label="الخامات" value={money(f.materials)} icon={PackageOpen} tone="amber" />
-                                  <KpiCard label="الجاري تحت التحصيل" value={money(f.pendingNet)} icon={ClipboardList} tone="violet" />
+                                  <KpiCard label="التحصيل الفعلي" value={money(f.pendingNet)} icon={ClipboardList} tone="violet" />
                                   <KpiCard label="نسبة الصرف من العقد" value={`${f.pct.toFixed(1)}%`} icon={Percent} tone="blue" />
                                   <KpiCard label="نسبة الخامات" value={`${(f.value ? (f.materials / f.value) * 100 : 0).toFixed(1)}%`} icon={Scale} tone="rose" />
                                 </div>

@@ -26,7 +26,7 @@ assert.equal(f.effectiveMaterials, 10_000_000);
 assert.equal(f.entitlement, 155_000_000);
 assert.equal(f.remaining, 840_000_000);
 assert.equal(f.pending, 60_000_000);
-assert.equal(f.pendingNet, 160_000_000);
+assert.equal(f.pendingNet, 55_000_000);
 assert.equal(f.pct, 10);
 c.statements[1].stage = "PAID";
 f = financials(c);
@@ -46,7 +46,7 @@ c.statements.push({
   materials: [{ totalCents: 2_000_000 }],
 });
 assert.equal(financials(c).entitlement, 178_000_000);
-assert.equal(financials(c).pendingNet, 180_000_000);
+assert.equal(financials(c).pendingNet, 73_000_000);
 c.statements.pop();
 c.memos.push({ kind: "INCREASE", amountCents: 100_000_000 });
 assert.equal(financials(c).value, 1_100_000_000);
