@@ -644,15 +644,22 @@ export function IncomingEditor({
   const [estimateValue, setEstimateValue] = useState(c?.estimateCents == null ? "" : String(c.estimateCents / 100));
   const selectedProject =
     projects.find((p) => p.id === projectId) || c?.project;
-  const title = {
-    contract: e.edit ? "تعديل العقد" : "إضافة عقد وارد",
-    statement: e.edit
-      ? `تعديل ${statementLabel(s!)}`
-      : `إضافة جاري ${(c?.statements.at(-1)?.sequence ?? 0) + 1}`,
-    material: e.edit ? "تعديل شهادة الخامات" : "شهادة خامات جديدة",
-    memo: "إضافة مذكرة رفع / خفض",
-    stage: `تغيير مرحلة ${s ? statementLabel(s) : ""}`,
-  }[e.action];
+  const title = (() => {
+    switch (e.action) {
+      case "contract":
+        return e.edit ? "تعديل العقد" : "إضافة عقد وارد";
+      case "statement":
+        return e.edit && s
+          ? `تعديل ${statementLabel(s)}`
+          : `إضافة جاري ${(c?.statements.at(-1)?.sequence ?? 0) + 1}`;
+      case "material":
+        return e.edit ? "تعديل شهادة الخامات" : "شهادة خامات جديدة";
+      case "memo":
+        return "إضافة مذكرة رفع / خفض";
+      case "stage":
+        return `تغيير مرحلة ${s ? statementLabel(s) : ""}`;
+    }
+  })();
   const total = items.reduce(
     (n, i) =>
       n +
