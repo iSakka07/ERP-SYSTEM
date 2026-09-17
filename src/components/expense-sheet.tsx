@@ -218,13 +218,26 @@ export function ExpenseSheet({
       return [oldCarry, newVersion];
     });
   }
+  const previewRows = buildSubmissionRows(rows, true).filter(
+    (row) =>
+      row.name.trim() &&
+      row.unit.trim() &&
+      Number.isFinite(row.price) &&
+      row.price > 0 &&
+      Number.isFinite(row.currentQuantity) &&
+      row.currentQuantity >= 0 &&
+      Number.isFinite(row.entitlementPercent) &&
+      row.entitlementPercent >= 0 &&
+      row.entitlementPercent <= 100,
+  );
   let submissionPreview: ReturnType<typeof calculateExpense> | null = null;
   try {
-    submissionPreview = calculateExpense(
-      buildSubmissionRows(rows, true),
-      deductions,
-      previousItems,
-    );
+    if (previewRows.length)
+      submissionPreview = calculateExpense(
+        previewRows,
+        deductions,
+        previousItems,
+      );
   } catch {
     submissionPreview = null;
   }
@@ -242,7 +255,10 @@ export function ExpenseSheet({
       old,
     };
   });
-  const gross = submissionPreview?.grossCents ?? computed.reduce((s, i) => s + i.total, 0);
+  const gross =
+    submissionPreview?.grossCents ??
+    previous?.grossCents ??
+    computed.reduce((sum, item) => sum + item.total, 0);
   const discountAmounts = deductions.map((d) =>
     Math.round(d.kind === "PERCENT" ? (gross * d.value) / 100 : d.value * 100),
   );
