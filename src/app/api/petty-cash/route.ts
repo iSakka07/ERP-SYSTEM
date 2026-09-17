@@ -113,4 +113,3 @@ export async function POST(req: Request) {
     return json({ ok: true, ...result });
   } catch (e) { return json({ error: e instanceof Error ? e.message : "تعذر حفظ الحركة." }, 400); }
 }
-
