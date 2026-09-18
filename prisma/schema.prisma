@@ -613,3 +613,74 @@ model PettyCashCount {
   createdAt      DateTime          @default(now())
   @@index([accountId, countedAt])
 }
+
+model AccountingAccount {
+  id               String            @id @default(cuid())
+  code             String            @unique
+  name             String
+  type             String
+  parentId         String?
+  parent           AccountingAccount? @relation("AccountingHierarchy", fields: [parentId], references: [id])
+  children         AccountingAccount[] @relation("AccountingHierarchy")
+  systemKey        String?           @unique
+  active           Boolean           @default(true)
+  allowManualEntry Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  lines            JournalLine[]
+
+  @@index([type, active])
+  @@index([parentId])
+}
+
+model AccountingPeriod {
+  id        String   @id @default(cuid())
+  month     String   @unique
+  status    String   @default("OPEN")
+  closedAt  DateTime?
+  closedById String?
+  reopenReason String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JournalEntry {
+  id              String        @id @default(cuid())
+  number          String        @unique
+  entryDate       DateTime
+  description     String
+  status          String        @default("POSTED")
+  sourceType      String?
+  sourceId        String?
+  projectId       String?
+  actorId         String
+  reversalOfId    String?       @unique
+  reversalOf      JournalEntry? @relation("JournalReversal", fields: [reversalOfId], references: [id])
+  reversalEntry   JournalEntry? @relation("JournalReversal")
+  reversalReason  String?
+  lines           JournalLine[]
+  createdAt       DateTime      @default(now())
+
+  @@unique([sourceType, sourceId])
+  @@index([entryDate, status])
+  @@index([projectId, entryDate])
+}
+
+model JournalLine {
+  id               String            @id @default(cuid())
+  entryId          String
+  entry            JournalEntry      @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId        String
+  account          AccountingAccount @relation(fields: [accountId], references: [id])
+  projectId        String?
+  counterpartyType String?
+  counterpartyId   String?
+  description      String?
+  debitCents       Float             @default(0)
+  creditCents      Float             @default(0)
+  createdAt        DateTime          @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([counterpartyType, counterpartyId])
+}

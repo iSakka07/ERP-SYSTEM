@@ -16,6 +16,7 @@ const permissions = [
   ["treasury.view", "عرض الخزنة", "treasury"], ["treasury.manage", "إدارة الخزنة", "treasury"],
   ["pettycash.view", "عرض Petty Cash", "pettycash"], ["pettycash.manage", "إدارة Petty Cash", "pettycash"],
   ["project_cost_control.view", "عرض موقف تكلفة المشروع", "project_cost_control"],
+  ["accounting.view", "عرض المحاسبة", "accounting"], ["accounting.manage", "إدارة القيود والحسابات", "accounting"],
   ["accounts.manage", "إدارة الحسابات والصلاحيات", "accounts"],
   ["masterdata.view", "عرض البيانات الأساسية", "masterdata"], ["masterdata.manage", "إدارة البيانات الأساسية", "masterdata"],
 ];

@@ -1,0 +1,17 @@
+CREATE TABLE "AccountingAccount" ("id" TEXT NOT NULL PRIMARY KEY, "code" TEXT NOT NULL, "name" TEXT NOT NULL, "type" TEXT NOT NULL, "parentId" TEXT, "systemKey" TEXT, "active" BOOLEAN NOT NULL DEFAULT true, "allowManualEntry" BOOLEAN NOT NULL DEFAULT true, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL, CONSTRAINT "AccountingAccount_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "AccountingAccount" ("id") ON DELETE SET NULL ON UPDATE CASCADE);
+CREATE UNIQUE INDEX "AccountingAccount_code_key" ON "AccountingAccount"("code");
+CREATE UNIQUE INDEX "AccountingAccount_systemKey_key" ON "AccountingAccount"("systemKey");
+CREATE INDEX "AccountingAccount_type_active_idx" ON "AccountingAccount"("type", "active");
+CREATE INDEX "AccountingAccount_parentId_idx" ON "AccountingAccount"("parentId");
+CREATE TABLE "AccountingPeriod" ("id" TEXT NOT NULL PRIMARY KEY, "month" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'OPEN', "closedAt" DATETIME, "closedById" TEXT, "reopenReason" TEXT, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL);
+CREATE UNIQUE INDEX "AccountingPeriod_month_key" ON "AccountingPeriod"("month");
+CREATE TABLE "JournalEntry" ("id" TEXT NOT NULL PRIMARY KEY, "number" TEXT NOT NULL, "entryDate" DATETIME NOT NULL, "description" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'POSTED', "sourceType" TEXT, "sourceId" TEXT, "projectId" TEXT, "actorId" TEXT NOT NULL, "reversalOfId" TEXT, "reversalReason" TEXT, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "JournalEntry_reversalOfId_fkey" FOREIGN KEY ("reversalOfId") REFERENCES "JournalEntry" ("id") ON DELETE SET NULL ON UPDATE CASCADE);
+CREATE UNIQUE INDEX "JournalEntry_number_key" ON "JournalEntry"("number");
+CREATE UNIQUE INDEX "JournalEntry_reversalOfId_key" ON "JournalEntry"("reversalOfId");
+CREATE UNIQUE INDEX "JournalEntry_sourceType_sourceId_key" ON "JournalEntry"("sourceType", "sourceId");
+CREATE INDEX "JournalEntry_entryDate_status_idx" ON "JournalEntry"("entryDate", "status");
+CREATE INDEX "JournalEntry_projectId_entryDate_idx" ON "JournalEntry"("projectId", "entryDate");
+CREATE TABLE "JournalLine" ("id" TEXT NOT NULL PRIMARY KEY, "entryId" TEXT NOT NULL, "accountId" TEXT NOT NULL, "projectId" TEXT, "counterpartyType" TEXT, "counterpartyId" TEXT, "description" TEXT, "debitCents" REAL NOT NULL DEFAULT 0, "creditCents" REAL NOT NULL DEFAULT 0, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "JournalLine_entryId_fkey" FOREIGN KEY ("entryId") REFERENCES "JournalEntry" ("id") ON DELETE CASCADE ON UPDATE CASCADE, CONSTRAINT "JournalLine_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "AccountingAccount" ("id") ON DELETE RESTRICT ON UPDATE CASCADE);
+CREATE INDEX "JournalLine_accountId_createdAt_idx" ON "JournalLine"("accountId", "createdAt");
+CREATE INDEX "JournalLine_projectId_createdAt_idx" ON "JournalLine"("projectId", "createdAt");
+CREATE INDEX "JournalLine_counterpartyType_counterpartyId_idx" ON "JournalLine"("counterpartyType", "counterpartyId");

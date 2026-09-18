@@ -25,6 +25,7 @@
     "test:purchases-api": "node scripts/test-purchases-api.mjs",
     "db:expenses-permissions": "node scripts/expenses-permissions.mjs",
     "db:project-cost-control-permissions": "node scripts/project-cost-control-permissions.mjs",
+    "db:accounting-setup": "node scripts/accounting-setup.mjs",
     "db:demo-expenses": "node scripts/seed-expenses-demo.mjs",
     "db:setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed"
   },
