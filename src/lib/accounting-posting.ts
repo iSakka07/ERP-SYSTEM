@@ -9,7 +9,9 @@ const monthOf = (date: Date) => date.toISOString().slice(0, 7);
 
 export async function accountingIsLive(tx: Tx, date: Date) {
   const setting = await tx.systemMetadata.findUnique({ where: { key: "accounting.goLiveDate" } });
-  return !!setting?.value && date >= new Date(`${setting.value}T00:00:00.000Z`);
+  // أثناء بناء النظام يعمل الترحيل الطبيعي فورًا. عند اعتماد تاريخ تشغيل رسمي
+  // لاحقًا، يظل قيد التاريخ حاجزًا لحماية البيانات التاريخية قبل ذلك التاريخ.
+  return !setting?.value || date >= new Date(`${setting.value}T00:00:00.000Z`);
 }
 
 export async function postJournal(tx: Tx, input: { sourceType: string; sourceId: string; entryDate: Date; description: string; actorId: string; projectId?: string | null; lines: PostingLine[] }) {
