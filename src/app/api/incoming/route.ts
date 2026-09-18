@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { financials, incomingStages } from "@/lib/incoming";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
+import { postIncomingAccrual, postIncomingCollection, postOwnerMaterialCertificate } from "@/lib/accounting-posting";
 
 const text = z.string().trim().min(1).max(300);
 const amount = z.coerce
@@ -68,6 +69,7 @@ const schema = z.discriminatedUnion("action", [
   }),
 ]);
 const include = {
+  project: { select: { id: true, companyId: true } },
   memos: true,
   statements: {
     orderBy: { sequence: "asc" as const },
@@ -185,6 +187,8 @@ export async function POST(request: Request) {
           throw new Error(
             "المستخلص مقفل ماليًا. يجب الرجوع الموثق قبل التعديل.",
           );
+        if (existing && await tx.journalEntry.findFirst({ where: { sourceType: "INCOMING_ACCRUAL", sourceId: existing.id } }))
+          throw new Error("الجاري مرحّل محاسبيًا؛ صححه بعكس موثق ثم أضف جاريًا بديلًا.");
         if (!existing && c.statements.some((s) => s.kind === "FINAL"))
           throw new Error("لا يضاف جاري بعد الختامي.");
         const sequence =
@@ -226,11 +230,11 @@ export async function POST(request: Request) {
           ).id;
         else {
           requireFiles();
-          target = (
-            await tx.incomingStatement.create({
+          const created = await tx.incomingStatement.create({
               data: { ...data, contractId: c.id, sequence },
-            })
-          ).id;
+            });
+          await postIncomingAccrual(tx, { ...created, contract: { projectId: c.projectId } }, previous?.grossCents ?? 0, c.project.companyId, user.id);
+          target = created.id;
         }
       }
       if (d.action === "material") {
@@ -251,6 +255,8 @@ export async function POST(request: Request) {
           : null;
         if (d.id && (!old || old.statementId !== s.id))
           throw new Error("لا يسمح بنقل شهادة بين المستخلصات.");
+        if (old && await tx.journalEntry.findFirst({ where: { sourceId: old.id, sourceType: { in: ["OWNER_MATERIAL_RECEIPT", "OWNER_MATERIAL_COST"] } } }))
+          throw new Error("شهادة الخامات مرحّلة محاسبيًا؛ صححها بعكس موثق ثم أضف شهادة بديلة.");
         const items = d.items.map((i) => ({
           name: i.name,
           unit: i.unit,
@@ -294,11 +300,11 @@ export async function POST(request: Request) {
           ).id;
         } else {
           requireFiles();
-          target = (
-            await tx.materialCertificate.create({
-              data: { ...data, statementId: s.id, items: { create: items } },
-            })
-          ).id;
+          const created = await tx.materialCertificate.create({
+            data: { ...data, statementId: s.id, items: { create: items } },
+          });
+          await postOwnerMaterialCertificate(tx, { ...created, statement: { contract: { projectId: c.projectId } } }, c.project.companyId, user.id);
+          target = created.id;
         }
       }
       if (d.action === "memo") {
@@ -367,15 +373,21 @@ export async function POST(request: Request) {
           )
             throw new Error("يجب صرف المستخلصات السابقة أولًا.");
         }
+        const paidAt = d.stage === "PAID" ? new Date(d.paidAt!) : null;
         await tx.incomingStatement.update({
           where: { id: s.id },
           data: {
             stage: d.stage,
-            paidAt: d.stage === "PAID" ? new Date(d.paidAt!) : null,
+            paidAt,
             paymentMethod: d.stage === "PAID" ? d.paymentMethod : null,
             paymentReference: d.stage === "PAID" ? d.paymentReference : null,
           },
         });
+        if (d.stage === "PAID") {
+          const current = c.statements.find((statement) => statement.id === s.id)!;
+          const previousPaid = c.statements.filter((statement) => statement.sequence < s.sequence).at(-1);
+          await postIncomingCollection(tx, { ...s, paidAt, contract: { projectId: c.projectId }, materials: current.materials }, previousPaid?.grossCents ?? 0, c.project.companyId, user.id);
+        }
       }
       if (files.length)
         await tx.incomingAttachment.createMany({

@@ -119,3 +119,23 @@ export async function postSubcontractApproval(tx: Tx, statement: SubcontractAppr
 export async function postSubcontractPayment(tx: Tx, payment: { id: string; amountCents: number; paymentDate: Date; actorId: string; statement: { account: { projectId: string; companyId: string } } }) {
   return postJournal(tx, { sourceType: "SUBCONTRACT_PAYMENT", sourceId: payment.id, entryDate: payment.paymentDate, description: "دفعة لمقاول باطن", actorId: payment.actorId, projectId: payment.statement.account.projectId, lines: [{ accountKey: "SUBCONTRACTOR_PAYABLE", debitCents: payment.amountCents, counterpartyType: "SUBCONTRACTOR", counterpartyId: payment.statement.account.companyId }, { accountKey: "OWNER_FUNDING", creditCents: payment.amountCents }] });
 }
+
+export async function postIncomingAccrual(tx: Tx, statement: { id: string; grossCents: number; submittedAt: Date; contract: { projectId: string } }, previousGrossCents: number, ownerCompanyId: string, actorId: string) {
+  const amountCents = statement.grossCents - previousGrossCents;
+  if (amountCents <= 0) throw new Error("الزيادة التراكمية في الجاري الوارد يجب أن تكون موجبة قبل الترحيل.");
+  return postJournal(tx, { sourceType: "INCOMING_ACCRUAL", sourceId: statement.id, entryDate: statement.submittedAt, description: "استحقاق أعمال من جهة مالكة", actorId, projectId: statement.contract.projectId, lines: [{ accountKey: "OWNER_RECEIVABLE", debitCents: amountCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }, { accountKey: "CONTRACT_REVENUE", creditCents: amountCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }] });
+}
+
+export async function postOwnerMaterialCertificate(tx: Tx, certificate: { id: string; totalCents: number; createdAt: Date; statement: { contract: { projectId: string } } }, ownerCompanyId: string, actorId: string) {
+  const common = { entryDate: certificate.createdAt, actorId, projectId: certificate.statement.contract.projectId, description: "خامات مستلمة من الجهة المالكة" };
+  await postJournal(tx, { ...common, sourceType: "OWNER_MATERIAL_RECEIPT", sourceId: certificate.id, lines: [{ accountKey: "OWNER_MATERIALS", debitCents: certificate.totalCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }, { accountKey: "OWNER_RECEIVABLE", creditCents: certificate.totalCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }] });
+  return postJournal(tx, { ...common, sourceType: "OWNER_MATERIAL_COST", sourceId: certificate.id, lines: [{ accountKey: "PROJECT_MATERIAL_COST", debitCents: certificate.totalCents }, { accountKey: "OWNER_MATERIALS", creditCents: certificate.totalCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }] });
+}
+
+export async function postIncomingCollection(tx: Tx, statement: { id: string; grossCents: number; paidAt: Date | null; contract: { projectId: string }; materials: { totalCents: number }[] }, previousPaidGrossCents: number, ownerCompanyId: string, actorId: string) {
+  if (!statement.paidAt) throw new Error("تاريخ التحصيل غير مكتمل.");
+  const cashCents = statement.grossCents - previousPaidGrossCents - statement.materials.reduce((sum, material) => sum + material.totalCents, 0);
+  if (cashCents < 0) throw new Error("صافي التحصيل بعد خصم الخامات لا يمكن أن يكون سالبًا.");
+  if (!cashCents) return null;
+  return postJournal(tx, { sourceType: "INCOMING_COLLECTION", sourceId: statement.id, entryDate: statement.paidAt, description: "تحصيل مستخلص من جهة مالكة", actorId, projectId: statement.contract.projectId, lines: [{ accountKey: "BANK", debitCents: cashCents }, { accountKey: "OWNER_RECEIVABLE", creditCents: cashCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }] });
+}
