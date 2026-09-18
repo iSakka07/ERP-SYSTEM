@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, Building2, CircleCheckBig, FileSpreadsheet, Landmark, Paperclip, ShoppingCart, Sparkles, UsersRound, Vault } from "lucide-react";
 import { auth } from "@/auth";
 import { can } from "@/lib/permissions";
+import { companyBrand } from "@/lib/company-brand";
 import { prisma } from "@/lib/prisma";
 import { financials, money } from "@/lib/incoming";
 import { expenseSummary } from "@/lib/expenses";
@@ -54,7 +55,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ p
           <div>
             <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 ring-1 ring-blue-100"><Sparkles className="size-3.5" />النسخة التجريبية الأولى</div>
             <h1 className="max-w-3xl text-3xl font-extrabold leading-[1.35] text-slate-950 lg:text-4xl">إدارة المشروع من أول وارد <span className="text-blue-700">لحد آخر جنيه اتصرف</span></h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 lg:text-base">ERP-SYSTEM V1 يجمع مستخلصات المالك، مقاولي الباطن، المشتريات، النثريات، المرتبات والخزنة في ملف مالي واحد لكل مشروع.</p>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 lg:text-base">{companyBrand.arabicName} يجمع مستخلصات المالك، مقاولي الباطن، المشتريات، النثريات، المرتبات والخزنة في ملف مالي واحد لكل مشروع.</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <a href="#modules" className="inline-flex h-11 items-center gap-2 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">استعرض الموديولات<ArrowLeft className="size-4" /></a>
               {can(session?.user, "incoming.view") && <a href="/incoming" className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-blue-700"><CircleCheckBig className="size-4 text-emerald-600" />جرّب العقود والوارد</a>}

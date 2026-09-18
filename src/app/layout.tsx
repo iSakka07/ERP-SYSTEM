@@ -7,8 +7,8 @@ import "@fontsource/cairo/800.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ERP-SYSTEM V1",
-  description: "منظومة متكاملة لإدارة شركة المقاولات",
+  title: "ASGC ERP | السلامة جروب",
+  description: "منظومة السلامة جروب لإدارة المشروعات والمقاولات",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
