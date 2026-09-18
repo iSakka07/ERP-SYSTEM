@@ -47,3 +47,32 @@ export async function postPettyCashJournal(tx: Tx, movement: { id: string; type:
 export async function postPurchaseJournal(tx: Tx, invoice: { id: string; totalCents: number; invoiceDate: Date; name: string; projectId: string; paymentSource: string; actorId: string }) {
   return postJournal(tx, { sourceType: "PURCHASE", sourceId: invoice.id, entryDate: invoice.invoiceDate, description: `فاتورة مشتريات: ${invoice.name}`, actorId: invoice.actorId, projectId: invoice.projectId, lines: [{ accountKey: "PURCHASE_COST", debitCents: invoice.totalCents }, { accountKey: invoice.paymentSource === "PETTY_CASH" ? "PETTY_CASH" : "OWNER_FUNDING", creditCents: invoice.totalCents }] });
 }
+
+type PayrollPostingLine = { employeeId: string; basicCents: number; bonusCents: number; deductionCents: number; advanceCents: number; netCents: number; allocationJson: string };
+
+export async function postPayrollApproval(tx: Tx, run: { id: string; month: string; approvedById: string; lines: PayrollPostingLine[] }) {
+  const [year, month] = run.month.split("-").map(Number);
+  const entryDate = new Date(Date.UTC(year, month, 0));
+  const lines: PostingLine[] = [];
+  for (const line of run.lines) {
+    const cost = line.basicCents + line.bonusCents - line.deductionCents;
+    let allocations: { projectId: string | null; cents: number }[] = [];
+    try { allocations = JSON.parse(line.allocationJson); } catch { allocations = []; }
+    const base = allocations.reduce((sum, item) => sum + item.cents, 0) || 1;
+    let remaining = cost;
+    for (const [index, allocation] of allocations.entries()) { const debitCents = index === allocations.length - 1 ? remaining : Math.round(cost * allocation.cents / base); remaining -= debitCents; if (debitCents) lines.push({ accountKey: "PAYROLL_COST", debitCents, projectId: allocation.projectId, counterpartyType: "EMPLOYEE", counterpartyId: line.employeeId }); }
+    if (!allocations.length && cost) lines.push({ accountKey: "PAYROLL_COST", debitCents: cost, counterpartyType: "EMPLOYEE", counterpartyId: line.employeeId });
+    if (line.netCents) lines.push({ accountKey: "PAYROLL_PAYABLE", creditCents: line.netCents, counterpartyType: "EMPLOYEE", counterpartyId: line.employeeId });
+    if (line.advanceCents) lines.push({ accountKey: "EMPLOYEE_ADVANCES", creditCents: line.advanceCents, counterpartyType: "EMPLOYEE", counterpartyId: line.employeeId });
+  }
+  return postJournal(tx, { sourceType: "PAYROLL_APPROVAL", sourceId: run.id, entryDate, description: `اعتماد كشف رواتب ${run.month}`, actorId: run.approvedById, lines });
+}
+
+export async function postPayrollPayment(tx: Tx, run: { id: string; month: string; totalCents: number; paidAt: Date | null; paidById: string | null }) {
+  if (!run.paidAt || !run.paidById) throw new Error("بيانات صرف الرواتب غير مكتملة.");
+  return postJournal(tx, { sourceType: "PAYROLL_PAYMENT", sourceId: run.id, entryDate: run.paidAt, description: `صرف كشف رواتب ${run.month}`, actorId: run.paidById, lines: [{ accountKey: "PAYROLL_PAYABLE", debitCents: run.totalCents }, { accountKey: "OWNER_FUNDING", creditCents: run.totalCents }] });
+}
+
+export async function postExecutiveAdvance(tx: Tx, advance: { id: string; amountCents: number; issuedAt: Date; employeeId: string; note: string | null }, actorId: string) {
+  return postJournal(tx, { sourceType: "EMPLOYEE_ADVANCE", sourceId: advance.id, entryDate: advance.issuedAt, description: `سلفة موظف${advance.note ? `: ${advance.note}` : ""}`, actorId, lines: [{ accountKey: "EMPLOYEE_ADVANCES", debitCents: advance.amountCents, counterpartyType: "EMPLOYEE", counterpartyId: advance.employeeId }, { accountKey: "OWNER_FUNDING", creditCents: advance.amountCents }] });
+}
