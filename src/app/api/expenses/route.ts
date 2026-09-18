@@ -18,6 +18,7 @@ import {
   safeCents,
   correctionDebtAfterApproval,
 } from "@/lib/expenses";
+import { postSubcontractApproval, postSubcontractPayment } from "@/lib/accounting-posting";
 
 const text = z.string().trim().min(1).max(300);
 const date = z
@@ -668,7 +669,7 @@ export async function POST(request: Request) {
             include: {
               ...relations,
               account: {
-                include: { statements: { include: { payments: true } } },
+                include: { statements: { include: { payments: true, deductions: true } } },
               },
             },
           });
@@ -749,6 +750,11 @@ export async function POST(request: Request) {
                 revision: st.revision,
               },
             });
+            if (data.stage === "EXECUTIVE") {
+              const approved = await tx.subcontractStatement.findUniqueOrThrow({ where: { id: st.id }, include: { deductions: true, account: true } });
+              const previous = st.account.statements.filter((item) => item.sequence < st.sequence && ["EXECUTIVE", "ACCOUNTING"].includes(item.stage)).sort((a, b) => b.sequence - a.sequence)[0];
+              await postSubcontractApproval(tx, { ...approved, previousDeductions: previous?.deductions || [] }, user.id);
+            }
             id = st.id;
             entityType = "statement";
           } else if (data.action === "accountingPayment") {
@@ -793,6 +799,7 @@ export async function POST(request: Request) {
                 actorId: user.id,
               },
             });
+            await postSubcontractPayment(tx, { ...payment, statement: { account: st.account } });
             id = payment.id;
             entityType = "payment";
           } else {
@@ -827,6 +834,7 @@ export async function POST(request: Request) {
                 actorId: user.id,
               },
             });
+            await postSubcontractPayment(tx, { ...payment, statement: { account: st.account } });
             id = payment.id;
             entityType = "payment";
           }

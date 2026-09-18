@@ -5,5 +5,5 @@ import { AccountingCenter } from "@/components/accounting-center";
 
 export default async function AccountingPage() {
   if (!(await incomingUser("accounting.view"))) redirect("/");
-  return <AccountingCenter initial={await accountingSnapshot()} />;
+  return <AccountingCenter initial={await accountingSnapshot()} canManage={Boolean(await incomingUser("accounting.manage"))} />;
 }

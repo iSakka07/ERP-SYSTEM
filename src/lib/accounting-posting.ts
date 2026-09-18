@@ -76,3 +76,44 @@ export async function postPayrollPayment(tx: Tx, run: { id: string; month: strin
 export async function postExecutiveAdvance(tx: Tx, advance: { id: string; amountCents: number; issuedAt: Date; employeeId: string; note: string | null }, actorId: string) {
   return postJournal(tx, { sourceType: "EMPLOYEE_ADVANCE", sourceId: advance.id, entryDate: advance.issuedAt, description: `سلفة موظف${advance.note ? `: ${advance.note}` : ""}`, actorId, lines: [{ accountKey: "EMPLOYEE_ADVANCES", debitCents: advance.amountCents, counterpartyType: "EMPLOYEE", counterpartyId: advance.employeeId }, { accountKey: "OWNER_FUNDING", creditCents: advance.amountCents }] });
 }
+
+type SubcontractDeduction = { name: string; amountCents: number };
+type SubcontractApproval = {
+  id: string; revision: number; grossCents: number; netCents: number; previousGrossCents: number; executiveApprovedAt: Date | null;
+  account: { projectId: string; companyId: string }; deductions: SubcontractDeduction[];
+  previousDeductions?: SubcontractDeduction[];
+};
+
+function deductionAccount(name: string) {
+  return /تأمين|تامين/i.test(name) ? "RETENTION_PAYABLE" : "SUBCONTRACTOR_DEDUCTIONS";
+}
+
+async function reverseLatestSourceEntry(tx: Tx, sourceType: string, sourcePrefix: string, entryDate: Date, actorId: string, reason: string) {
+  const existing = await tx.journalEntry.findFirst({ where: { sourceType, sourceId: { startsWith: sourcePrefix }, status: "POSTED" }, include: { lines: true, reversalEntry: true }, orderBy: { createdAt: "desc" } });
+  if (!existing || existing.reversalEntry) return null;
+  const accounts = await tx.accountingAccount.findMany({ where: { id: { in: existing.lines.map((line) => line.accountId) } } });
+  const byId = new Map(accounts.map((account) => [account.id, account]));
+  return postJournal(tx, { sourceType: `${sourceType}_REVERSAL`, sourceId: existing.id, entryDate, description: `عكس تلقائي: ${reason}`, actorId, projectId: existing.projectId, lines: existing.lines.map((line) => ({ accountKey: byId.get(line.accountId)!.systemKey!, debitCents: line.creditCents, creditCents: line.debitCents, projectId: line.projectId, counterpartyType: line.counterpartyType || undefined, counterpartyId: line.counterpartyId || undefined, description: line.description || undefined })) }).then(async (reversal) => {
+    if (reversal) await tx.journalEntry.update({ where: { id: reversal.id }, data: { reversalOfId: existing.id, reversalReason: reason } });
+    return reversal;
+  });
+}
+
+export async function postSubcontractApproval(tx: Tx, statement: SubcontractApproval, actorId: string) {
+  const entryDate = statement.executiveApprovedAt || new Date();
+  if (!(await accountingIsLive(tx, entryDate))) return null;
+  const grossDelta = statement.grossCents - statement.previousGrossCents;
+  const previousByAccount = new Map<string, number>();
+  for (const deduction of statement.previousDeductions || []) previousByAccount.set(deductionAccount(deduction.name), (previousByAccount.get(deductionAccount(deduction.name)) || 0) + deduction.amountCents);
+  const currentByAccount = new Map<string, number>();
+  for (const deduction of statement.deductions) currentByAccount.set(deductionAccount(deduction.name), (currentByAccount.get(deductionAccount(deduction.name)) || 0) + deduction.amountCents);
+  const deductionDeltas = [...currentByAccount.entries()].map(([key, amount]) => [key, amount - (previousByAccount.get(key) || 0)] as const).filter(([, amount]) => amount !== 0);
+  const netDelta = statement.netCents - (statement.previousGrossCents - [...previousByAccount.values()].reduce((sum, amount) => sum + amount, 0));
+  if (grossDelta < 0 || netDelta < 0 || deductionDeltas.some(([, amount]) => amount < 0)) throw new Error("تصحيح مستخلص معتمد يحتاج دورة عكس محاسبية مخصصة قبل الترحيل.");
+  await reverseLatestSourceEntry(tx, "SUBCONTRACT_ACCRUAL", `${statement.id}:`, entryDate, actorId, "إعادة اعتماد مستخلص مقاول بعد تعديل موثق");
+  return postJournal(tx, { sourceType: "SUBCONTRACT_ACCRUAL", sourceId: `${statement.id}:${statement.revision}`, entryDate, description: "استحقاق أعمال مقاول باطن", actorId, projectId: statement.account.projectId, lines: [{ accountKey: "SUBCONTRACT_COST", debitCents: grossDelta, counterpartyType: "SUBCONTRACTOR", counterpartyId: statement.account.companyId }, { accountKey: "SUBCONTRACTOR_PAYABLE", creditCents: netDelta, counterpartyType: "SUBCONTRACTOR", counterpartyId: statement.account.companyId }, ...deductionDeltas.map(([accountKey, creditCents]) => ({ accountKey, creditCents, counterpartyType: "SUBCONTRACTOR", counterpartyId: statement.account.companyId }))] });
+}
+
+export async function postSubcontractPayment(tx: Tx, payment: { id: string; amountCents: number; paymentDate: Date; actorId: string; statement: { account: { projectId: string; companyId: string } } }) {
+  return postJournal(tx, { sourceType: "SUBCONTRACT_PAYMENT", sourceId: payment.id, entryDate: payment.paymentDate, description: "دفعة لمقاول باطن", actorId: payment.actorId, projectId: payment.statement.account.projectId, lines: [{ accountKey: "SUBCONTRACTOR_PAYABLE", debitCents: payment.amountCents, counterpartyType: "SUBCONTRACTOR", counterpartyId: payment.statement.account.companyId }, { accountKey: "OWNER_FUNDING", creditCents: payment.amountCents }] });
+}
