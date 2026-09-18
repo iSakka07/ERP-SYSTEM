@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import { assertBalances, balanceForAccount, cents, isProjectCost, validatePettyInput } from "@/lib/petty-cash";
+import { postPettyCashJournal } from "@/lib/accounting-posting";
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status });
 export async function GET() {
@@ -107,6 +108,7 @@ export async function POST(req: Request) {
       const movement = { id, number: "PC-" + id, type, amountCents, transactionDate, sourceAccountId, destinationAccountId, projectId, categoryId, description, documentNumber, fundingSource: type === "FUNDING" ? "EXECUTIVE_DIRECTOR" : null, recordedById: user.id, status: "POSTED" };
       assertBalances([...movements, movement]);
       await tx.pettyCashTransaction.create({ data: { ...movement, attachments: { create: files.map(f => ({ ...f, actorId: user.id })) } } });
+      await postPettyCashJournal(tx, movement);
       await audit(action === "adjust" ? "adjust" : type.toLowerCase(), id, movement);
       return { id };
     }, { maxWait: 10000, timeout: 20000 });

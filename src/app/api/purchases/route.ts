@@ -3,6 +3,8 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
+import { postPurchaseJournal } from "@/lib/accounting-posting";
+import { assertBalances, balanceForAccount } from "@/lib/petty-cash";
 
 const itemSchema = z.object({
   name: z.string().trim().min(1).max(300),
@@ -21,6 +23,7 @@ const schema = z.object({
   }),
   name: z.string().trim().min(1).max(160),
   notes: z.string().trim().max(2000).optional(),
+  paymentSource: z.enum(["EXECUTIVE_DIRECTOR", "PETTY_CASH"]),
   items: z.array(itemSchema).min(1).max(200),
 });
 
@@ -96,10 +99,21 @@ export async function POST(request: Request) {
           invoiceDate: new Date(data.invoiceDate),
           notes: data.notes || null,
           totalCents,
+          paymentSource: data.paymentSource,
           actorId: user.id,
           items: { createMany: { data: items } },
         },
       });
+      if (data.paymentSource === "PETTY_CASH") {
+        const main = await tx.pettyCashAccount.findFirst({ where: { type: "MAIN", active: true } });
+        if (!main) throw new Error("لم يتم إعداد Petty Cash.");
+        const movements = await tx.pettyCashTransaction.findMany();
+        if (balanceForAccount(movements, main.id) < totalCents) throw new Error("رصيد Petty Cash لا يكفي لسداد الفاتورة.");
+        const id = randomUUID();
+        const movement = { id, number: `PC-PUR-${id}`, type: "PURCHASE_PAYMENT", amountCents: totalCents, transactionDate: new Date(data.invoiceDate), sourceAccountId: main.id, destinationAccountId: null, projectId: data.projectId, categoryId: null, description: `سداد فاتورة مشتريات: ${data.name}`, documentNumber: number, fundingSource: null, recordedById: user.id, status: "POSTED" };
+        assertBalances([...movements, movement]);
+        await tx.pettyCashTransaction.create({ data: movement });
+      }
       await tx.purchaseAttachment.createMany({
         data: files.map((file) => ({
           ...file,
@@ -108,6 +122,7 @@ export async function POST(request: Request) {
           actorId: user.id,
         })),
       });
+      await postPurchaseJournal(tx, created);
       await tx.auditLog.create({
         data: {
           actorId: user.id,
@@ -120,6 +135,7 @@ export async function POST(request: Request) {
               projectId: data.projectId,
               supplierId: data.supplierId || null,
               totalCents,
+              paymentSource: data.paymentSource,
               items: items.length,
             },
           }),

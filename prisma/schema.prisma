@@ -498,6 +498,7 @@ model PurchaseInvoice {
   invoiceDate DateTime
   notes       String?
   totalCents  Float
+  paymentSource String @default("EXECUTIVE_DIRECTOR")
   actorId     String
   items       PurchaseItem[]
   createdAt   DateTime           @default(now())

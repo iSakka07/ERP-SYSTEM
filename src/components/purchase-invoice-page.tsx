@@ -62,6 +62,7 @@ export function PurchaseInvoicePage({
         projectId: data.get("projectId"),
         supplierId: data.get("supplierId") || undefined,
         invoiceDate: data.get("invoiceDate"),
+        paymentSource: data.get("paymentSource"),
         notes: data.get("notes") || undefined,
         items: rows.map(({ name, unit, quantity, price }) => ({ name, unit, quantity, price })),
       }),
@@ -115,6 +116,13 @@ export function PurchaseInvoicePage({
           <label className="text-xs font-bold">
             تاريخ الفاتورة *
             <input name="invoiceDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className={`${expenseInput} mt-2`} />
+          </label>
+          <label className="text-xs font-bold">
+            مصدر الصرف *
+            <ERPSelect name="paymentSource" required defaultValue="EXECUTIVE_DIRECTOR" className={`${expenseInput} mt-2`}>
+              <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
+              <option value="PETTY_CASH">Petty Cash</option>
+            </ERPSelect>
           </label>
         </div>
 
