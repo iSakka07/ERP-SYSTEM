@@ -14,7 +14,8 @@ try {
     const parent = parentCode ? await prisma.accountingAccount.findUnique({ where: { code: parentCode } }) : null;
     await prisma.accountingAccount.upsert({ where: { code }, update: { name, type, parentId: parent?.id || null, systemKey, allowManualEntry, active: true }, create: { code, name, type, parentId: parent?.id || null, systemKey, allowManualEntry } });
   }
-  const permissions = [["accounting.view", "عرض المحاسبة", "accounting"], ["accounting.manage", "إدارة القيود والحسابات", "accounting"]];
+  await prisma.bankAccount.upsert({ where: { name: "الحساب البنكي الرئيسي" }, update: { active: true }, create: { name: "الحساب البنكي الرئيسي" } });
+  const permissions = [["accounting.view", "عرض المحاسبة", "accounting"], ["accounting.manage", "إدارة القيود والحسابات", "accounting"], ["bank.view", "عرض البنك", "bank"], ["bank.manage", "إدارة حركات البنك", "bank"]];
   for (const [key, name, module] of permissions) await prisma.permission.upsert({ where: { key }, update: { name, module }, create: { key, name, module } });
   const roles = await prisma.role.findMany({ where: { key: { in: ["admin", "accountant"] } } });
   const permissionRows = await prisma.permission.findMany({ where: { key: { in: permissions.map(([key]) => key) } } });

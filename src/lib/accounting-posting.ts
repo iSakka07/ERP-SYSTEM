@@ -134,8 +134,21 @@ export async function postOwnerMaterialCertificate(tx: Tx, certificate: { id: st
 
 export async function postIncomingCollection(tx: Tx, statement: { id: string; grossCents: number; paidAt: Date | null; contract: { projectId: string }; materials: { totalCents: number }[] }, previousPaidGrossCents: number, ownerCompanyId: string, actorId: string) {
   if (!statement.paidAt) throw new Error("تاريخ التحصيل غير مكتمل.");
-  const cashCents = statement.grossCents - previousPaidGrossCents - statement.materials.reduce((sum, material) => sum + material.totalCents, 0);
+  const cashCents = incomingCollectionCashCents(statement.grossCents, previousPaidGrossCents, statement.materials);
   if (cashCents < 0) throw new Error("صافي التحصيل بعد خصم الخامات لا يمكن أن يكون سالبًا.");
   if (!cashCents) return null;
   return postJournal(tx, { sourceType: "INCOMING_COLLECTION", sourceId: statement.id, entryDate: statement.paidAt, description: "تحصيل مستخلص من جهة مالكة", actorId, projectId: statement.contract.projectId, lines: [{ accountKey: "BANK", debitCents: cashCents }, { accountKey: "OWNER_RECEIVABLE", creditCents: cashCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }] });
+}
+
+export function incomingCollectionCashCents(grossCents: number, previousPaidGrossCents: number, materials: { totalCents: number }[]) {
+  return grossCents - previousPaidGrossCents - materials.reduce((sum, material) => sum + material.totalCents, 0);
+}
+
+const bankExpenseAccounts: Record<string, string> = { diesel: "DIESEL_EXPENSE", workers_daily: "DAILY_LABOR_EXPENSE", transport: "TRANSPORT_EXPENSE", maintenance: "MAINTENANCE_EXPENSE", hospitality: "HOSPITALITY_EXPENSE", tools: "TOOLS_EXPENSE", project_admin: "PROJECT_ADMIN_EXPENSE", general: "GENERAL_EXPENSE", other: "GENERAL_EXPENSE" };
+
+export async function postManualBankJournal(tx: Tx, transaction: { id: string; type: string; amountCents: number; transactionDate: Date; description: string; actorId: string; projectId: string | null; categoryKey: string | null; counterAccountKey: string | null }) {
+  if (transaction.type === "INCOMING_COLLECTION" || transaction.type === "OPENING_BALANCE") return null;
+  if (transaction.type === "OWNER_FUNDING") return postJournal(tx, { sourceType: "BANK_MOVEMENT", sourceId: transaction.id, entryDate: transaction.transactionDate, description: transaction.description, actorId: transaction.actorId, projectId: transaction.projectId, lines: [{ accountKey: "BANK", debitCents: transaction.amountCents }, { accountKey: "OWNER_FUNDING", creditCents: transaction.amountCents }] });
+  if (transaction.type === "MANUAL_DEPOSIT") return postJournal(tx, { sourceType: "BANK_MOVEMENT", sourceId: transaction.id, entryDate: transaction.transactionDate, description: transaction.description, actorId: transaction.actorId, projectId: transaction.projectId, lines: [{ accountKey: "BANK", debitCents: transaction.amountCents }, { accountKey: transaction.counterAccountKey || "OPENING_BALANCE", creditCents: transaction.amountCents }] });
+  return postJournal(tx, { sourceType: "BANK_MOVEMENT", sourceId: transaction.id, entryDate: transaction.transactionDate, description: transaction.description, actorId: transaction.actorId, projectId: transaction.projectId, lines: [{ accountKey: bankExpenseAccounts[transaction.categoryKey || ""] || "GENERAL_EXPENSE", debitCents: transaction.amountCents }, { accountKey: "BANK", creditCents: transaction.amountCents }] });
 }

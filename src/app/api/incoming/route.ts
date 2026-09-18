@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { financials, incomingStages } from "@/lib/incoming";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
-import { postIncomingAccrual, postIncomingCollection, postOwnerMaterialCertificate } from "@/lib/accounting-posting";
+import { incomingCollectionCashCents, postIncomingAccrual, postIncomingCollection, postOwnerMaterialCertificate } from "@/lib/accounting-posting";
 
 const text = z.string().trim().min(1).max(300);
 const amount = z.coerce
@@ -387,6 +387,11 @@ export async function POST(request: Request) {
           const current = c.statements.find((statement) => statement.id === s.id)!;
           const previousPaid = c.statements.filter((statement) => statement.sequence < s.sequence).at(-1);
           await postIncomingCollection(tx, { ...s, paidAt, contract: { projectId: c.projectId }, materials: current.materials }, previousPaid?.grossCents ?? 0, c.project.companyId, user.id);
+          const cashCents = incomingCollectionCashCents(s.grossCents, previousPaid?.grossCents ?? 0, current.materials);
+          if (cashCents > 0) {
+            const bank = await tx.bankAccount.upsert({ where: { name: "الحساب البنكي الرئيسي" }, update: { active: true }, create: { name: "الحساب البنكي الرئيسي" } });
+            await tx.bankTransaction.create({ data: { number: `BNK-IN-${s.id}`, accountId: bank.id, type: "INCOMING_COLLECTION", amountCents: cashCents, transactionDate: paidAt!, projectId: c.projectId, description: "تحصيل مستخلص من جهة مالكة", reference: d.paymentReference || null, sourceType: "INCOMING_STATEMENT", sourceId: s.id, actorId: user.id } });
+          }
         }
       }
       if (files.length)

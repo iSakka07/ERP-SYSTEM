@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { BanknoteArrowUp, BookOpenCheck, Building2, ChartNoAxesCombined, FileSpreadsheet, LayoutDashboard, LockKeyhole, Menu, Paperclip, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
+import { BanknoteArrowUp, BookOpenCheck, Building2, ChartNoAxesCombined, FileSpreadsheet, Landmark, LayoutDashboard, LockKeyhole, Menu, Paperclip, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { can } from "@/lib/permissions";
 
@@ -15,6 +15,7 @@ const navItems = [
   { label: "المشتريات", icon: ShoppingCart, href: "/purchases", permission: "purchases.view" },
   { label: "المرتبات", icon: UsersRound, href: "/salaries", permission: "salaries.view" },
   { label: "Petty Cash", icon: Vault, href: "/petty-cash", permission: "pettycash.view" },
+  { label: "البنك", icon: Landmark, href: "/bank", permission: "bank.view" },
   { label: "موقف تكلفة المشروع", icon: ChartNoAxesCombined, href: "/project-cost-control", permission: "project_cost_control.view" },
   { label: "المحاسبة", icon: BookOpenCheck, href: "/accounting", permission: "accounting.view" },
   { label: "المرفقات", icon: Paperclip, href: "/#modules", permission: "dashboard.view" },

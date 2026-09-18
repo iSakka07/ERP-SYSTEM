@@ -25,6 +25,7 @@ model User {
   roleId       String?
   role         Role?    @relation(fields: [roleId], references: [id])
   pettyCashTransactions PettyCashTransaction[]
+  bankTransactions      BankTransaction[]
   approvedPayrolls PayrollRun[] @relation("PayrollApprovedBy")
   paidPayrolls PayrollRun[] @relation("PayrollPaidBy")
 }
@@ -91,6 +92,7 @@ model Project {
   subcontractAccounts SubcontractAccount[]
   purchaseInvoices    PurchaseInvoice[]
   pettyCashTransactions PettyCashTransaction[]
+  bankTransactions      BankTransaction[]
   salaryAllocations EmployeeSalaryAllocation[]
   createdAt           DateTime                    @default(now())
   updatedAt           DateTime                    @updatedAt
@@ -613,6 +615,53 @@ model PettyCashCount {
   actorId        String
   createdAt      DateTime          @default(now())
   @@index([accountId, countedAt])
+}
+
+model BankAccount {
+  id           String            @id @default(cuid())
+  name         String            @unique
+  active       Boolean           @default(true)
+  transactions BankTransaction[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model BankTransaction {
+  id               String          @id @default(cuid())
+  number           String          @unique
+  accountId        String
+  account          BankAccount     @relation(fields: [accountId], references: [id])
+  type             String
+  amountCents      Float
+  transactionDate  DateTime
+  projectId        String?
+  project          Project?        @relation(fields: [projectId], references: [id])
+  categoryKey      String?
+  counterAccountKey String?
+  description      String
+  reference        String?
+  sourceType       String?
+  sourceId         String?
+  actorId          String
+  actor            User            @relation(fields: [actorId], references: [id])
+  attachments      BankAttachment[]
+  createdAt        DateTime        @default(now())
+
+  @@unique([sourceType, sourceId])
+  @@index([transactionDate, type])
+  @@index([projectId])
+}
+
+model BankAttachment {
+  id            String           @id @default(cuid())
+  transactionId String
+  transaction   BankTransaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  name          String
+  mime          String
+  size          Int
+  data          Bytes
+  actorId       String
+  createdAt     DateTime         @default(now())
 }
 
 model AccountingAccount {
