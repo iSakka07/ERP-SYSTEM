@@ -9,11 +9,11 @@ import { expenseSummary } from "@/lib/expenses";
 import { isProjectCost } from "@/lib/petty-cash";
 
 const modules = [
-  { name: "الوارد", code: "Incoming", href: "/incoming", permission: "incoming.view", live: true, description: "عقود الجهة المالكة والمستخلصات والتحصيلات الفعلية.", icon: BanknoteArrowUp, color: "bg-blue-50 text-blue-700 ring-blue-100" },
-  { name: "مستخلصات المقاولين", code: "Expenses", href: "/expenses", permission: "expenses.view", live: true, description: "حصر الأعمال والجوارى وتأمين الأعمال ومدفوعات المقاولين.", icon: FileSpreadsheet, color: "bg-indigo-50 text-indigo-700 ring-indigo-100" },
-  { name: "المشتريات", code: "Purchases", href: "/purchases", permission: "purchases.view", live: true, description: "بنود وفواتير مشتريات المشروع المسجلة كتكلفة.", icon: ShoppingCart, color: "bg-amber-50 text-amber-700 ring-amber-100" },
-  { name: "المرتبات", code: "Salaries", href: "/salaries", permission: "salaries.view", live: true, description: "مرتبات ومكافآت وخصومات وسلف وتسكين الموظفين.", icon: UsersRound, color: "bg-violet-50 text-violet-700 ring-violet-100" },
-  { name: "Petty Cash", code: "PettyCash", href: "/petty-cash", permission: "pettycash.view", live: true, description: "النثريات والمصروفات التشغيلية والتمويل والعهد وكشف الحركة.", icon: Vault, color: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
+  { name: "الوارد", code: "Incoming", href: "/incoming", permission: "incoming.view", description: "عقود الجهة المالكة والمستخلصات والتحصيلات الفعلية.", icon: BanknoteArrowUp, color: "bg-blue-50 text-blue-700 ring-blue-100" },
+  { name: "مستخلصات المقاولين", code: "Expenses", href: "/expenses", permission: "expenses.view", description: "حصر الأعمال والجوارى وتأمين الأعمال ومدفوعات المقاولين.", icon: FileSpreadsheet, color: "bg-indigo-50 text-indigo-700 ring-indigo-100" },
+  { name: "المشتريات", code: "Purchases", href: "/purchases", permission: "purchases.view", description: "بنود وفواتير مشتريات المشروع المسجلة كتكلفة.", icon: ShoppingCart, color: "bg-amber-50 text-amber-700 ring-amber-100" },
+  { name: "المرتبات", code: "Salaries", href: "/salaries", permission: "salaries.view", description: "مرتبات ومكافآت وخصومات وسلف وتسكين الموظفين.", icon: UsersRound, color: "bg-violet-50 text-violet-700 ring-violet-100" },
+  { name: "Petty Cash", code: "PettyCash", href: "/petty-cash", permission: "pettycash.view", description: "النثريات والمصروفات التشغيلية والتمويل والعهد وكشف الحركة.", icon: Vault, color: "bg-emerald-50 text-emerald-700 ring-emerald-100" },
 ];
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
@@ -95,7 +95,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ p
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {modules.filter((module) => can(session?.user, module.permission)).map((module) => {
             const Icon = module.icon;
-            return <Link href={module.href} key={module.code} className="group rounded-xl border border-slate-200 p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_8px_24px_rgba(15,23,42,.06)]"><div className="flex items-start gap-3"><span className={`grid size-10 shrink-0 place-items-center rounded-lg ring-1 ${module.color}`}><Icon className="size-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h3 className="font-bold text-slate-900">{module.name}</h3><p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{module.live ? "متاح الآن" : "مرحلة لاحقة"}</p></div><ArrowUpRight className="size-4 text-slate-300 transition group-hover:text-blue-700" /></div><p className="mt-3 text-sm leading-6 text-slate-500">{module.description}</p><div className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400"><Paperclip className="size-3" />المرفقات جزء أساسي من كل معاملة</div></div></div></Link>;
+            return <Link href={module.href} key={module.code} className="group rounded-xl border border-slate-200 p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_8px_24px_rgba(15,23,42,.06)]"><div className="flex items-start gap-3"><span className={`grid size-10 shrink-0 place-items-center rounded-lg ring-1 ${module.color}`}><Icon className="size-5" /></span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h3 className="font-bold text-slate-900">{module.name}</h3><p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">متاح الآن</p></div><ArrowUpRight className="size-4 text-slate-300 transition group-hover:text-blue-700" /></div><p className="mt-3 text-sm leading-6 text-slate-500">{module.description}</p><div className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400"><Paperclip className="size-3" />المرفقات جزء أساسي من كل معاملة</div></div></div></Link>;
           })}
         </div>
       </section>
