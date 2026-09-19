@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { hash } from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 
 const db = new PrismaClient();
 const base = process.env.ERP_TEST_URL || "http://localhost:3090";
+const tag = `scope-${randomUUID()}`;
+const cleanup = { userId: "", employeeId: "", projectIds: [], companyId: "" };
 
 const headers = (jar) => ({ Cookie: [...jar].map(([key, value]) => `${key}=${value}`).join("; ") });
 function takeCookies(response, jar) {
@@ -45,7 +49,29 @@ try {
   assert.equal(typeof data.revenue.materialsCents, "number");
   assert.equal(typeof data.cash.subcontractPaymentsCount, "number");
   assert.equal(data.cash.supplierPaymentsIncluded, false);
+  const role = await db.role.findUniqueOrThrow({ where: { key: "site_supervisor_engineer" } });
+  const company = await db.company.create({ data: { name: tag, type: "OWNER" } });
+  cleanup.companyId = company.id;
+  const [allowedProject, forbiddenProject] = await Promise.all([
+    db.project.create({ data: { name: `${tag}-allowed`, code: `${tag}-a`, companyId: company.id } }),
+    db.project.create({ data: { name: `${tag}-forbidden`, code: `${tag}-b`, companyId: company.id } }),
+  ]);
+  cleanup.projectIds.push(allowedProject.id, forbiddenProject.id);
+  const employee = await db.employee.create({ data: { name: tag, employeeCode: tag, jobTitle: "مهندس مشرف" } });
+  cleanup.employeeId = employee.id;
+  await db.projectEngineerAssignment.create({ data: { employeeId: employee.id, projectId: allowedProject.id } });
+  const user = await db.user.create({ data: { name: tag, email: `${tag}@test.invalid`, passwordHash: await hash("Admin@123456", 10), roleId: role.id, employeeId: employee.id } });
+  cleanup.userId = user.id;
+  const engineer = await login(user.email);
+  const engineerHome = await (await fetch(`${base}/`, { headers: headers(engineer) })).text();
+  assert.equal(engineerHome.includes(allowedProject.name), true, "engineer receives assigned project");
+  assert.equal(engineerHome.includes(forbiddenProject.name), false, "engineer never receives another project markup");
+  assert.equal((await fetch(`${base}/api/project-cost-control?projectId=${forbiddenProject.id}`, { headers: headers(engineer) })).status, 403, "engineer API scope blocks another project");
   console.log("Project Cost Control API passed: validation, API RBAC, dashboard data isolation and data contract.");
 } finally {
+  if (cleanup.userId) await db.user.delete({ where: { id: cleanup.userId } });
+  if (cleanup.employeeId) await db.employee.delete({ where: { id: cleanup.employeeId } });
+  if (cleanup.projectIds.length) await db.project.deleteMany({ where: { id: { in: cleanup.projectIds } } });
+  if (cleanup.companyId) await db.company.delete({ where: { id: cleanup.companyId } });
   await db.$disconnect();
 }

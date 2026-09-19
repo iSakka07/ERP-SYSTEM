@@ -1,19 +1,21 @@
-# ERP Build Guide
+# دليل بنية وتشغيل ERP-SYSTEM V1
 
-## Latest V1 sequencing decision
+## الوضع الحالي
 
-The user approved continuing missing V1 modules, followed by a dedicated V1 remediation campaign before V2. Read `V1_REMEDIATION_PLAN.md` and `docs/audit-v1/AUDIT_V1.md`. Findings remain OPEN/deferred, not fixed. Keep development local-only; no public deployment or operational financial reliance until release blockers pass verification. Next is Phase 8 Salaries requirements clarification, not automatic implementation. Do not duplicate Petty Cash custody/cash functionality in Phase 9. The following older progress notes are historical where they conflict with this decision.
+V1 تشمل: الجهات والمشروعات، الوارد، أعمال مقاولي الباطن، المشتريات، المرتبات، Petty Cash، البنك، موقف تكلفة المشروع، المحاسبة وPDF. المرجع الوظيفي هو [Product Bible](../PRODUCT_BIBLE_V1.md)، وسجل المخاطر المتبقي هو [خطة معالجة V1](../../V1_REMEDIATION_PLAN.md).
 
-Current approved refinement: shared document creation layout, Technical Hub-style controls, currency inputs, and optional incoming estimate value with a separate archive. See `../PRODUCT_BIBLE_V1.md` and `../design/DESIGN_QA.md`. Phase 5B price versions, withdrawal/reassignment and documented quantity corrections/debt are implemented; do not start another module before review.
+## قواعد التنفيذ
 
-Reuse DocumentLayout, CurrencyInput and ERPSelect in all additions. Data is right, history is left on desktop and below on mobile. Submit raw money without commas, keep cents calculations and approval/payment rules unchanged. Use currency for prices and fixed deductions, not quantities or percentages. Preserve existing credentials and disabled demo accounts; never rerun the global seed on this database. Runtime remains local-only; public tunnel is cancelled.
+- عمليات المال تحفظ بالقروش، وتدخل في transaction مع الأثر المحاسبي وAudit Log وحماية التكرار.
+- لا يحذف السجل المالي المعتمد؛ التصحيح بعكس موثق ثم حركة بديلة.
+- تستخدم النماذج المشتركة `DocumentLayout` و`CurrencyInput` و`ERPSelect`، مع بيانات اليمين وسجل الحركة باليسار على سطح المكتب.
+- تحفظ المرفقات بعد التحقق من حجمها ونوعها، ولا تعرض إلا ضمن صلاحية الحساب ونطاق مشروعه.
+- صلاحيات المهندس مبنية على ربط الحساب بسجل الموظف وتكليفاته النشطة، وتفرض من الخادم لا من الواجهة فقط.
 
-The product requirements, financial rules, UX system, phase prompts, and
-Definitions of Done are maintained in `../PRODUCT_BIBLE_V1.md`.
+## التشغيل والنشر
 
-Completed: **Phase 4 — Incoming Module**.
+راجع [دليل التشغيل والاستعادة](../operations/PRODUCTION_RUNBOOK.md) قبل أي نشر. لا تستخدم بيانات العرض أو `db:demo-setup` على بيانات عمل، ولا تعدّل migration مطبقًا. قبل كل ترحيل على بيانات فعلية شغّل النسخ الاحتياطي والتحقق منه.
 
-Follow Product Bible sections 8.3–8.3.2: gross cumulative certificates, nine-stage
-workflow, financial effect only when disbursed, material certificates without a
-separate payment cycle. General ledger, partial collections and estimate workflow
-remain deferred.
+## واجهة ما بعد الدخول
+
+الواجهة تتغير حسب الدور: مدير تنفيذي، محاسب، مهندس مكتب فني، مهندس مشرف، مع بقاء مدير النظام التقني منفصلًا. التفاصيل في [لوحات الأدوار](../design/ROLE_DASHBOARDS_V1.md).

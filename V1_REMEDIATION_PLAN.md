@@ -56,7 +56,7 @@
 | 19 | M02 | معالجة الأخطاء ورسائلها غير موحدة | Backend / Security / UX | Medium | مفتوح |
 | 20 | M01 | تداخل المنطق وضخامة المكونات والـhandlers | Architecture / Backend / Frontend | Medium | مفتوح |
 | 21 | M01 | تحميل كامل التاريخ دون pagination/aggregation كافٍ | Performance / Database / Frontend | Medium | مفتوح |
-| 22 | M07-A | نطاق صلاحيات المشروع غير موجود | Security / Architecture | مشروط | مفتوح |
+| 22 | M07-A | نطاق صلاحيات المشروع غير موجود | Security / Architecture | مشروط | تم التحقق: ربط حساب المهندس بموظف وتكليفاته النشطة، تقييد الصفحات والـAPI والمرفقات بالمشروعات المسموح بها، واختبار وصول مشروع خارج النطاق |
 | 23 | M07-B | نوع واحد للجهة المقابلة بدل عدة أدوار | Database / Architecture | Medium | مفتوح |
 | 24 | M08 | مرجع المنتج خارج repo وتعليمات قديمة | Documentation / Deployment | Medium | تم التحقق: Product Bible ودليل التشغيل ومراجع الموديولات داخل المستودع |
 | 25 | H08/M01 | CI والتغطية وE2E واختبارات الحمل والاستعادة | Testing & Quality | Medium | تم التحقق: GitHub Actions يشغل lint وbuild واختبار API المالي المعزول على Linux؛ يبقى اختبار الحمل الموسع خارج نطاق عرض V1 |
