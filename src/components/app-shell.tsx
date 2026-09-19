@@ -38,7 +38,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden md:block"><PdfExportButton /></div>
-            <div className="hidden text-left sm:block"><p className="text-xs font-bold">{user.name}</p><p className="text-[10px] text-slate-400">{user.roleName} · {user.email}</p></div>
+            <div data-export-user className="hidden text-left sm:block"><p className="text-xs font-bold">{user.name}</p><p className="text-[10px] text-slate-400">{user.roleName} · {user.email}</p></div>
             <span className="grid size-9 place-items-center rounded-full bg-blue-600 text-xs font-extrabold ring-2 ring-white/15">{user.name?.charAt(0) ?? "م"}</span>
           </div>
         </div>
