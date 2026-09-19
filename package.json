@@ -27,7 +27,7 @@
     "db:project-cost-control-permissions": "node scripts/project-cost-control-permissions.mjs",
     "db:accounting-setup": "node scripts/accounting-setup.mjs",
     "db:demo-expenses": "node scripts/seed-expenses-demo.mjs",
-    "db:setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed"
+    "db:setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed && pnpm db:accounting-setup"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

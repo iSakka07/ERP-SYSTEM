@@ -22,18 +22,25 @@ Approved 15 September 2026. The authoritative Product Bible remains
 - Remaining = adjusted contract value minus PAID gross, not minus net again.
 - Gross, cash and material percentages appear in expanded details.
 - Paid statements and their historical materials are locked. Paid rollback needs
-  admin and a reason; later paid statements must be rolled back first.
+  admin and a reason; later paid statements must be rolled back first. The rollback
+  creates a reversing journal entry and a linked outgoing bank movement. A later
+  re-payment creates a new collection event without deleting the old history.
 - Payment date, cheque/transfer reference and proof required for PAID.
 - Required attachments for new contracts, statements, materials and memos. Private
   authenticated downloads. Up to five files and 10 MB total per request.
 - All mutations and rollbacks write audit records transactionally. No operational
   hard-delete API.
 
-## Deferred
+## Accounting integration
 
-General ledger and treasury integration, partial receipts, owner deductions other
-than materials, and the full estimate approval/conversion workflow. No subcontractor,
-purchase, petty cash or salary modules implemented in this phase.
+Creating a statement records its incremental accrued revenue. Material certificates
+record the received material and project material cost. Reaching PAID records only
+the incremental cash received since the previous paid statement and adds it to the
+main bank account. Posted statements and material certificates are not edited in
+place; correction uses documented reversal and replacement history.
+
+Partial owner receipts, owner deductions other than materials, and the full estimate
+approval/conversion workflow remain deferred.
 
 ## Run and verify
 

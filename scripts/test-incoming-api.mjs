@@ -271,6 +271,31 @@ try {
     90_000_000,
     "rollback restores previous paid",
   );
+  let secondBankEvents = await db.bankTransaction.findMany({
+    where: {
+      OR: [
+        { sourceType: "INCOMING_STATEMENT", sourceId: { startsWith: second } },
+        { sourceType: "INCOMING_STATEMENT_REVERSAL" },
+      ],
+    },
+  });
+  const secondOriginalIds = new Set(secondBankEvents.filter((event) => event.sourceId?.startsWith(second)).map((event) => event.id));
+  secondBankEvents = secondBankEvents.filter((event) => event.sourceId?.startsWith(second) || (event.sourceId && secondOriginalIds.has(event.sourceId)));
+  assert.equal(
+    secondBankEvents.reduce((sum, event) => sum + (event.type === "INCOMING_COLLECTION" ? event.amountCents : -event.amountCents), 0),
+    0,
+    "paid rollback reverses the bank collection",
+  );
+  const reversedCollection = await db.journalEntry.findFirst({
+    where: { sourceType: "INCOMING_COLLECTION", sourceId: { startsWith: second } },
+    include: { reversalEntry: true },
+    orderBy: { createdAt: "desc" },
+  });
+  assert.ok(reversedCollection?.reversalEntry, "paid rollback reverses the collection journal");
+  assert.equal((await post({ ...paid, id: second })).status, 200, "re-payment creates a new collection event");
+  assert.equal(financials(await load()).net, 145_000_000);
+  assert.equal((await post({ action: "stage", id: second, stage: "CENTRAL", reason: "اختبار رجوع ثانٍ" }, false)).status, 200);
+  assert.equal(financials(await load()).net, 90_000_000);
   assert.equal(
     (
       await post({
@@ -333,6 +358,12 @@ try {
         const materials = fixture.statements.flatMap((s) =>
           s.materials.map((m) => m.id),
         );
+        const bankOriginals = await tx.bankTransaction.findMany({ where: { sourceType: "INCOMING_STATEMENT", OR: statements.map((id) => ({ sourceId: { startsWith: id } })) }, select: { id: true } });
+        await tx.bankTransaction.deleteMany({ where: { sourceType: "INCOMING_STATEMENT_REVERSAL", sourceId: { in: bankOriginals.map((item) => item.id) } } });
+        await tx.bankTransaction.deleteMany({ where: { id: { in: bankOriginals.map((item) => item.id) } } });
+        const journalOriginals = await tx.journalEntry.findMany({ where: { OR: [...statements.map((id) => ({ sourceId: { startsWith: id } })), ...materials.map((id) => ({ sourceId: id }))] }, select: { id: true } });
+        await tx.journalEntry.deleteMany({ where: { reversalOfId: { in: journalOriginals.map((item) => item.id) } } });
+        await tx.journalEntry.deleteMany({ where: { id: { in: journalOriginals.map((item) => item.id) } } });
         await tx.incomingAttachment.deleteMany({
           where: {
             entityId: {

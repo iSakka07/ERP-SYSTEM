@@ -1,10 +1,15 @@
-export const bankTypes = {
+const selectableBankTypes = {
   OWNER_FUNDING: "تمويل من المالك",
   MANUAL_DEPOSIT: "إيداع / تسوية يدوية",
   MANUAL_EXPENSE: "مصروف بنكي",
   INCOMING_COLLECTION: "تحصيل وارد",
   OPENING_BALANCE: "رصيد افتتاحي",
 } as const;
+
+export const bankTypes = Object.defineProperty(selectableBankTypes, "INCOMING_COLLECTION_REVERSAL", {
+  value: "عكس تحصيل وارد",
+  enumerable: false,
+}) as typeof selectableBankTypes & { INCOMING_COLLECTION_REVERSAL: "عكس تحصيل وارد" };
 
 export const bankCategories = {
   diesel: "سولار",

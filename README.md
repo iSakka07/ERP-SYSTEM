@@ -1,49 +1,67 @@
-# ERP-SYSTEM V1
+# ERP-SYSTEM V1 — السلامة جروب
 
-Phase 0 demo for a construction-company ERP. The current scope includes the
-Next.js shell, Arabic RTL layout, module placeholders, shadcn/ui foundation,
-and an empty Prisma migration connected to SQLite.
+منظومة عربية لإدارة شركة مقاولات، مبنية بـ Next.js وPrisma وSQLite. النسخة الحالية تشمل إدارة الجهات والمشروعات، العقود والوارد، أعمال ومستخلصات مقاولي الباطن، المشتريات، المرتبات، Petty Cash، البنك، تكلفة المشروعات، المحاسبة والقيود، وتقارير PDF بهوية الشركة.
 
-## Run locally
+## المتطلبات
 
-```bash
-pnpm install
-pnpm db:generate
-pnpm db:migrate
-pnpm dev
-```
+- Node.js حديث متوافق مع Next.js 16.
+- pnpm 11.
+- مساحة تخزين دائمة لقاعدة SQLite؛ المرفقات محفوظة داخل قاعدة البيانات حاليًا.
 
-## Getting Started
-
-First, run the development server:
+## تشغيل نسخة جديدة
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install --frozen-lockfile
+pnpm db:setup
+pnpm dev --port 3090
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`db:setup` ينشئ Prisma Client، يشغل migrations، يضيف المستخدمين والبيانات الأساسية، ثم يجهز دليل الحسابات والحساب البنكي وصلاحيات المحاسبة والبنك. لا تشغل `db:seed` منفردًا كبديل لتجهيز نسخة جديدة.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+اضبط القيم التالية في ملف بيئة محلي غير متتبع:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+DATABASE_URL="file:./dev.db"
+AUTH_SECRET="ضع-سرًا-طويلًا-وعشوائيًا"
+```
 
-## Learn More
+## فحوصات التطوير
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+pnpm lint
+pnpm build
+pnpm test:incoming
+pnpm test:expenses
+pnpm test:petty-cash
+pnpm test:salaries
+pnpm test:project-cost-control
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+اختبارات API تستخدم افتراضيًا `http://localhost:3090` وقد تنشئ بيانات اختبار مؤقتة. لا تشغلها على قاعدة إنتاج. يمكن تحديد خادم اختبار صراحة عبر `ERP_TEST_URL`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## التشغيل الفعلي
 
-## Deploy on Vercel
+```bash
+pnpm install --frozen-lockfile
+pnpm db:setup
+pnpm build
+pnpm start --port 3090
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+قبل أي نشر فعلي:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- استخدم `AUTH_SECRET` قويًا ومختلفًا لكل بيئة.
+- وفر تخزينًا دائمًا لملف SQLite ونسخًا احتياطيًا دوريًا مع تجربة الاستعادة.
+- شغل migrations على نسخة احتياطية أولًا، لأن مشغل migrations الحالي ليس ذريًا على مستوى ملف migration كامل.
+- لا تستخدم حسابات أو كلمات مرور البيانات التجريبية في التشغيل الحقيقي.
+- شغل التطبيق خلف HTTPS واضبط الـproxy والكوكيز حسب بيئة النشر.
+- راجع [خطة معالجة V1](./V1_REMEDIATION_PLAN.md) قبل اعتبار النظام جاهزًا للاستخدام المالي الحقيقي.
+
+## مراجع الموديولات
+
+- [العقود والوارد](./INCOMING-V1.md)
+- [أعمال مقاولي الباطن](./EXPENSES-V1.md)
+- [المحاسبة](./ACCOUNTINGmodule.md)
+- [تقرير مراجعة V1](./docs/audit-v1/AUDIT_V1.md)
+
+المرجع الوظيفي النهائي هو Product Bible الخاص بالمشروع. يجب إبقاء نسخة محدثة منه داخل المستودع قبل التسليم أو النشر.

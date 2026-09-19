@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { financials, incomingStages } from "@/lib/incoming";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
-import { incomingCollectionCashCents, postIncomingAccrual, postIncomingCollection, postOwnerMaterialCertificate } from "@/lib/accounting-posting";
+import { incomingCollectionCashCents, postIncomingAccrual, postIncomingCollection, postOwnerMaterialCertificate, reversePostedJournal } from "@/lib/accounting-posting";
 
 const text = z.string().trim().min(1).max(300);
 const amount = z.coerce
@@ -355,6 +356,31 @@ export async function POST(request: Request) {
           throw new Error("ارجع آخر مستخلص مصروف أولًا.");
         if (to > from && to !== from + 1)
           throw new Error("انتقل للمرحلة التالية بالترتيب.");
+        if (s.stage === "PAID" && d.stage !== "PAID") {
+          const reversedAt = new Date();
+          await reversePostedJournal(tx, "INCOMING_COLLECTION", s.id, reversedAt, user.id, d.reason || "رجوع موثق من تم الصرف");
+          const collected = await tx.bankTransaction.findFirst({
+            where: { sourceType: "INCOMING_STATEMENT", sourceId: { startsWith: s.id }, type: "INCOMING_COLLECTION" },
+            orderBy: { createdAt: "desc" },
+          });
+          if (collected) {
+            await tx.bankTransaction.create({
+              data: {
+                number: `BNK-REV-${randomUUID().slice(0, 8).toUpperCase()}`,
+                accountId: collected.accountId,
+                type: "INCOMING_COLLECTION_REVERSAL",
+                amountCents: collected.amountCents,
+                transactionDate: reversedAt,
+                projectId: collected.projectId,
+                description: `عكس تحصيل مستخلص: ${d.reason}`,
+                reference: collected.reference,
+                sourceType: "INCOMING_STATEMENT_REVERSAL",
+                sourceId: collected.id,
+                actorId: user.id,
+              },
+            });
+          }
+        }
         if (d.stage === "PAID") {
           requireFiles();
           if (
@@ -386,11 +412,12 @@ export async function POST(request: Request) {
         if (d.stage === "PAID") {
           const current = c.statements.find((statement) => statement.id === s.id)!;
           const previousPaid = c.statements.filter((statement) => statement.sequence < s.sequence).at(-1);
-          await postIncomingCollection(tx, { ...s, paidAt, contract: { projectId: c.projectId }, materials: current.materials }, previousPaid?.grossCents ?? 0, c.project.companyId, user.id);
+          const collectionEventId = `${s.id}:${randomUUID()}`;
+          await postIncomingCollection(tx, { ...s, paidAt, contract: { projectId: c.projectId }, materials: current.materials }, previousPaid?.grossCents ?? 0, c.project.companyId, user.id, collectionEventId);
           const cashCents = incomingCollectionCashCents(s.grossCents, previousPaid?.grossCents ?? 0, current.materials);
           if (cashCents > 0) {
             const bank = await tx.bankAccount.upsert({ where: { name: "الحساب البنكي الرئيسي" }, update: { active: true }, create: { name: "الحساب البنكي الرئيسي" } });
-            await tx.bankTransaction.create({ data: { number: `BNK-IN-${s.id}`, accountId: bank.id, type: "INCOMING_COLLECTION", amountCents: cashCents, transactionDate: paidAt!, projectId: c.projectId, description: "تحصيل مستخلص من جهة مالكة", reference: d.paymentReference || null, sourceType: "INCOMING_STATEMENT", sourceId: s.id, actorId: user.id } });
+            await tx.bankTransaction.create({ data: { number: `BNK-IN-${randomUUID().slice(0, 8).toUpperCase()}`, accountId: bank.id, type: "INCOMING_COLLECTION", amountCents: cashCents, transactionDate: paidAt!, projectId: c.projectId, description: "تحصيل مستخلص من جهة مالكة", reference: d.paymentReference || null, sourceType: "INCOMING_STATEMENT", sourceId: collectionEventId, actorId: user.id } });
           }
         }
       }

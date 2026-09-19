@@ -17,8 +17,8 @@ Focused creation: new work-account creation shows only its form, without the ove
 - Gross = cumulative quantity × fixed unit price × entitlement percentage. Gross project cost and net contractor entitlement effective at executive approval; never sum cumulative Jaris.
 - Named optional deductions: percentage of gross or fixed cumulative amount. Retention is held liability, not a reduction in gross work cost.
 - Draft → technical-office approval → site-engineer approval → executive approval → accounting. Separate permissions per approval and payment.
-- Actual payments independent, multiple per statement, date/method/reference and mandatory proof. Excess payment requires explicit advance confirmation/reason and shows advance balance.
+- Actual payments are independent, allow multiple payments per statement, and require date and proof. Payments cannot exceed the current payable balance; the combined display may show remaining, debt or advance, so PDF reports do not sum that mixed column.
 - All accounts, statements and payments require attachments. Historic statements immutable; documented returns only without later statements/payments. Optimistic revisions prevent stale edits/duplicate approvals.
-- Phase5B slices implemented for review: prices, withdrawal/reassignment and documented quantity corrections/debt. Purchases are the next module after review; no journal/treasury entries yet.
+- Executive approval posts the incremental work cost, contractor payable, retention and deductions. Documented re-approval reverses the earlier accrual entry and posts the corrected signed differences. Contractor payments settle the payable against owner funding and do not pass through Petty Cash.
 
 Acceptance example: Jari 1 = 200 × 400 × 65% = 52,000; retention 5% gives 49,400. Pay 30,000. Jari 2: +100 quantity, entitlement100% =120,000; net114,000; previous actual payment30,000; remaining84,000.

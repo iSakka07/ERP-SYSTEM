@@ -101,6 +101,17 @@ async function reverseLatestSourceEntry(tx: Tx, sourceType: string, sourcePrefix
   });
 }
 
+export async function reversePostedJournal(tx: Tx, sourceType: string, sourcePrefix: string, entryDate: Date, actorId: string, reason: string) {
+  return reverseLatestSourceEntry(tx, sourceType, sourcePrefix, entryDate, actorId, reason);
+}
+
+function signedLine(accountKey: string, amountCents: number, naturalSide: "debit" | "credit", extra: Omit<PostingLine, "accountKey" | "debitCents" | "creditCents"> = {}): PostingLine | null {
+  if (!amountCents) return null;
+  const positive = amountCents > 0;
+  const debit = positive ? naturalSide === "debit" : naturalSide === "credit";
+  return { accountKey, ...(debit ? { debitCents: Math.abs(amountCents) } : { creditCents: Math.abs(amountCents) }), ...extra };
+}
+
 export async function postSubcontractApproval(tx: Tx, statement: SubcontractApproval, actorId: string) {
   const entryDate = statement.executiveApprovedAt || new Date();
   if (!(await accountingIsLive(tx, entryDate))) return null;
@@ -111,9 +122,11 @@ export async function postSubcontractApproval(tx: Tx, statement: SubcontractAppr
   for (const deduction of statement.deductions) currentByAccount.set(deductionAccount(deduction.name), (currentByAccount.get(deductionAccount(deduction.name)) || 0) + deduction.amountCents);
   const deductionDeltas = [...currentByAccount.entries()].map(([key, amount]) => [key, amount - (previousByAccount.get(key) || 0)] as const).filter(([, amount]) => amount !== 0);
   const netDelta = statement.netCents - (statement.previousGrossCents - [...previousByAccount.values()].reduce((sum, amount) => sum + amount, 0));
-  if (grossDelta < 0 || netDelta < 0 || deductionDeltas.some(([, amount]) => amount < 0)) throw new Error("تصحيح مستخلص معتمد يحتاج دورة عكس محاسبية مخصصة قبل الترحيل.");
   await reverseLatestSourceEntry(tx, "SUBCONTRACT_ACCRUAL", `${statement.id}:`, entryDate, actorId, "إعادة اعتماد مستخلص مقاول بعد تعديل موثق");
-  return postJournal(tx, { sourceType: "SUBCONTRACT_ACCRUAL", sourceId: `${statement.id}:${statement.revision}`, entryDate, description: "استحقاق أعمال مقاول باطن", actorId, projectId: statement.account.projectId, lines: [{ accountKey: "SUBCONTRACT_COST", debitCents: grossDelta, counterpartyType: "SUBCONTRACTOR", counterpartyId: statement.account.companyId }, { accountKey: "SUBCONTRACTOR_PAYABLE", creditCents: netDelta, counterpartyType: "SUBCONTRACTOR", counterpartyId: statement.account.companyId }, ...deductionDeltas.map(([accountKey, creditCents]) => ({ accountKey, creditCents, counterpartyType: "SUBCONTRACTOR", counterpartyId: statement.account.companyId }))] });
+  const counterparty = { counterpartyType: "SUBCONTRACTOR", counterpartyId: statement.account.companyId };
+  const lines = [signedLine("SUBCONTRACT_COST", grossDelta, "debit", counterparty), signedLine("SUBCONTRACTOR_PAYABLE", netDelta, "credit", counterparty), ...deductionDeltas.map(([accountKey, amount]) => signedLine(accountKey, amount, "credit", counterparty))].filter((line): line is PostingLine => Boolean(line));
+  if (!lines.length) return null;
+  return postJournal(tx, { sourceType: "SUBCONTRACT_ACCRUAL", sourceId: `${statement.id}:${statement.revision}`, entryDate, description: "استحقاق أعمال مقاول باطن", actorId, projectId: statement.account.projectId, lines });
 }
 
 export async function postSubcontractPayment(tx: Tx, payment: { id: string; amountCents: number; paymentDate: Date; actorId: string; statement: { account: { projectId: string; companyId: string } } }) {
@@ -132,12 +145,12 @@ export async function postOwnerMaterialCertificate(tx: Tx, certificate: { id: st
   return postJournal(tx, { ...common, sourceType: "OWNER_MATERIAL_COST", sourceId: certificate.id, lines: [{ accountKey: "PROJECT_MATERIAL_COST", debitCents: certificate.totalCents }, { accountKey: "OWNER_MATERIALS", creditCents: certificate.totalCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }] });
 }
 
-export async function postIncomingCollection(tx: Tx, statement: { id: string; grossCents: number; paidAt: Date | null; contract: { projectId: string }; materials: { totalCents: number }[] }, previousPaidGrossCents: number, ownerCompanyId: string, actorId: string) {
+export async function postIncomingCollection(tx: Tx, statement: { id: string; grossCents: number; paidAt: Date | null; contract: { projectId: string }; materials: { totalCents: number }[] }, previousPaidGrossCents: number, ownerCompanyId: string, actorId: string, sourceId = statement.id) {
   if (!statement.paidAt) throw new Error("تاريخ التحصيل غير مكتمل.");
   const cashCents = incomingCollectionCashCents(statement.grossCents, previousPaidGrossCents, statement.materials);
   if (cashCents < 0) throw new Error("صافي التحصيل بعد خصم الخامات لا يمكن أن يكون سالبًا.");
   if (!cashCents) return null;
-  return postJournal(tx, { sourceType: "INCOMING_COLLECTION", sourceId: statement.id, entryDate: statement.paidAt, description: "تحصيل مستخلص من جهة مالكة", actorId, projectId: statement.contract.projectId, lines: [{ accountKey: "BANK", debitCents: cashCents }, { accountKey: "OWNER_RECEIVABLE", creditCents: cashCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }] });
+  return postJournal(tx, { sourceType: "INCOMING_COLLECTION", sourceId, entryDate: statement.paidAt, description: "تحصيل مستخلص من جهة مالكة", actorId, projectId: statement.contract.projectId, lines: [{ accountKey: "BANK", debitCents: cashCents }, { accountKey: "OWNER_RECEIVABLE", creditCents: cashCents, counterpartyType: "OWNER", counterpartyId: ownerCompanyId }] });
 }
 
 export function incomingCollectionCashCents(grossCents: number, previousPaidGrossCents: number, materials: { totalCents: number }[]) {
