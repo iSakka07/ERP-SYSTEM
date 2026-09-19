@@ -59,7 +59,7 @@
 | 22 | M07-A | نطاق صلاحيات المشروع غير موجود | Security / Architecture | مشروط | مفتوح |
 | 23 | M07-B | نوع واحد للجهة المقابلة بدل عدة أدوار | Database / Architecture | Medium | مفتوح |
 | 24 | M08 | مرجع المنتج خارج repo وتعليمات قديمة | Documentation / Deployment | Medium | تم التحقق: Product Bible ودليل التشغيل ومراجع الموديولات داخل المستودع |
-| 25 | H08/M01 | CI والتغطية وE2E واختبارات الحمل والاستعادة | Testing & Quality | Medium | مفتوح |
+| 25 | H08/M01 | CI والتغطية وE2E واختبارات الحمل والاستعادة | Testing & Quality | Medium | تم التحقق: GitHub Actions يشغل lint وbuild واختبار API المالي المعزول على Linux؛ يبقى اختبار الحمل الموسع خارج نطاق عرض V1 |
 | 26 | L01 | نصوص وأسماء مراحل وأدوار قديمة | UX / Documentation | Low | مفتوح |
 | 27 | L02 | سياق tracker والوصول والكيبورد والتباين | UX / Accessibility | Low | مفتوح |
 | 28 | L03 | التنسيق وتحذيرات الأدوات وملفات DB المؤقتة | Quality / Deployment | Low | مفتوح |
