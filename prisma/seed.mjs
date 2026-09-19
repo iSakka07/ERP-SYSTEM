@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
+const demoMode = process.env.ERP_SEED_DEMO === "true";
 const permissions = [
   ["dashboard.view", "عرض لوحة الإدارة", "dashboard"],
   ["incoming.view", "عرض الوارد", "incoming"], ["incoming.manage", "إدارة الوارد", "incoming"],
@@ -36,29 +37,37 @@ try {
   for (const [key, name] of roles) {
     const role = await prisma.role.upsert({ where: { key }, update: { name }, create: { key, name } });
     const allowed = await prisma.permission.findMany({ where: { key: { in: grants[key] } } });
-    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
-    await prisma.rolePermission.createMany({ data: allowed.map((permission) => ({ roleId: role.id, permissionId: permission.id })) });
+    for (const permission of allowed) await prisma.rolePermission.upsert({ where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } }, update: {}, create: { roleId: role.id, permissionId: permission.id } });
   }
 
-  const passwordHash = await hash("Admin@123456", 12);
-  const seededUsers = [
-    ["مدير النظام", "admin@erp.local", "admin"], ["المحاسب التجريبي", "accountant@erp.local", "accountant"],
-    ["أمين المخزن التجريبي", "storekeeper@erp.local", "storekeeper"], ["مستخدم المبيعات التجريبي", "sales@erp.local", "sales"],
-  ];
-  for (const [name, email, roleKey] of seededUsers) {
-    const role = await prisma.role.findUniqueOrThrow({ where: { key: roleKey } });
-    await prisma.user.upsert({ where: { email }, update: { name, passwordHash, active: true, roleId: role.id }, create: { name, email, passwordHash, roleId: role.id } });
+  if (demoMode) {
+    const passwordHash = await hash("Admin@123456", 12);
+    const seededUsers = [
+      ["مدير النظام", "admin@erp.local", "admin"], ["المحاسب التجريبي", "accountant@erp.local", "accountant"],
+      ["أمين المخزن التجريبي", "storekeeper@erp.local", "storekeeper"], ["مستخدم المبيعات التجريبي", "sales@erp.local", "sales"],
+    ];
+    for (const [name, email, roleKey] of seededUsers) {
+      const role = await prisma.role.findUniqueOrThrow({ where: { key: roleKey } });
+      await prisma.user.upsert({ where: { email }, update: {}, create: { name, email, passwordHash, roleId: role.id } });
+    }
+    const company = await prisma.company.upsert({ where: { name: "إدارة الأشغال العسكرية" }, update: { active: true }, create: { name: "إدارة الأشغال العسكرية", type: "OWNER" } });
+    const project = await prisma.project.upsert({ where: { code: "MAYAN-27" }, update: { companyId: company.id }, create: { code: "MAYAN-27", name: "عمارة 27 - كمبوند مايان", companyId: company.id } });
+    await prisma.company.upsert({ where: { name: "مورد خامات تجريبي" }, update: { type: "SUPPLIER", active: true }, create: { name: "مورد خامات تجريبي", type: "SUPPLIER", phone: "01000000000" } });
+    const engineer = await prisma.employee.upsert({ where: { employeeCode: "ENG-001" }, update: { active: true }, create: { employeeCode: "ENG-001", name: "أحمد محمد", jobTitle: "مهندس موقع" } });
+    const assignment = await prisma.projectEngineerAssignment.findFirst({ where: { projectId: project.id, employeeId: engineer.id, active: true } });
+    if (!assignment) await prisma.projectEngineerAssignment.create({ data: { projectId: project.id, employeeId: engineer.id } });
+  } else if (!(await prisma.user.count())) {
+    const name = process.env.BOOTSTRAP_ADMIN_NAME?.trim();
+    const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+    const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+    if (!name || !email || !email.includes("@") || !password || password.length < 12 || password === "Admin@123456") throw new Error("أول تشغيل يحتاج BOOTSTRAP_ADMIN_NAME وBOOTSTRAP_ADMIN_EMAIL وكلمة BOOTSTRAP_ADMIN_PASSWORD آمنة من 12 حرفًا على الأقل.");
+    const role = await prisma.role.findUniqueOrThrow({ where: { key: "admin" } });
+    await prisma.user.create({ data: { name, email, passwordHash: await hash(password, 12), roleId: role.id } });
   }
-  const company = await prisma.company.upsert({ where: { name: "إدارة الأشغال العسكرية" }, update: { active: true }, create: { name: "إدارة الأشغال العسكرية", type: "OWNER" } });
-  const project = await prisma.project.upsert({ where: { code: "MAYAN-27" }, update: { companyId: company.id }, create: { code: "MAYAN-27", name: "عمارة 27 - كمبوند مايان", companyId: company.id } });
-  await prisma.company.upsert({ where: { name: "مورد خامات تجريبي" }, update: { type: "SUPPLIER", active: true }, create: { name: "مورد خامات تجريبي", type: "SUPPLIER", phone: "01000000000" } });
-  const engineer = await prisma.employee.upsert({ where: { employeeCode: "ENG-001" }, update: { active: true }, create: { employeeCode: "ENG-001", name: "أحمد محمد", jobTitle: "مهندس موقع" } });
-  const assignment = await prisma.projectEngineerAssignment.findFirst({ where: { projectId: project.id, employeeId: engineer.id, active: true } });
-  if (!assignment) await prisma.projectEngineerAssignment.create({ data: { projectId: project.id, employeeId: engineer.id } });
   await prisma.pettyCashAccount.upsert({ where: { id: "petty-main" }, update: { name: "الخزنة الرئيسية", active: true, type: "MAIN" }, create: { id: "petty-main", name: "الخزنة الرئيسية", type: "MAIN" } });
   const categories = [["workers_daily", "يوميات عمال"], ["project_admin", "إداريات مشروع"], ["transport", "انتقالات"], ["diesel", "سولار"], ["maintenance", "صيانة"], ["hospitality", "ضيافة"], ["small_purchases", "مشتريات صغيرة"], ["tools", "أدوات ومهمات"], ["petty", "نثريات"], ["general", "مصروفات عمومية"], ["other", "أخرى"]];
   for (const [key, name] of categories) await prisma.pettyCashCategory.upsert({ where: { key }, update: { name, active: true }, create: { key, name, requiresAttachment: true } });
-  console.log("Phase 3 roles and master-data demo records are ready.");
+  console.log(demoMode ? "Demo roles, users and master data are ready." : "Base roles, permissions and secure administrator bootstrap are ready.");
 } finally {
   await prisma.$disconnect();
 }

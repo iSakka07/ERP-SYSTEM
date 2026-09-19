@@ -31,6 +31,11 @@ try {
   assert.equal((await fetch(`${base}/api/project-cost-control`, { headers: headers(admin) })).status, 400);
   assert.equal((await fetch(`${base}/api/project-cost-control?projectId=missing`, { headers: headers(admin) })).status, 404);
   assert.equal((await fetch(`${base}/api/project-cost-control?projectId=${project.id}`, { headers: headers(sales) })).status, 403);
+  const salesHome = await (await fetch(`${base}/`, { headers: headers(sales) })).text();
+  assert.equal(salesHome.includes("قيمة العقود الواردة"), false, "limited role must not receive financial KPI markup");
+  assert.equal(salesHome.includes("الملف المالي للمشروعات"), false, "limited role must not receive project financial table markup");
+  const adminHome = await (await fetch(`${base}/`, { headers: headers(admin) })).text();
+  assert.equal(adminHome.includes("قيمة العقود الواردة"), true, "authorized role receives financial KPI markup");
   const response = await fetch(`${base}/api/project-cost-control?projectId=${project.id}`, { headers: headers(admin) });
   assert.equal(response.status, 200);
   const data = await response.json();
@@ -40,7 +45,7 @@ try {
   assert.equal(typeof data.revenue.materialsCents, "number");
   assert.equal(typeof data.cash.subcontractPaymentsCount, "number");
   assert.equal(data.cash.supplierPaymentsIncluded, false);
-  console.log("Project Cost Control API passed: validation, RBAC and data contract.");
+  console.log("Project Cost Control API passed: validation, API RBAC, dashboard data isolation and data contract.");
 } finally {
   await db.$disconnect();
 }

@@ -18,13 +18,15 @@ const modules = [
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   const session = await auth();
+  const canSeeFinancials = can(session?.user, "project_cost_control.view");
+  const canSeeProjects = canSeeFinancials || can(session?.user, "masterdata.view");
   const requestedProject = (await searchParams).project ?? "";
   const [projects, contracts, accounts, invoices, petty] = await Promise.all([
-    prisma.project.findMany({ where: { active: true }, include: { company: true }, orderBy: { name: "asc" } }),
-    prisma.incomingContract.findMany({ include: { memos: true, statements: { orderBy: { sequence: "asc" }, include: { materials: true } } } }),
-    prisma.subcontractAccount.findMany({ include: { statements: { include: { payments: true } } } }),
-    prisma.purchaseInvoice.findMany(),
-    prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { type: true, amountCents: true, projectId: true } }),
+    canSeeProjects ? prisma.project.findMany({ where: { active: true }, include: { company: true }, orderBy: { name: "asc" } }) : Promise.resolve([]),
+    canSeeFinancials ? prisma.incomingContract.findMany({ include: { memos: true, statements: { orderBy: { sequence: "asc" }, include: { materials: true } } } }) : Promise.resolve([]),
+    canSeeFinancials ? prisma.subcontractAccount.findMany({ include: { statements: { include: { payments: true } } } }) : Promise.resolve([]),
+    canSeeFinancials ? prisma.purchaseInvoice.findMany() : Promise.resolve([]),
+    canSeeFinancials ? prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { type: true, amountCents: true, projectId: true } }) : Promise.resolve([]),
   ]);
   const projectId = projects.some((project) => project.id === requestedProject) ? requestedProject : "";
   const rows = projects.filter((project) => !projectId || project.id === projectId).map((project) => {
@@ -74,17 +76,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ p
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {canSeeFinancials && <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {metrics.map(({ label, value, icon: Icon, hint }) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,.03)]"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-2 text-xl font-extrabold text-slate-900" dir="ltr">{value}</p></div><span className="grid size-9 place-items-center rounded-lg bg-blue-50 text-blue-700"><Icon className="size-4.5" /></span></div><p className="mt-3 text-[11px] text-slate-400">{hint}</p></article>)}
-      </section>
+      </section>}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      {canSeeFinancials && <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
           <div><h2 className="font-extrabold text-slate-950">الملف المالي للمشروعات</h2><p className="mt-1 text-xs text-slate-500">كل قيمة تفتح الموديول المرتبط بنفس المشروع.</p></div>
           <form><select name="project" defaultValue={projectId} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">كل المشروعات</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><button className="mr-2 h-10 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white">تطبيق</button></form>
         </div>
         <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-right text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-3">المشروع</th><th className="p-3">قيمة العقود</th><th className="p-3">الوارد المحصل</th><th className="p-3">تكلفة المقاولين</th><th className="p-3">فواتير المشتريات</th><th className="p-3">Petty Cash</th><th className="p-3">المنصرف الفعلي</th><th className="p-3">الفرق</th></tr></thead><tbody className="divide-y">{rows.map((row) => <tr key={row.project.id}><td className="p-3"><strong>{row.project.name}</strong><p className="mt-1 text-[11px] text-slate-400">{row.project.company.name}</p></td><td className="p-3" dir="ltr">{money(row.contractValue)}</td><td className="p-3">{can(session?.user, "incoming.view") ? <Link className="font-bold text-blue-700" dir="ltr" href={`/incoming?project=${row.project.id}`}>{money(row.incoming)}</Link> : <span dir="ltr">{money(row.incoming)}</span>}</td><td className="p-3">{can(session?.user, "expenses.view") ? <Link className="font-bold text-indigo-700" dir="ltr" href={`/expenses?project=${row.project.id}`}>{money(row.subcontract)}</Link> : <span dir="ltr">{money(row.subcontract)}</span>}</td><td className="p-3">{can(session?.user, "purchases.view") ? <Link className="font-bold text-amber-700" dir="ltr" href={`/purchases?project=${row.project.id}`}>{money(row.purchases)}</Link> : <span dir="ltr">{money(row.purchases)}</span>}</td><td className="p-3">{can(session?.user, "pettycash.view") ? <Link className="text-blue-700" href={`/petty-cash?project=${row.project.id}`}>{money(row.pettyCost)}</Link> : money(row.pettyCost)}</td><td className="p-3 font-bold" dir="ltr">{money(row.subcontractPaid + row.pettyPaid)}</td><td className={`p-3 font-extrabold ${row.incoming - row.cost < 0 ? "text-red-700" : "text-emerald-700"}`} dir="ltr">{money(row.incoming - row.cost)}</td></tr>)}{!rows.length && <tr><td colSpan={8} className="p-6 text-center text-slate-400">لا توجد مشروعات نشطة.</td></tr>}</tbody></table></div>
-      </section>
+      </section>}
 
       <section id="modules" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 lg:p-6">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">

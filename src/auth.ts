@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { clearLoginFailures, loginIsBlocked, recordLoginFailure } from "@/lib/login-rate-limit";
 
 const credentialsSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -20,18 +21,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "البريد الإلكتروني", type: "email" },
         password: { label: "كلمة المرور", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const parsed = credentialsSchema.safeParse(credentials);
         if (!parsed.success) return null;
+        const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
+        if (loginIsBlocked(parsed.data.email, ip)) return null;
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
           include: { role: { include: { permissions: { include: { permission: true } } } } },
         });
 
-        if (!user?.active || !user.role) return null;
+        if (!user?.active || !user.role) { recordLoginFailure(parsed.data.email, ip); return null; }
         const validPassword = await compare(parsed.data.password, user.passwordHash);
-        if (!validPassword) return null;
+        if (!validPassword) { recordLoginFailure(parsed.data.email, ip); return null; }
+        clearLoginFailures(parsed.data.email);
 
         return {
           id: user.id,
