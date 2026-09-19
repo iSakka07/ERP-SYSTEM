@@ -57,6 +57,7 @@ export async function POST(req: Request) {
       if (!main) throw new Error("لم يتم إعداد الصندوق.");
       if (action === "cash-count") {
         const accountId = str("accountId"); if (!accounts.some(a => a.id === accountId && a.active)) throw new Error("اختر صندوقًا أو عهدة صحيحة.");
+        if (str("date") !== new Date().toISOString().slice(0, 10)) throw new Error("الجرد عملية لحظية؛ استخدم تاريخ اليوم.");
         const expectedCents = balanceForAccount(movements, accountId), actualCents = cents(str("actual"), true);
         const count = await tx.pettyCashCount.create({ data: { accountId, expectedCents, actualCents, differenceCents: actualCents - expectedCents, countedAt: date(), notes: str("notes"), actorId: user.id } });
         await audit("cash_count", count.id, { expectedCents, actualCents }); return finish({ id: count.id }, "pettyCashCount", { expectedCents, actualCents, date: str("date") });

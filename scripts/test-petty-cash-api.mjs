@@ -55,6 +55,7 @@ try {
   await reject({...expense,amount:0.001});
   await reject({...expense,date:"2026-02-30"});
   const balance=d.accounts.find(a=>a.id===main.id).balanceCents;
+  await reject({action:"cash-count",accountId:main.id,actual:balance/100,date:"2020-01-01"},false);
   const countId=await ok({action:"cash-count",accountId:main.id,actual:(balance+10000)/100},false);
   assert.equal((await snapshot()).accounts.find(a=>a.id===main.id).balanceCents,balance,"count has no financial effect");
   const adjustment=await ok({action:"adjust",countId,description:tag});

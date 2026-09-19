@@ -6,7 +6,7 @@ import { PrismaClient } from "@prisma/client";
 const db = new PrismaClient();
 const base = process.env.ERP_TEST_URL || "http://localhost:3090";
 const tag = `scope-${randomUUID()}`;
-const cleanup = { userId: "", employeeId: "", projectIds: [], companyId: "" };
+const cleanup = { userId: "", limitedUserId: "", employeeId: "", projectIds: [], companyId: "" };
 
 const headers = (jar) => ({ Cookie: [...jar].map(([key, value]) => `${key}=${value}`).join("; ") });
 function takeCookies(response, jar) {
@@ -27,9 +27,12 @@ async function login(email) {
 }
 
 try {
+  const limitedRole = await db.role.findUniqueOrThrow({ where: { key: "sales" } });
+  const limited = await db.user.create({ data: { name: tag, email: `${tag}-limited@test.invalid`, passwordHash: await hash("Admin@123456", 10), roleId: limitedRole.id } });
+  cleanup.limitedUserId = limited.id;
   const [admin, sales, project] = await Promise.all([
     login("admin@erp.local"),
-    login("sales@erp.local"),
+    login(limited.email),
     db.project.findFirstOrThrow({ where: { active: true }, select: { id: true } }),
   ]);
   assert.equal((await fetch(`${base}/api/project-cost-control`, { headers: headers(admin) })).status, 400);
@@ -70,6 +73,7 @@ try {
   console.log("Project Cost Control API passed: validation, API RBAC, dashboard data isolation and data contract.");
 } finally {
   if (cleanup.userId) await db.user.delete({ where: { id: cleanup.userId } });
+  if (cleanup.limitedUserId) await db.user.delete({ where: { id: cleanup.limitedUserId } });
   if (cleanup.employeeId) await db.employee.delete({ where: { id: cleanup.employeeId } });
   if (cleanup.projectIds.length) await db.project.deleteMany({ where: { id: { in: cleanup.projectIds } } });
   if (cleanup.companyId) await db.company.delete({ where: { id: cleanup.companyId } });

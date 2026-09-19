@@ -6,8 +6,13 @@ export async function incomingUser(permission: string) {
   const session = await auth();
   if (!session?.user?.id) return null;
   const profile = await accessProfile(session.user.id);
+  const globalFinancialPermissions = new Set([
+    "accounting.view", "accounting.manage", "bank.view", "bank.manage",
+    "pettycash.view", "pettycash.manage", "salaries.view", "salaries.manage",
+  ]);
   if (
-    !profile || !profile.permissions.includes(permission)
+    !profile || !profile.permissions.includes(permission) ||
+    (profile.isProjectScoped && globalFinancialPermissions.has(permission))
   )
     return null;
   return { id: profile.user.id, admin: profile.user.role!.key === "admin", roleKey: profile.user.role!.key, projectIds: profile.projectIds, isProjectScoped: profile.isProjectScoped };
