@@ -47,14 +47,19 @@ export function PdfExportButton() {
     if (!tables.length) return window.alert("لا توجد بيانات جدولية قابلة للتصدير في هذه الصفحة.");
     const title = definition?.title || document.querySelector("main h1")?.textContent?.trim() || "تقرير";
     const filters = Array.from(document.querySelectorAll("main select, main input")).map((field) => (field as HTMLInputElement).value).filter(Boolean).join(" · ");
+    const preview = window.open("", "_blank");
+    if (!preview) return window.alert("اسمح بالنوافذ المنبثقة لفتح معاينة PDF.");
+    preview.opener = null;
+    preview.document.write("<title>ASGC ERP · جاري تجهيز التقرير</title><body style='font-family:Arial,sans-serif;padding:32px;color:#10192d'>جاري تجهيز تقرير PDF…</body>");
+    preview.document.close();
     setWorking(true);
     try {
       const url = await createPdfReportUrl({ title, filters, tables });
-      const preview = window.open(url, "_blank", "noopener,noreferrer");
-      if (!preview) window.alert("اسمح بالنوافذ المنبثقة لفتح معاينة PDF.");
+      preview.location.href = url;
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (error) {
       console.error(error);
+      preview.close();
       window.alert("تعذّر تجهيز ملف PDF. حاول مرة أخرى.");
     } finally { setWorking(false); }
   }
