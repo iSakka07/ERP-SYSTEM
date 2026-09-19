@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 
 const db = new PrismaClient();
@@ -45,16 +46,10 @@ async function login(email) {
 }
 
 async function post(payload, jar, proof, files = true) {
-  const form = new FormData();
-  form.set("payload", JSON.stringify(payload));
-  if (files)
-    form.append("files", new Blob([proof]), "AUTOMATED-PURCHASE-TEST.pdf");
-  const response = await fetch(`${base}/api/purchases`, {
-    method: "POST",
-    headers: { ...headers(jar), Origin: base },
-    body: form,
-  });
-  return { status: response.status, ...(await response.json()) };
+  payload = { paymentSource: "EXECUTIVE_DIRECTOR", ...payload };
+  const key = randomUUID();
+  const send = async (confirmation) => { const form = new FormData(); form.set("payload", JSON.stringify(payload)); if (files) form.append("files", new Blob([proof]), "AUTOMATED-PURCHASE-TEST.pdf"); const response = await fetch(`${base}/api/purchases`, { method: "POST", headers: { ...headers(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form }); const result = await response.json(); if (response.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: response.status, ...result }; };
+  return send();
 }
 
 try {
@@ -71,6 +66,12 @@ try {
   const supplier = await db.company.findFirstOrThrow({
     where: { type: "SUPPLIER", active: true },
   });
+  const projectCost = async () => {
+    const response = await fetch(`${base}/api/project-cost-control?projectId=${project.id}`, { headers: headers(admin) });
+    assert.equal(response.status, 200);
+    return (await response.json()).cost.purchasesCents;
+  };
+  const purchasesBefore = await projectCost();
   const payload = {
     action: "invoice",
     name: `فاتورة اختبار مشتريات ${stamp}`,
@@ -96,6 +97,7 @@ try {
     include: { items: true },
   });
   assert.equal(invoice.totalCents, 2_875_000);
+  assert.equal(await projectCost(), purchasesBefore + invoice.totalCents, "posted invoice enters project cost once");
   assert.equal(invoice.items.length, 2);
   assert.equal(
     await db.purchaseAttachment.count({
@@ -103,6 +105,13 @@ try {
     }),
     1,
   );
+  const originalJournal = await db.journalEntry.findFirstOrThrow({ where: { sourceType: "PURCHASE", sourceId: response.id } });
+  const reversal = await post({ action: "reverse", id: response.id, reason: "اختبار إلغاء موثق" }, admin, proof);
+  assert.equal(reversal.status, 200, JSON.stringify(reversal));
+  assert.equal((await db.purchaseInvoice.findUniqueOrThrow({ where: { id: response.id } })).status, "REVERSED");
+  assert.ok(await db.journalEntry.findFirst({ where: { reversalOfId: originalJournal.id } }), "reversal must balance purchase journal");
+  assert.equal(await projectCost(), purchasesBefore, "reversed invoice leaves project cost");
+  assert.equal((await post({ action: "reverse", id: response.id, reason: "محاولة مكررة" }, admin, proof)).status, 400);
   const generatedA = await post({ ...payload, name: `${payload.name} أ` }, admin, proof);
   const generatedB = await post({ ...payload, name: `${payload.name} ب` }, admin, proof);
   assert.equal(generatedA.status, 200, JSON.stringify(generatedA));
@@ -131,6 +140,11 @@ try {
   console.log("Purchases API passed: RBAC, required proof, required invoice name, valid dates and cents, safe internal numbering, totals and attachments.");
 } finally {
   for (const id of created) {
+    const entries = await db.journalEntry.findMany({ where: { OR: [{ sourceType: "PURCHASE", sourceId: id }, { reversalOf: { sourceType: "PURCHASE", sourceId: id } }] }, select: { id: true } });
+    if (entries.length) {
+      await db.journalLine.deleteMany({ where: { entryId: { in: entries.map((entry) => entry.id) } } });
+      await db.journalEntry.deleteMany({ where: { id: { in: entries.map((entry) => entry.id) } } });
+    }
     await db.purchaseAttachment.deleteMany({ where: { entityId: id } });
     await db.purchaseInvoice.deleteMany({ where: { id } });
   }

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { financials, incomingStages } from "@/lib/incoming";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import { incomingCollectionCashCents, postIncomingAccrual, postIncomingCollection, postOwnerMaterialCertificate, reversePostedJournal } from "@/lib/accounting-posting";
+import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
 
 const text = z.string().trim().min(1).max(300);
 const amount = z.coerce
@@ -96,6 +97,7 @@ export async function POST(request: Request) {
       { error: "غير مسموح بإدارة الوارد." },
       { status: 403 },
     );
+  let operationContext: FinancialOperationContext | null = null;
   try {
     if (!validOrigin(request))
       return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
@@ -118,6 +120,11 @@ export async function POST(request: Request) {
     if (allFiles.length > 5 || allFiles.reduce((n, f) => n + f.size, 0) > 10 * 1024 * 1024)
       throw new Error("الحد الأقصى 5 مرفقات بإجمالي 10 ميجابايت لكل المستند.");
     if (estimateFiles.length && d.action !== "contract") throw new Error("مرفق المقايسة خاص بالعقد فقط.");
+    if (["statement", "material", "memo", "stage"].includes(d.action)) {
+      const guarded = await guardFinancialOperation(request, { actorId: user.id, operation: `incoming.${d.action}`, requestData: d, businessData: d });
+      if ("response" in guarded) return guarded.response;
+      operationContext = guarded.context;
+    }
     const result = await prisma.$transaction(async (tx) => {
       let target = "";
       let entityType = d.action;
@@ -445,10 +452,12 @@ export async function POST(request: Request) {
           }),
         },
       });
+      if (operationContext) await completeFinancialOperation(tx, operationContext, { body: { ok: true, id: target }, entityType, entityId: target, summary: { action: d.action, amountCents: "value" in d ? d.value : null, date: d.action === "stage" ? d.paidAt || null : null } });
       return { id: target };
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
+    const replay = await replayAfterConflict(e, operationContext); if (replay) return replay;
     const message =
       e instanceof Prisma.PrismaClientKnownRequestError
         ? "الرقم مكرر أو الربط غير صالح. راجع البيانات."

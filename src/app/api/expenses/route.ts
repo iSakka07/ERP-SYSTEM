@@ -18,7 +18,8 @@ import {
   safeCents,
   correctionDebtAfterApproval,
 } from "@/lib/expenses";
-import { postSubcontractApproval, postSubcontractPayment } from "@/lib/accounting-posting";
+import { postSubcontractApproval, postSubcontractPayment, reversePostedJournal } from "@/lib/accounting-posting";
+import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
 
 const text = z.string().trim().min(1).max(300);
 const date = z
@@ -107,6 +108,11 @@ const schema = z.discriminatedUnion("action", [
     paymentDate: date,
     notes: z.string().trim().max(2000).optional(),
   }),
+  z.object({
+    action: z.literal("reversePayment"),
+    paymentId: text,
+    reason: z.string().trim().min(2).max(1000),
+  }),
 ]);
 const relations = {
   items: { orderBy: { position: "asc" as const } },
@@ -131,6 +137,7 @@ function validOrigin(request: Request) {
 }
 
 export async function POST(request: Request) {
+  let operationContext: FinancialOperationContext | null = null;
   try {
     if (!(await incomingUser("expenses.view")))
       return NextResponse.json({ error: "غير مسموح." }, { status: 403 });
@@ -160,7 +167,7 @@ export async function POST(request: Request) {
             ? data.stage === "DRAFT"
               ? "expenses.return"
               : approvalPermissions[data.stage]
-            : data.action === "payment" || data.action === "accountingPayment"
+            : data.action === "payment" || data.action === "accountingPayment" || data.action === "reversePayment"
               ? "expenses.pay"
               : "expenses.manage";
     const user = await incomingUser(permission);
@@ -170,6 +177,11 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     const files = await readIncomingFiles(form);
+    if (["stage", "payment", "accountingPayment", "reversePayment"].includes(data.action)) {
+      const guarded = await guardFinancialOperation(request, { actorId: user.id, operation: `expenses.${data.action}`, requestData: data, businessData: data });
+      if ("response" in guarded) return guarded.response;
+      operationContext = guarded.context;
+    }
     const result = await prisma.$transaction(
       async (tx) => {
         let id: string, entityType: string;
@@ -661,6 +673,22 @@ export async function POST(request: Request) {
               }),
             },
           });
+        } else if (data.action === "reversePayment") {
+          if (!files.length) throw new Error("إلغاء دفعة المقاول يحتاج مرفق إثبات.");
+          const payment = await tx.subcontractPayment.findUnique({
+            where: { id: data.paymentId },
+            include: { statement: { include: { account: true } } },
+          });
+          if (!payment || payment.status !== "POSTED")
+            throw new Error("الدفعة ملغاة بالفعل أو غير موجودة.");
+          const reversedAt = new Date();
+          await reversePostedJournal(tx, "SUBCONTRACT_PAYMENT", payment.id, reversedAt, user.id, data.reason);
+          await tx.subcontractPayment.update({
+            where: { id: payment.id },
+            data: { status: "REVERSED", reversedAt, reversalReason: data.reason },
+          });
+          id = payment.id;
+          entityType = "payment";
         } else {
           const statementId =
             data.action === "stage" ? data.id : data.statementId;
@@ -856,12 +884,14 @@ export async function POST(request: Request) {
             details: JSON.stringify(data),
           },
         });
+        if (operationContext) await completeFinancialOperation(tx, operationContext, { body: { id }, entityType, entityId: id, summary: { action: data.action, statementId: "statementId" in data ? data.statementId : "id" in data ? data.id : null, amount: "amount" in data ? data.amount : null, date: "paymentDate" in data ? data.paymentDate : null } });
         return { id };
       },
       { timeout: 20000 },
     );
     return NextResponse.json(result);
   } catch (error) {
+    const replay = await replayAfterConflict(error, operationContext); if (replay) return replay;
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       ["P2002", "P2034", "P2028"].includes(error.code)

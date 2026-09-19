@@ -13,6 +13,8 @@
 # testing
 /coverage
 /qa-artifacts/
+/tmp/
+/output/
 
 # next.js
 /.next/
@@ -25,6 +27,7 @@
 # local database
 *.db
 *.db-journal
+/backups/
 
 # misc
 .DS_Store

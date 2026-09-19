@@ -25,14 +25,14 @@ export async function getProjectCostControl(projectId: string): Promise<ProjectC
   const [contracts, accounts, purchases, petty, payrollRuns] = await Promise.all([
     prisma.incomingContract.findMany({ where: { projectId, active: true }, include: { memos: true, statements: { include: { materials: true }, orderBy: { sequence: "asc" } } } }),
     prisma.subcontractAccount.findMany({ where: { projectId }, include: { statements: { include: { payments: true } } } }),
-    prisma.purchaseInvoice.findMany({ where: { projectId }, select: { totalCents: true } }),
+    prisma.purchaseInvoice.findMany({ where: { projectId, status: "POSTED" }, select: { totalCents: true } }),
     prisma.pettyCashTransaction.findMany({ where: { projectId, status: "POSTED" }, select: { type: true, amountCents: true } }),
     prisma.payrollRun.findMany({ where: { status: { in: ["APPROVED", "PAID"] } }, include: { lines: { select: { allocationJson: true } } } }),
   ]);
   const contractValueCents = sum(contracts.map((contract) => contract.originalCents));
   const certifiedRevenueCents = sum(contracts.map((contract) => contract.statements.at(-1)?.grossCents ?? 0));
   const collectedCents = sum(contracts.map((contract) => financials(contract).net));
-  const subcontractorsCents = sum(accounts.map((account) => expenseSummary(account.statements).netCents));
+  const subcontractorsCents = sum(accounts.map((account) => expenseSummary(account.statements).grossCents));
   const subcontractorCashCents = sum(accounts.map((account) => expenseSummary(account.statements).paidCents));
   const purchasesCents = sum(purchases.map((invoice) => invoice.totalCents));
   const pettyCashCents = sum(petty.filter((transaction) => isProjectCost(transaction.type)).map((transaction) => transaction.amountCents));

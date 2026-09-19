@@ -16,9 +16,9 @@ assert.ok(
   newExpenseStatementBlockReason({ stage: "ACCOUNTING", kind: "FINAL" }),
 );
 assert.equal(expensePayableCents([
-  { id: "j1", sequence: 1, stage: "ACCOUNTING", grossCents: 10000, netCents: 9000, payments: [{ amountCents: 4000 }] },
-  { id: "j2", sequence: 2, stage: "EXECUTIVE", grossCents: 20000, netCents: 18000, payments: [] },
-], "j1"), 5000, "a later executive statement does not block paying an earlier accounting statement");
+  { id: "j1", sequence: 1, stage: "ACCOUNTING", grossCents: 10000000, netCents: 10000000, payments: [{ amountCents: 2000000 }] },
+  { id: "j2", sequence: 2, stage: "EXECUTIVE", grossCents: 5000000, netCents: 5000000, payments: [] },
+], "j1"), 3000000, "an old statement payment is capped by the latest reduced entitlement");
 const item = {
   itemKey: "paint",
   name: "نقاشة",

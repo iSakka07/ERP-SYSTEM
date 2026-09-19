@@ -2,6 +2,9 @@ import { PrismaClient } from '@prisma/client';
 const db = new PrismaClient();
 try {
   await db.$transaction(async tx => {
+    if (process.env.ERP_ALLOW_LEGACY_PETTY_CASH_UPGRADE !== 'true') throw new Error('التحويل التاريخي متوقف افتراضيًا. استخدم نسخة احتياطية واضبط ERP_ALLOW_LEGACY_PETTY_CASH_UPGRADE=true فقط بعد مراجعة البيانات.');
+    const applied = await tx.$queryRawUnsafe('SELECT "name" FROM "_erp_migrations" WHERE "name" = ?', '20260916090000_petty_cash');
+    if (applied.length) throw new Error('قاعدة البيانات مسجلة بالفعل كوحدة قروش ولا تقبل التحويل التاريخي مرة أخرى.');
     if (await tx.systemMetadata.findUnique({where:{key:'pettycash-cents-v2'}})) return;
     const transactions = await tx.pettyCashTransaction.findMany();
     const counts = await tx.pettyCashCount.findMany();

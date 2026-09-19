@@ -77,6 +77,7 @@ export function ExpensesCenter({
   const [newAccount, setNewAccount] = useState(false);
   const [changeAccountId, setChangeAccountId] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [reversePaymentId, setReversePaymentId] = useState<string | null>(null);
   const [returnId, setReturnId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -94,6 +95,7 @@ export function ExpensesCenter({
     setEditor(null);
     setNewAccount(false);
     setPaymentId(null);
+    setReversePaymentId(null);
     setReturnId(null);
     setError("");
     setNotice("تم حفظ العملية وتسجيلها في سجل المراجعة.");
@@ -210,7 +212,7 @@ export function ExpensesCenter({
   function paymentForm(st: ExpenseStatement, account: ExpenseAccount) {
     const paidCents = account.statements.reduce(
       (sum, statement) =>
-        sum + statement.payments.reduce((value, payment) => value + payment.amountCents, 0),
+        sum + statement.payments.filter((payment) => payment.status !== "REVERSED").reduce((value, payment) => value + payment.amountCents, 0),
       0,
     );
     const approvingAccounting = st.stage === "EXECUTIVE";
@@ -303,7 +305,7 @@ export function ExpensesCenter({
     const next = expenseStages[index + 1];
     const summary = expenseSummary(account.statements);
     const paidCents = account.statements.reduce(
-      (sum, statement) => sum + statement.payments.reduce((value, payment) => value + payment.amountCents, 0),
+      (sum, statement) => sum + statement.payments.filter((payment) => payment.status !== "REVERSED").reduce((value, payment) => value + payment.amountCents, 0),
       0,
     );
     const paymentStatus = st.stage === "ACCOUNTING"
@@ -560,18 +562,19 @@ export function ExpensesCenter({
             s.payments.map((p) => (
               <div
                 key={p.id}
-                className="flex flex-wrap justify-between gap-2 border-t pt-3 text-xs"
+                className={`flex flex-wrap justify-between gap-2 border-t pt-3 text-xs ${p.status === "REVERSED" ? "text-slate-400" : ""}`}
               >
                 <div>
-                  <p className="font-bold">
+                  <p className={`font-bold ${p.status === "REVERSED" ? "line-through" : ""}`}>
                     {money(p.amountCents)} ج.م · جاري {s.sequence}
                   </p>
                   <p className="mt-1 text-slate-500">
                     {p.paymentDate.slice(0, 10)} · إثبات الصرف مرفق
                   </p>
                   {p.notes && <p className="mt-1 text-slate-500">{p.notes}</p>}
+                  {p.status === "REVERSED" && <p className="mt-1 font-bold text-rose-700">ملغاة · {p.reversalReason || "إلغاء موثق"}</p>}
                 </div>
-                {files("payment", p.id)}
+                <div className="space-y-2">{files("payment", p.id)}{allowed("expenses.pay") && p.status === "POSTED" && <button type="button" disabled={busy} className="text-xs font-bold text-rose-700" onClick={() => setReversePaymentId(reversePaymentId === p.id ? null : p.id)}>إلغاء الدفعة</button>}{reversePaymentId === p.id && <form className="mt-2 w-full max-w-md space-y-2 rounded-lg border border-rose-200 bg-rose-50 p-3" onSubmit={(event) => { event.preventDefault(); void perform({ action: "reversePayment", paymentId: p.id, reason: String(new FormData(event.currentTarget).get("reason") || "") }, event.currentTarget); }}><p className="text-[11px] font-bold text-rose-800">سيُعكس قيد الدفعة ويعود المبلغ إلى المستحق للمقاول.</p><input name="reason" required placeholder="سبب الإلغاء" className={expenseInput} /><ExpenseFileInput /><div className="flex gap-2"><button disabled={busy} className="text-xs font-bold text-rose-700">تأكيد الإلغاء</button><button type="button" className="text-xs" onClick={() => setReversePaymentId(null)}>إلغاء</button></div></form>}</div>
               </div>
             )),
           )}
@@ -903,7 +906,7 @@ export function ExpensesCenter({
                                 {a.statements.map((st) => {
                                   const paidThrough = a.statements
                                     .filter((statement) => statement.sequence <= st.sequence)
-                                    .reduce((sum, statement) => sum + statement.payments.reduce((value, payment) => value + payment.amountCents, 0), 0);
+                                    .reduce((sum, statement) => sum + statement.payments.filter((payment) => payment.status !== "REVERSED").reduce((value, payment) => value + payment.amountCents, 0), 0);
                                   const status = st.stage === "ACCOUNTING"
                                     ? paidThrough >= st.netCents
                                       ? { label: "تم الصرف", cls: "border-emerald-200 bg-emerald-50 text-emerald-800" }

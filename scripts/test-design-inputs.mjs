@@ -33,7 +33,7 @@ async function login(email) {
 async function post(payload, ordinary=1, estimate=0, role="admin") {
   const form=new FormData();form.set("payload",JSON.stringify(payload));
   for(const [field,count] of [["files",ordinary],["estimateFiles",estimate]])for(let i=0;i<count;i++)form.append(field,new Blob(["%PDF-1.4\n% synthetic QA proof\n%%EOF"],{type:"application/pdf"}),`${tag}-${field}-${i}.pdf`);
-  const response=await fetch(`${base}/api/incoming`,{method:"POST",headers:{Cookie:jars[role],Origin:base},body:form});
+  const response=await fetch(`${base}/api/incoming`,{method:"POST",headers:{Cookie:jars[role],Origin:base,"Idempotency-Key":randomUUID()},body:form});
   return {status:response.status,...await response.json()};
 }
 try {

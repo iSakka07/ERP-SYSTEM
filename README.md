@@ -47,9 +47,11 @@ pnpm test:petty-cash
 pnpm test:salaries
 pnpm test:project-cost-control
 pnpm test:login-rate-limit
+pnpm test:financial-idempotency-api
+pnpm test:isolated-api
 ```
 
-اختبارات API تستخدم افتراضيًا `http://localhost:3090` وقد تنشئ بيانات اختبار مؤقتة. لا تشغلها على قاعدة إنتاج. يمكن تحديد خادم اختبار صراحة عبر `ERP_TEST_URL`.
+`pnpm test:isolated-api` هو أمر القبول المعتمد: ينشئ قاعدة SQLite وخادمًا مؤقتين، يجهز بيانات العرض المطلوبة، يشغّل جميع اختبارات API، ثم يحذف البيئة المؤقتة. لا تشغّل اختبارات API المنفردة على قاعدة إنتاج.
 
 ## التشغيل الفعلي
 
@@ -64,17 +66,23 @@ pnpm start --port 3090
 
 - استخدم `AUTH_SECRET` قويًا ومختلفًا لكل بيئة.
 - وفر تخزينًا دائمًا لملف SQLite ونسخًا احتياطيًا دوريًا مع تجربة الاستعادة.
-- شغل migrations على نسخة احتياطية أولًا، لأن مشغل migrations الحالي ليس ذريًا على مستوى ملف migration كامل.
+- قبل أي migration على بيانات العمل شغّل `pnpm db:backup` ثم `pnpm db:verify-backup`. مشغل migrations يحفظ بصمة لكل migration ويوقف التشغيل إذا تغير ملف سبق تطبيقه، كما ينفذ كل migration داخل transaction واحدة؛ لكن النسخ والاستعادة تظل شرط تشغيل قبل أي ترحيل على بيانات العمل.
 - لا تستخدم `db:demo-setup` أو حسابات العرض في التشغيل الحقيقي.
 - شغل التطبيق خلف HTTPS واضبط الـproxy والكوكيز حسب بيئة النشر.
+- في الإنتاج يرفض تسجيل الدخول إذا كان `AUTH_SECRET` قصيرًا/تجريبيًا، أو إذا كان `AUTH_URL` موجودًا وليس HTTPS.
 - محاولات الدخول محدودة داخل عملية التطبيق حسب الحساب وعنوان IP؛ عند تشغيل أكثر من instance انقل مخزن الحدود إلى خدمة مشتركة.
 - راجع [خطة معالجة V1](./V1_REMEDIATION_PLAN.md) قبل اعتبار النظام جاهزًا للاستخدام المالي الحقيقي.
 
+دليل التشغيل والاستعادة وإعداد بيئة العرض موجود في [دليل تشغيل V1](./docs/operations/PRODUCTION_RUNBOOK.md). لا تعتبر أي قاعدة عرض أو جهاز تطوير بيئة إنتاج.
+
 ## مراجع الموديولات
 
-- [العقود والوارد](./INCOMING-V1.md)
-- [أعمال مقاولي الباطن](./EXPENSES-V1.md)
-- [المحاسبة](./ACCOUNTINGmodule.md)
+- [العقود والوارد](./docs/modules/INCOMING-V1.md)
+- [أعمال مقاولي الباطن](./docs/modules/EXPENSES-V1.md)
+- [المحاسبة](./docs/modules/ACCOUNTINGmodule.md)
+- [الصندوق والنثريات](./docs/modules/PETTYCASHmodule.md)
+- [مرجع V1 المعتمد](./docs/PRODUCT_BIBLE_V1.md)
 - [تقرير مراجعة V1](./docs/audit-v1/AUDIT_V1.md)
+- [دليل التشغيل والاستعادة](./docs/operations/PRODUCTION_RUNBOOK.md)
 
 المرجع الوظيفي النهائي هو Product Bible الخاص بالمشروع. يجب إبقاء نسخة محدثة منه داخل المستودع قبل التسليم أو النشر.

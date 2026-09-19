@@ -17,9 +17,7 @@ async function login(email) {
   return headers();
 }
 async function post(headers, fields, proof=true, origin=base) {
-  const f=new FormData(); for(const[k,v]of Object.entries({date:day,...fields})) f.set(k,String(v));
-  if(proof)f.append("files",new Blob(["%PDF-1.4\nAUTOMATED TEST"],{type:"application/pdf"}),"AUTOMATED-TEST.pdf");
-  const r=await fetch(base+"/api/petty-cash",{method:"POST",headers:{...headers,Origin:origin},body:f});return {status:r.status,...await r.json()};
+  const key=randomUUID(); const send=async confirmation=>{const f=new FormData();for(const[k,v]of Object.entries({date:day,...fields}))f.set(k,String(v));if(proof)f.append("files",new Blob(["%PDF-1.4\nAUTOMATED TEST"],{type:"application/pdf"}),"AUTOMATED-TEST.pdf");const r=await fetch(base+"/api/petty-cash",{method:"POST",headers:{...headers,Origin:origin,"Idempotency-Key":key,...(confirmation?{"Duplicate-Confirmation":confirmation}:{})},body:f});const result=await r.json();if(r.status===409&&result.code==="SIMILAR_FINANCIAL_OPERATION")return send(result.confirmationToken);return{status:r.status,...result};};return send();
 }
 try {
   for (const roleKey of ["admin","sales"]) {
@@ -67,6 +65,9 @@ try {
   assert.equal((await total())._sum.amountCents,50000,"reversal removes cost");
   const reversed=await db.pettyCashTransaction.findUniqueOrThrow({where:{id:expenseId},include:{attachments:true}});
   assert.equal(reversed.status,"REVERSED");assert.equal(reversed.attachments.length,2,"reversal proof persisted");
+  const originalJournal=await db.journalEntry.findFirstOrThrow({where:{sourceType:"PETTY_CASH",sourceId:expenseId}});
+  const reversalJournal=await db.journalEntry.findFirstOrThrow({where:{reversalOfId:originalJournal.id}});
+  assert.equal(reversalJournal.status,"POSTED","cash reversal must create a balancing journal entry");
   await reject({action:"reverse",id:expenseId,reason:tag});
   await ok({action:"category",id:categoryId,name:tag,active:true,requiresDocument:false,requiresAttachment:false},false);
   await ok({...expense,amount:100,documentNumber:""},false);

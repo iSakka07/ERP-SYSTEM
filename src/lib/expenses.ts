@@ -268,14 +268,14 @@ export type ExpenseSummaryStatement = {
   grossCents: number;
   netCents: number;
   correctionDebtCents?: number;
-  payments: { amountCents: number }[];
+  payments: { amountCents: number; status?: string }[];
 };
 export function expenseSummary(statements: ExpenseSummaryStatement[]) {
   const latest = statements
     .filter((s) => ["EXECUTIVE", "ACCOUNTING"].includes(s.stage))
     .sort((a, b) => b.sequence - a.sequence)[0];
   const paidCents = statements.reduce(
-    (s, st) => s + st.payments.reduce((v, p) => v + p.amountCents, 0),
+    (s, st) => s + st.payments.filter((p) => p.status !== "REVERSED").reduce((v, p) => v + p.amountCents, 0),
     0,
   );
   const grossCents = latest?.grossCents ?? 0,
@@ -299,12 +299,18 @@ export function expensePayableCents(
 ) {
   const target = statements.find((statement) => statement.id === targetId);
   if (!target || target.stage !== "ACCOUNTING") return 0;
+  // A later approved correction can reduce the cumulative entitlement. A payment
+  // against an older statement must never exceed the account's latest entitlement.
+  const latest = statements
+    .filter((statement) => ["EXECUTIVE", "ACCOUNTING"].includes(statement.stage))
+    .sort((a, b) => b.sequence - a.sequence)[0];
+  if (!latest) return 0;
   const paidCents = statements.reduce(
     (sum, statement) =>
-      sum + statement.payments.reduce((value, payment) => value + payment.amountCents, 0),
+      sum + statement.payments.filter((payment) => payment.status !== "REVERSED").reduce((value, payment) => value + payment.amountCents, 0),
     0,
   );
-  return Math.max(0, target.netCents - paidCents);
+  return Math.max(0, latest.netCents - paidCents);
 }
 export function correctionDebtAfterApproval(
   previous: {

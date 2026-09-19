@@ -1,6 +1,6 @@
 # Codex Working Agreement
 
-Read `../PRODUCT_BIBLE_V1.md` before each phase.
+Read `docs/PRODUCT_BIBLE_V1.md` before each phase.
 
 - Implement one approved phase at a time.
 - Verify the Definition of Done in the browser.

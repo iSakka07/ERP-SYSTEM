@@ -8,6 +8,7 @@ import { ERPSelect } from "@/components/erp-select";
 import { UploadBox } from "@/components/upload-box";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
+import { confirmSimilarFinancialOperation, financialHeaders, financialResult } from "@/lib/financial-submit";
 
 type Employee = { id: string; employeeCode: string; name: string; jobTitle: string; monthlySalaryCents: number };
 type Project = { id: string; name: string };
@@ -40,10 +41,12 @@ export function SalariesCenter({ employees, projects, allocations, runs, advance
     setBusy(action); setMessage("");
     const values = Object.fromEntries(new FormData(form)); const body = new FormData(); body.set("action", action); body.set("payload", JSON.stringify(values));
     if (files) for (const file of Array.from((form.querySelector('input[type="file"]') as HTMLInputElement | null)?.files ?? [])) body.append("files", file);
+    const financial = ["advance", "bonus", "deduction", "create-payroll", "payroll-pay"].includes(action), scope = `salary-${action}-${String(values.employeeId || values.id || values.month || "new")}`;
     try {
-      const response = await fetch("/api/salaries", { method: "POST", body }); const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "تعذر حفظ العملية.");
-      setMessage("تم حفظ العملية بنجاح."); form.reset(); setAdvanceEmployee(null); setAdjustment(null); router.refresh();
+      let replayed = false;
+      const submitRequest = async (): Promise<void> => { try { const response = await fetch("/api/salaries", { method: "POST", body, ...(financial ? { headers: financialHeaders(scope) } : {}) }); if (financial) { replayed = (await financialResult(response, scope)).replayed; return; } const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر حفظ العملية."); } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("توجد عملية رواتب مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return submitRequest(); } throw reason; } };
+      await submitRequest();
+      setMessage(replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم حفظ العملية بنجاح."); form.reset(); setAdvanceEmployee(null); setAdjustment(null); router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر حفظ العملية."); }
     finally { setBusy(""); }
   }
@@ -53,7 +56,7 @@ export function SalariesCenter({ employees, projects, allocations, runs, advance
     const form = new FormData(); form.set("action", "employee-delete"); form.set("payload", JSON.stringify({ employeeId: employee.id })); setBusy(`delete-${employee.id}`);
     const response = await fetch("/api/salaries", { method: "POST", body: form }); const result = await response.json(); setBusy(""); setMessage(response.ok ? "تم مسح الموظف من القوائم مع حفظ تاريخه المالي." : result.error || "تعذر المسح."); if (response.ok) router.refresh();
   }
-  async function pay(id: string) { const form = new FormData(); form.set("action", "payroll-pay"); form.set("payload", JSON.stringify({ id })); setBusy(`pay-${id}`); const response = await fetch("/api/salaries", { method: "POST", body: form }); const result = await response.json(); setBusy(""); setMessage(response.ok ? "تم تسجيل صرف المدير التنفيذي." : result.error || "تعذر تسجيل الصرف."); if (response.ok) router.refresh(); }
+  async function pay(id: string) { const form = new FormData(); form.set("action", "payroll-pay"); form.set("payload", JSON.stringify({ id })); const scope = `salary-payroll-pay-${id}`; setBusy(`pay-${id}`); try { const result = await financialResult(await fetch("/api/salaries", { method: "POST", body: form, headers: financialHeaders(scope) }), scope); setMessage(result.replayed ? "الصرف مسجل بالفعل ولم يتكرر." : "تم تسجيل صرف المدير التنفيذي."); router.refresh(); } catch (reason) { setMessage(reason instanceof Error ? reason.message : "تعذر تسجيل الصرف."); } finally { setBusy(""); } }
 
   return <div className="space-y-5">
     <section className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold text-blue-700">Phase 8B · المرتبات</p><h1 className="mt-1 text-2xl font-black text-slate-950">المرتبات والسلف وتكلفة المشروعات</h1><p className="mt-2 text-sm text-slate-500">الرواتب ثابتة؛ المحاسب يعتمد الكشف والمدير التنفيذي يسجّل صرفه.</p></div></section>

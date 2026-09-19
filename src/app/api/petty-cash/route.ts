@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import { assertBalances, balanceForAccount, cents, isProjectCost, validatePettyInput } from "@/lib/petty-cash";
-import { postPettyCashJournal } from "@/lib/accounting-posting";
+import { postPettyCashJournal, reversePostedJournal } from "@/lib/accounting-posting";
+import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status });
 export async function GET() {
@@ -25,16 +26,24 @@ export async function POST(req: Request) {
   const origin = req.headers.get("origin");
   if (origin && new URL(origin).host !== req.headers.get("host")) return json({ error: "طلب غير مسموح" }, 403);
   if (Number(req.headers.get("content-length") || 0) > 11 * 1024 * 1024) return json({ error: "حجم الطلب كبير" }, 413);
+  let operationContext: FinancialOperationContext | null = null;
   try {
     const form = await req.formData();
     const str = (key: string) => String(form.get(key) ?? "").trim();
     const action = str("action");
     const files = await readIncomingFiles(form);
+    if (action !== "category") {
+      const requestData = Object.fromEntries([...form.entries()].filter(([, value]) => typeof value === "string"));
+      const guarded = await guardFinancialOperation(req, { actorId: user.id, operation: `pettycash.${action || "transaction"}`, requestData, businessData: requestData });
+      if ("response" in guarded) return guarded.response;
+      operationContext = guarded.context;
+    }
     const date = () => { const raw = str("date"); if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(new Date(raw).getTime()) || new Date(raw).toISOString().slice(0,10) !== raw) throw new Error("التاريخ غير صحيح."); return new Date(raw); };
     const result = await prisma.$transaction(async tx => {
       // Acquire the SQLite write lock before reading balances (also serializes retries).
       await tx.systemMetadata.upsert({ where: { key: "pettycash-write-lock" }, create: { key: "pettycash-write-lock", value: randomUUID() }, update: { value: randomUUID() } });
       const audit = async (verb: string, target: string, details: unknown) => tx.auditLog.create({ data: { actorId: user.id, action: "pettycash." + verb, target, details: JSON.stringify(details) } });
+      const finish = async (body: { id: string }, entityType: string, summary: Record<string, unknown>) => { if (operationContext) await completeFinancialOperation(tx, operationContext, { body: { ok: true, ...body }, entityType, entityId: body.id, summary }); return body; };
       if (action === "category") {
         const name = str("name"); if (!name || name.length > 150) throw new Error("اسم التصنيف مطلوب وبحد أقصى 150 حرفًا.");
         const data = { name, active: str("active") === "true", requiresDocument: str("requiresDocument") === "true", requiresAttachment: str("requiresAttachment") === "true" };
@@ -50,15 +59,18 @@ export async function POST(req: Request) {
         const accountId = str("accountId"); if (!accounts.some(a => a.id === accountId && a.active)) throw new Error("اختر صندوقًا أو عهدة صحيحة.");
         const expectedCents = balanceForAccount(movements, accountId), actualCents = cents(str("actual"), true);
         const count = await tx.pettyCashCount.create({ data: { accountId, expectedCents, actualCents, differenceCents: actualCents - expectedCents, countedAt: date(), notes: str("notes"), actorId: user.id } });
-        await audit("cash_count", count.id, { expectedCents, actualCents }); return { id: count.id };
+        await audit("cash_count", count.id, { expectedCents, actualCents }); return finish({ id: count.id }, "pettyCashCount", { expectedCents, actualCents, date: str("date") });
       }
       if (action === "reverse") {
         const id = str("id"), reason = str("reason");
-        if (!reason || !files.length) throw new Error("سبب العكس ومرفقه مطلوبان.");
-        const original = movements.find(t => t.id === id && t.status === "POSTED"); if (!original) throw new Error("الحركة معكوسة بالفعل أو غير موجودة.");
+        if (!reason || !files.length) throw new Error("سبب الإلغاء ومرفقه مطلوبان.");
+        const original = movements.find(t => t.id === id && t.status === "POSTED"); if (!original) throw new Error("الحركة ملغاة بالفعل أو غير موجودة.");
         assertBalances(movements.filter(t => t.id !== id));
-        await tx.pettyCashTransaction.update({ where: { id }, data: { status: "REVERSED", reversedAt: new Date(), reversalReason: reason, attachments: { create: files.map(f => ({ ...f, name: "إثبات العكس - " + f.name, actorId: user.id })) } } });
-        await audit("reverse", id, { reason, original }); return { id };
+        // إلغاء حركة الصندوق لا يقتصر على إخفائها من الرصيد: يعكس القيد الأصلي
+        // في نفس المعاملة حتى لا تبقى التكلفة أو التمويل ظاهرة في المحاسبة.
+        await reversePostedJournal(tx, "PETTY_CASH", original.id, new Date(), user.id, reason);
+        await tx.pettyCashTransaction.update({ where: { id }, data: { status: "REVERSED", reversedAt: new Date(), reversalReason: reason, attachments: { create: files.map(f => ({ ...f, name: "إثبات الإلغاء - " + f.name, actorId: user.id })) } } });
+        await audit("reverse", id, { reason, original }); return finish({ id }, "pettyCashTransaction", { action: "reverse", originalId: id, amountCents: original.amountCents });
       }
       let type = str("type"), amountCents = 0, sourceAccountId: string | null = null, destinationAccountId: string | null = null;
       let projectId: string | null = null, categoryId: string | null = null, documentNumber = str("documentNumber") || null;
@@ -110,8 +122,8 @@ export async function POST(req: Request) {
       await tx.pettyCashTransaction.create({ data: { ...movement, attachments: { create: files.map(f => ({ ...f, actorId: user.id })) } } });
       await postPettyCashJournal(tx, movement);
       await audit(action === "adjust" ? "adjust" : type.toLowerCase(), id, movement);
-      return { id };
+      return finish({ id }, "pettyCashTransaction", { number: movement.number, type, amountCents, date: str("date"), documentNumber });
     }, { maxWait: 10000, timeout: 20000 });
     return json({ ok: true, ...result });
-  } catch (e) { return json({ error: e instanceof Error ? e.message : "تعذر حفظ الحركة." }, 400); }
+  } catch (e) { const replay = await replayAfterConflict(e, operationContext); if (replay) return replay; return json({ error: e instanceof Error ? e.message : "تعذر حفظ الحركة." }, 400); }
 }

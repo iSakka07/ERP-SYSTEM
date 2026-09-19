@@ -4,6 +4,7 @@ import { compare } from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { clearLoginFailures, loginIsBlocked, recordLoginFailure } from "@/lib/login-rate-limit";
+import { assertSecureRuntimeConfig } from "@/lib/runtime-config";
 
 const credentialsSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -22,6 +23,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "كلمة المرور", type: "password" },
       },
       async authorize(credentials, request) {
+        assertSecureRuntimeConfig();
         const parsed = credentialsSchema.safeParse(credentials);
         if (!parsed.success) return null;
         const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";

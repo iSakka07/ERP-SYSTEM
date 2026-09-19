@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, Building2, CircleCheckBig, FileSpreadsheet, Landmark, Paperclip, ShoppingCart, Sparkles, UsersRound, Vault } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, Building2, CircleCheckBig, FileSpreadsheet, Landmark, Paperclip, ShoppingCart, UsersRound, Vault } from "lucide-react";
 import { auth } from "@/auth";
 import { can } from "@/lib/permissions";
 import { companyBrand } from "@/lib/company-brand";
@@ -32,9 +32,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ p
   const rows = projects.filter((project) => !projectId || project.id === projectId).map((project) => {
     const incoming = contracts.filter((contract) => contract.projectId === project.id).reduce((sum, contract) => sum + financials(contract).net, 0);
     const contractValue = contracts.filter((contract) => contract.projectId === project.id).reduce((sum, contract) => sum + financials(contract).value, 0);
-    const subcontract = accounts.filter((account) => account.projectId === project.id).reduce((sum, account) => sum + expenseSummary(account.statements).netCents, 0);
+    const subcontract = accounts.filter((account) => account.projectId === project.id).reduce((sum, account) => sum + expenseSummary(account.statements).grossCents, 0);
     const subcontractPaid = accounts.filter((account) => account.projectId === project.id).reduce((sum, account) => sum + expenseSummary(account.statements).paidCents, 0);
-    const purchases = invoices.filter((invoice) => invoice.projectId === project.id).reduce((sum, invoice) => sum + invoice.totalCents, 0);
+    const purchases = invoices.filter((invoice) => invoice.projectId === project.id && invoice.status === "POSTED").reduce((sum, invoice) => sum + invoice.totalCents, 0);
     const pettyCost = petty.filter((t) => t.projectId === project.id && isProjectCost(t.type)).reduce((sum, t) => sum + t.amountCents, 0);
     return { project, incoming, contractValue, subcontract, subcontractPaid, purchases, pettyCost, cost: subcontract + purchases + pettyCost, pettyPaid: pettyCost };
   });
@@ -55,7 +55,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ p
       <section className="hero-card overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="relative z-10 grid gap-7 p-6 lg:grid-cols-[1.25fr_.75fr] lg:p-8">
           <div>
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 ring-1 ring-blue-100"><Sparkles className="size-3.5" />النسخة التجريبية الأولى</div>
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 ring-1 ring-blue-100">منظومة الإدارة المالية والتشغيلية</div>
             <h1 className="max-w-3xl text-3xl font-extrabold leading-[1.35] text-slate-950 lg:text-4xl">إدارة المشروع من أول وارد <span className="text-blue-700">لحد آخر جنيه اتصرف</span></h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 lg:text-base">{companyBrand.arabicName} يجمع مستخلصات المالك، مقاولي الباطن، المشتريات، النثريات، المرتبات والخزنة في ملف مالي واحد لكل مشروع.</p>
             <div className="mt-6 flex flex-wrap gap-3">

@@ -14,6 +14,7 @@ import {
 } from "@/lib/expenses";
 import { withdrawnKeys } from "@/lib/work-withdrawals";
 import { Plus, Trash2, Save, ArrowRight } from "lucide-react";
+import { confirmSimilarFinancialOperation, financialHeaders, financialResult } from "@/lib/financial-submit";
 export const expenseInput =
   "w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100";
 export const expenseButton =
@@ -44,10 +45,12 @@ export function ExpenseFileInput({ required = true }: { required?: boolean }) {
 export async function sendExpense(payload: unknown, form?: HTMLFormElement) {
   const body = form ? new FormData(form) : new FormData();
   body.set("payload", JSON.stringify(payload));
-  const response = await fetch("/api/expenses", { method: "POST", body });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error ?? "تعذر الحفظ.");
-  return data as { id: string };
+  const action = typeof payload === "object" && payload && "action" in payload ? String((payload as { action: unknown }).action) : "unknown";
+  const financial = ["stage", "payment", "accountingPayment", "reversePayment"].includes(action);
+  const record = payload as { id?: string; statementId?: string };
+  const scope = `expenses-${action}-${record.id || record.statementId || "new"}`;
+  const send = async (): Promise<{ id: string }> => { try { const response = await fetch("/api/expenses", { method: "POST", body, ...(financial ? { headers: financialHeaders(scope) } : {}) }); if (financial) return (await financialResult(response, scope)).body as { id: string }; const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "تعذر الحفظ."); return data as { id: string }; } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("توجد عملية مشابهة على مستخلص المقاول. هل تريد تسجيلها كعملية مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return send(); } throw reason; } };
+  return send();
 }
 export function ExpenseSheet({
   account,

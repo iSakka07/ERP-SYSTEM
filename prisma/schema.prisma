@@ -66,6 +66,27 @@ model AuditLog {
   createdAt DateTime @default(now())
 }
 
+model FinancialOperationRequest {
+  id                  String   @id @default(cuid())
+  idempotencyKey      String
+  actorId             String
+  operation           String
+  requestHash         String
+  businessHash        String
+  responseStatus      Int
+  responseJson        String
+  entityType          String?
+  entityId            String?
+  summaryJson         String?
+  duplicateOfId       String?
+  duplicateConfirmed Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  @@unique([actorId, operation, idempotencyKey])
+  @@index([operation, businessHash, createdAt])
+  @@index([entityType, entityId])
+}
+
 model Company {
   id                  String               @id @default(cuid())
   name                String               @unique
@@ -430,6 +451,9 @@ model SubcontractPayment {
   reference   String
   notes       String?
   actorId     String
+  status      String               @default("POSTED")
+  reversedAt  DateTime?
+  reversalReason String?
   createdAt   DateTime             @default(now())
 }
 
@@ -501,6 +525,9 @@ model PurchaseInvoice {
   notes       String?
   totalCents  Float
   paymentSource String @default("EXECUTIVE_DIRECTOR")
+  status      String             @default("POSTED")
+  reversedAt  DateTime?
+  reversalReason String?
   actorId     String
   items       PurchaseItem[]
   createdAt   DateTime           @default(now())
@@ -642,6 +669,9 @@ model BankTransaction {
   reference        String?
   sourceType       String?
   sourceId         String?
+  status           String          @default("POSTED")
+  reversedAt       DateTime?
+  reversalReason   String?
   actorId          String
   actor            User            @relation(fields: [actorId], references: [id])
   attachments      BankAttachment[]
@@ -650,6 +680,7 @@ model BankTransaction {
   @@unique([sourceType, sourceId])
   @@index([transactionDate, type])
   @@index([projectId])
+  @@index([status])
 }
 
 model BankAttachment {

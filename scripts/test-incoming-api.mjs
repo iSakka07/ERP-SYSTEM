@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { financials, incomingStages } from "../src/lib/incoming.ts";
 const db = new PrismaClient();
@@ -40,21 +41,9 @@ async function login(email) {
   return jar;
 }
 async function post(payload, files = true, jar = cookieMap) {
-  const form = new FormData();
-  form.set("payload", JSON.stringify(payload));
-  if (files)
-    form.append(
-      "files",
-      new Blob([proof], { type: "application/pdf" }),
-      "AUTOMATED-TEST-ONLY.pdf",
-    );
-  const r = await fetch(`${base}/api/incoming`, {
-    method: "POST",
-    headers: { Cookie: cookies(jar), Origin: base },
-    body: form,
-  });
-  const result = await r.json();
-  return { status: r.status, ...result };
+  const key = randomUUID();
+  const send = async (confirmation) => { const form = new FormData(); form.set("payload", JSON.stringify(payload)); if (files) form.append("files", new Blob([proof], { type: "application/pdf" }), "AUTOMATED-TEST-ONLY.pdf"); const r = await fetch(`${base}/api/incoming`, { method: "POST", headers: { Cookie: cookies(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form }); const result = await r.json(); if (r.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: r.status, ...result }; };
+  return send();
 }
 async function remove(id, jar = cookieMap) {
   const response = await fetch(`${base}/api/incoming`, { method: "DELETE", headers: { "Content-Type": "application/json", Cookie: cookies(jar), Origin: base }, body: JSON.stringify({ id }) });

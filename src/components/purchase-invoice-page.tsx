@@ -8,6 +8,7 @@ import { ERPSelect } from "@/components/erp-select";
 import { UploadBox } from "@/components/upload-box";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { MoneyValue } from "@/components/erp-ui";
+import { confirmSimilarFinancialOperation, financialHeaders, financialResult } from "@/lib/financial-submit";
 
 type Project = { id: string; name: string };
 type Supplier = { id: string; name: string };
@@ -68,9 +69,9 @@ export function PurchaseInvoicePage({
       }),
     );
     try {
-      const response = await fetch("/api/purchases", { method: "POST", body: data });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "تعذر حفظ فاتورة المشتريات.");
+      const scope = "purchase-new";
+      const send = async (): Promise<void> => { try { await financialResult(await fetch("/api/purchases", { method: "POST", body: data, headers: financialHeaders(scope) }), scope); } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("توجد فاتورة مشتريات مشابهة. هل تريد إنشاءها كفاتورة مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return send(); } throw reason; } };
+      await send();
       router.replace(returnHref);
       router.refresh();
     } catch (reason) {

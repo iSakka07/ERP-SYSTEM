@@ -6,6 +6,7 @@ import { UploadBox } from "@/components/upload-box";
 
 import { Fragment, FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { confirmSimilarFinancialOperation, financialHeaders, financialResult } from "@/lib/financial-submit";
 import {
   ArrowRight,
   Banknote,
@@ -191,20 +192,14 @@ export function IncomingCenter({
       form.set("payload", JSON.stringify(payload));
       files.forEach((f) => form.append("files", f));
       estimateFiles.forEach((f) => form.append("estimateFiles", f));
-      const response = await fetch("/api/incoming", {
-        method: "POST",
-        body: form,
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        setMessage(result.error || "تعذر الحفظ.");
-        return;
-      }
-      setMessage("تم الحفظ بنجاح.");
+      const action = "action" in payload ? String(payload.action) : "unknown", record = payload as { id?: string; contractId?: string; statementId?: string }, financial = ["statement", "material", "memo", "stage"].includes(action), scope = `incoming-${action}-${record.id || record.statementId || record.contractId || "new"}`;
+      const send = async (): Promise<boolean> => { try { const response = await fetch("/api/incoming", { method: "POST", body: form, ...(financial ? { headers: financialHeaders(scope) } : {}) }); if (financial) return (await financialResult(response, scope)).replayed; const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر الحفظ."); return false; } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("توجد عملية وارد مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return send(); } throw reason; } };
+      const replayed = await send();
+      setMessage(replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم الحفظ بنجاح.");
       setEditor(null);
       router.refresh();
-    } catch {
-      setMessage("تعذر الاتصال. حاول مرة أخرى.");
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : "تعذر الاتصال. حاول مرة أخرى.");
     } finally {
       setBusy(false);
     }

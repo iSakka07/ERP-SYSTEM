@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { hash } from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { expenseSummary } from "../src/lib/expenses.ts";
@@ -49,16 +49,9 @@ async function login(email) {
   return jar;
 }
 async function post(payload, jar, files = true) {
-  const form = new FormData();
-  form.set("payload", JSON.stringify(payload));
-  if (files)
-    form.append("files", new Blob([proof]), "TEST-CORRECTION-ONLY.pdf");
-  const response = await fetch(`${base}/api/expenses`, {
-    method: "POST",
-    headers: { ...headers(jar), Origin: base },
-    body: form,
-  });
-  return { status: response.status, ...(await response.json()) };
+  const key = randomUUID();
+  const send = async (confirmation) => { const form = new FormData(); form.set("payload", JSON.stringify(payload)); if (files) form.append("files", new Blob([proof]), "TEST-CORRECTION-ONLY.pdf"); const response = await fetch(`${base}/api/expenses`, { method: "POST", headers: { ...headers(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form }); const result = await response.json(); if (response.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: response.status, ...result }; };
+  return send();
 }
 const read = (id) =>
   db.subcontractStatement.findUniqueOrThrow({

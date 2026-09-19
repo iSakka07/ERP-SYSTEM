@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Boxes, FileText, List, Paperclip, Plus, ReceiptText } from "lucide-react";
+import { Ban, Boxes, FileText, List, Paperclip, Plus, ReceiptText, X } from "lucide-react";
 import { ERPSelect } from "@/components/erp-select";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
+import { confirmSimilarFinancialOperation, financialHeaders, financialResult } from "@/lib/financial-submit";
 
 type Project = { id: string; name: string; code: string };
 type Supplier = { id: string; name: string };
@@ -16,6 +17,9 @@ type PurchaseInvoice = {
   invoiceDate: string;
   notes?: string | null;
   totalCents: number;
+  status: string;
+  reversedAt?: string | null;
+  reversalReason?: string | null;
   projectId: string;
   supplierId?: string | null;
   project: Project;
@@ -52,21 +56,42 @@ export function PurchasesCenter({ invoices, projects, suppliers, attachments, ca
   const [supplier, setSupplier] = useState("");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState("");
+  const [reversing, setReversing] = useState<PurchaseInvoice | null>(null);
+  const [reverseError, setReverseError] = useState("");
+  const [reverseBusy, setReverseBusy] = useState(false);
   const visible = invoices.filter((invoice) =>
     (!project || invoice.projectId === project) &&
     (!supplier || invoice.supplierId === supplier) &&
     `${invoice.name} ${invoice.project.name} ${invoice.supplier?.name ?? ""}`.toLowerCase().includes(search.toLowerCase()),
   );
-  const total = visible.reduce((sum, invoice) => sum + invoice.totalCents, 0);
+  const total = visible.filter((invoice) => invoice.status === "POSTED").reduce((sum, invoice) => sum + invoice.totalCents, 0);
   const byProject = (() => {
     const totals = new Map<string, number>();
-    for (const invoice of visible) totals.set(invoice.projectId, (totals.get(invoice.projectId) ?? 0) + invoice.totalCents);
+    for (const invoice of visible.filter((invoice) => invoice.status === "POSTED")) totals.set(invoice.projectId, (totals.get(invoice.projectId) ?? 0) + invoice.totalCents);
     return projects.map((item) => ({ item, total: totals.get(item.id) ?? 0 })).sort((a, b) => b.total - a.total)[0];
   })();
   function newInvoice() {
     const params = new URLSearchParams();
     if (project) params.set("project", project);
     router.push(`/purchases/new?return=${encodeURIComponent(`/purchases${params.size ? `?${params}` : ""}`)}`);
+  }
+  async function reverseInvoice(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reversing) return;
+    setReverseBusy(true); setReverseError("");
+    const form = event.currentTarget; const scope = `purchase-reverse-${reversing.id}`;
+    const send = async (): Promise<void> => {
+      const body = new FormData(form); body.set("payload", JSON.stringify({ action: "reverse", id: reversing.id, reason: String(body.get("reason") || "") }));
+      try {
+        await financialResult(await fetch("/api/purchases", { method: "POST", body, headers: financialHeaders(scope) }), scope);
+        router.refresh(); setReversing(null);
+      } catch (reason) {
+        const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation;
+        if (similar && window.confirm("توجد عملية إلغاء مشابهة. هل تريد تسجيلها كعملية مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return send(); }
+        throw reason;
+      }
+    };
+    try { await send(); } catch (reason) { setReverseError(reason instanceof Error ? reason.message : "تعذر إلغاء الفاتورة."); } finally { setReverseBusy(false); }
   }
 
   return <div className="space-y-5">
@@ -93,20 +118,21 @@ export function PurchasesCenter({ invoices, projects, suppliers, attachments, ca
           const isOpen = expanded === invoice.id;
           const invoiceFiles = attachments.filter((file) => file.entityId === invoice.id);
           return <Fragment key={invoice.id}>
-            <tr>
-              <td data-label="اسم الفاتورة" className="font-bold"><span className="inline-flex items-center gap-2"><FileText className="size-4 text-blue-700" />{invoice.name}</span>{invoice.notes && <p className="mt-1 text-[11px] font-normal text-slate-500">{invoice.notes}</p>}</td>
+            <tr className={invoice.status === "REVERSED" ? "bg-rose-50/70 text-slate-500" : ""}>
+              <td data-label="اسم الفاتورة" className="font-bold"><span className="inline-flex items-center gap-2"><FileText className="size-4 text-blue-700" /><span className={invoice.status === "REVERSED" ? "line-through" : ""}>{invoice.name}</span>{invoice.status === "REVERSED" && <span className="rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700">ملغاة</span>}</span>{invoice.notes && <p className="mt-1 text-[11px] font-normal text-slate-500">{invoice.notes}</p>}{invoice.status === "REVERSED" && invoice.reversalReason && <p className="mt-1 text-[11px] font-bold text-rose-700">سبب الإلغاء: {invoice.reversalReason}</p>}</td>
               <td data-label="المشروع">{invoice.project.name}<p className="mt-1 text-[11px] text-slate-400">{invoice.project.code}</p></td>
               <td data-label="المورد">{invoice.supplier?.name ?? "—"}</td>
               <td data-label="التاريخ" dir="ltr">{invoice.invoiceDate.slice(0, 10)}</td>
               <td data-label="عدد البنود"><button type="button" className="font-extrabold text-blue-700 underline decoration-blue-200 underline-offset-4" onClick={() => setExpanded(isOpen ? "" : invoice.id)}>{invoice.items.length} بند</button></td>
-              <td data-label="الإجمالي" className="text-center"><MoneyValue>{money(invoice.totalCents)} ج.م</MoneyValue></td>
-              <td data-label="الإجراءات"><div className="flex justify-end gap-2"><IconAction label={isOpen ? "إخفاء تفاصيل البنود" : "عرض تفاصيل البنود"} icon={List} onClick={() => setExpanded(isOpen ? "" : invoice.id)} /><AttachmentMenu files={invoiceFiles} /></div></td>
+              <td data-label="الإجمالي" className="text-center">{invoice.status === "REVERSED" ? <span className="font-bold text-rose-600 line-through">{money(invoice.totalCents)} ج.م</span> : <MoneyValue>{money(invoice.totalCents)} ج.م</MoneyValue>}</td>
+              <td data-label="الإجراءات"><div className="flex justify-end gap-2"><IconAction label={isOpen ? "إخفاء تفاصيل البنود" : "عرض تفاصيل البنود"} icon={List} onClick={() => setExpanded(isOpen ? "" : invoice.id)} /><AttachmentMenu files={invoiceFiles} />{canManage && invoice.status === "POSTED" && <IconAction label="إلغاء الفاتورة" icon={Ban} tone="danger" onClick={() => setReversing(invoice)} />}</div></td>
             </tr>
             {isOpen && <tr><td colSpan={7} className="erp-table-details"><h2 className="mb-3 text-sm font-black">تفاصيل بنود «{invoice.name}»</h2><div className="overflow-x-auto"><table className="w-full min-w-[600px] text-xs"><thead className="bg-slate-100 text-slate-600"><tr>{["الصنف", "الوحدة", "الكمية", "سعر الوحدة", "الإجمالي"].map((head) => <th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>{invoice.items.map((item) => <tr key={item.id} className="border-b last:border-0"><td className="p-2 font-bold">{item.name}</td><td className="p-2">{item.unit}</td><td className="p-2" dir="ltr">{item.quantity}</td><td className="p-2 text-center"><MoneyValue>{money(item.unitPriceCents)} ج.م</MoneyValue></td><td className="p-2 text-center"><MoneyValue>{money(item.totalCents)} ج.م</MoneyValue></td></tr>)}</tbody></table></div></td></tr>}
           </Fragment>;
         })}{!visible.length && <tr><td colSpan={7} className="p-10 text-center text-sm text-slate-400">لا توجد فواتير مشتريات مطابقة.</td></tr>}</tbody>
-        {!!visible.length && <tfoot><tr><td colSpan={5}>إجمالي {visible.length} فاتورة</td><td className="text-center"><MoneyValue>{money(total)} ج.م</MoneyValue></td><td /></tr></tfoot>}
+        {!!visible.length && <tfoot><tr><td colSpan={5}>إجمالي الفواتير غير الملغاة</td><td className="text-center"><MoneyValue>{money(total)} ج.م</MoneyValue></td><td /></tr></tfoot>}
       </table></div>
     </section>
+    {reversing && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4"><section role="dialog" aria-modal="true" aria-labelledby="purchase-reverse-title" className="w-full max-w-lg rounded-2xl border bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-rose-700">إلغاء مالي موثق</p><h2 id="purchase-reverse-title" className="mt-1 text-lg font-black">إلغاء «{reversing.name}»</h2><p className="mt-2 text-sm text-slate-500">سيُعكس قيد تكلفة المشتريات وأي حركة صندوق مرتبطة. لا يمكن حذف الأثر المالي.</p></div><button type="button" aria-label="إغلاق" title="إغلاق" onClick={() => setReversing(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="size-5" /></button></div><form onSubmit={reverseInvoice} className="mt-5 space-y-4"><label className="grid gap-2 text-xs font-bold">سبب الإلغاء *<input name="reason" required className={expenseInput} /></label><label className="grid gap-2 text-xs font-bold">إثبات الإلغاء *<input name="files" type="file" required accept="application/pdf,image/*" className={expenseInput} /></label>{reverseError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{reverseError}</p>}<button disabled={reverseBusy} className={`${expenseButton} w-full !border-rose-700 !bg-rose-700 !text-white`}>{reverseBusy ? "جارٍ الإلغاء…" : "تأكيد الإلغاء وعكس القيد"}</button></form></section></div>}
   </div>;
 }

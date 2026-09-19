@@ -23,14 +23,19 @@ export async function readIncomingFiles(form: FormData, field = "files") {
   const files = form
     .getAll(field)
     .filter((f): f is File => f instanceof File && f.size > 0);
+  const maxFileBytes = 5 * 1024 * 1024;
+  const maxTotalBytes = 10 * 1024 * 1024;
   if (
     files.length > 5 ||
-    files.reduce((s, f) => s + f.size, 0) > 10 * 1024 * 1024
+    files.some((file) => file.size > maxFileBytes) ||
+    files.reduce((s, f) => s + f.size, 0) > maxTotalBytes
   )
     throw new Error("الحد الأقصى 5 مرفقات بإجمالي 10 ميجابايت.");
   return Promise.all(
     files.map(async (f) => {
       const data = Buffer.from(await f.arrayBuffer());
+      if (data.length !== f.size || data.length > maxFileBytes)
+        throw new Error("حجم أحد المرفقات غير مسموح به.");
       const ext = f.name.split(".").at(-1)?.toLowerCase();
       const sig = data.subarray(0, 8).toString("hex");
       const valid =

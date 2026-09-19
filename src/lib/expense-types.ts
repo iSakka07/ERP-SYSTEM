@@ -23,6 +23,9 @@ export type ExpenseStatement = {
     method: string;
     reference: string;
     notes: string | null;
+    status: string;
+    reversedAt: string | null;
+    reversalReason: string | null;
   }[];
   approvals: {
     id: string;

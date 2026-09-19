@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { hash } from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { expenseSummary } from "../src/lib/expenses.ts";
@@ -10,6 +10,7 @@ const password = randomBytes(24).toString("base64url");
 const users = [],
   roles = [];
 let accountId;
+let firstPaymentId;
 let destinationCompanyId;
 let proof;
 const headers = (jar) => ({
@@ -46,15 +47,9 @@ async function login(email) {
   return jar;
 }
 async function post(payload, jar, files = true, origin = base) {
-  const f = new FormData();
-  f.set("payload", JSON.stringify(payload));
-  if (files) f.append("files", new Blob([proof]), "AUTOMATED-TEST-ONLY.pdf");
-  const r = await fetch(`${base}/api/expenses`, {
-    method: "POST",
-    headers: { ...headers(jar), Origin: origin },
-    body: f,
-  });
-  return { status: r.status, ...(await r.json()) };
+  const key = randomUUID();
+  const send = async (confirmation) => { const f = new FormData(); f.set("payload", JSON.stringify(payload)); if (files) f.append("files", new Blob([proof]), "AUTOMATED-TEST-ONLY.pdf"); const r = await fetch(`${base}/api/expenses`, { method: "POST", headers: { ...headers(jar), Origin: origin, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: f }); const result = await r.json(); if (r.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: r.status, ...result }; };
+  return send();
 }
 async function remove(id, jar, origin = base) {
   const response = await fetch(`${base}/api/expenses`, {
@@ -248,6 +243,7 @@ try {
   assert.equal((await post(payment, jars.accounting, false)).status, 400);
   r = await post(payment, jars.accounting);
   assert.equal(r.status, 200, JSON.stringify(r));
+  firstPaymentId = r.id;
   assert.equal(
     (await post(payment, jars.accounting)).status,
     400,
@@ -814,6 +810,14 @@ try {
   const html = await page.text();
   assert.ok(html.includes("مستخلصات مقاولي الباطن"));
   assert.ok(!html.includes("إضافة مقاولة جديدة</button>"));
+  const paidBeforeReversal = expenseSummary(await db.subcontractStatement.findMany({ where: { accountId }, include: { payments: true } })).paidCents;
+  const originalPaymentJournal = await db.journalEntry.findFirstOrThrow({ where: { sourceType: "SUBCONTRACT_PAYMENT", sourceId: firstPaymentId } });
+  r = await post({ action: "reversePayment", paymentId: firstPaymentId, reason: "اختبار إلغاء دفعة موثق" }, jars.accounting);
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.equal((await db.subcontractPayment.findUniqueOrThrow({ where: { id: firstPaymentId } })).status, "REVERSED");
+  assert.ok(await db.journalEntry.findFirst({ where: { reversalOfId: originalPaymentJournal.id } }), "payment reversal must balance the payment journal");
+  assert.equal(expenseSummary(await db.subcontractStatement.findMany({ where: { accountId }, include: { payments: true } })).paidCents, paidBeforeReversal - 3_000_000, "reversed payment returns the amount to contractor payable");
+  assert.equal((await post({ action: "reversePayment", paymentId: firstPaymentId, reason: "محاولة مكررة" }, jars.accounting)).status, 400);
   assert.equal((await remove(accountId, jars.forbidden)).status, 403);
   assert.equal((await remove(accountId, jars.manager, "https://invalid.example")).status, 403);
   assert.equal((await remove(accountId, jars.manager)).status, 200);
