@@ -1,10 +1,12 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { dirname, resolve } from "node:path";
 
 const root = process.cwd();
-const temp = await mkdtemp(resolve(root, "tmp", "isolated-test-"));
+const tempRoot = resolve(root, "tmp");
+await mkdir(tempRoot, { recursive: true });
+const temp = await mkdtemp(resolve(tempRoot, "isolated-test-"));
 const port = String(3200 + Math.floor(Math.random() * 400));
 const databaseUrl = `file:${resolve(temp, "test.db").replaceAll("\\", "/")}`;
 const testUrl = `http://127.0.0.1:${port}`;
@@ -43,6 +45,10 @@ try {
   for (const command of ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:project-cost-control-api"]) run([command]);
   console.log("PASS: كل اختبارات API شُغلت على قاعدة وخادم معزولين.");
 } finally {
-  if (server?.pid) { spawnSync("taskkill.exe", ["/pid", String(server.pid), "/t", "/f"], { stdio: "ignore" }); await Promise.race([once(server, "exit"), new Promise((resolveWait) => setTimeout(resolveWait, 2_000))]); }
+  if (server?.pid) {
+    if (process.platform === "win32") spawnSync("taskkill.exe", ["/pid", String(server.pid), "/t", "/f"], { stdio: "ignore" });
+    else server.kill("SIGTERM");
+    await Promise.race([once(server, "exit"), new Promise((resolveWait) => setTimeout(resolveWait, 2_000))]);
+  }
   for (let attempt = 0; attempt < 5; attempt += 1) { try { await rm(temp, { recursive: true, force: true }); break; } catch (error) { if (attempt === 4) throw error; await new Promise((resolveWait) => setTimeout(resolveWait, 500)); } }
 }
