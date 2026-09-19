@@ -34,7 +34,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
         <div className="flex h-full items-center justify-between px-4 lg:pr-[294px] lg:pl-6">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setOpen(true)} className="grid size-10 place-items-center rounded-lg text-slate-200 hover:bg-white/10 lg:hidden" aria-label="فتح القائمة"><Menu className="size-5" /></button>
-            <div><p className="text-sm font-bold">{companyBrand.arabicName}</p><p className="text-[10px] text-slate-400">{companyBrand.systemName}</p></div>
+            <div className="flex items-center gap-2.5"><span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-white p-1 shadow-lg shadow-blue-950/30"><Image src={companyBrand.logoPath} alt="ASGC" width={42} height={42} className="size-full object-contain" priority /></span><div><p className="text-sm font-bold">{companyBrand.arabicName}</p><p className="text-[10px] text-slate-400">{companyBrand.systemName}</p></div></div>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden md:block"><PdfExportButton /></div>
@@ -47,7 +47,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
       <aside className={`fixed inset-y-0 right-0 z-50 w-[270px] border-l border-white/10 bg-[#10192d] text-white transition-transform duration-200 lg:translate-x-0 ${open ? "translate-x-0" : "translate-x-full"}`}>
         <div className="flex h-16 items-center justify-between border-b border-white/10 px-5">
           <Link href="/" className="flex items-center gap-3" onClick={() => setOpen(false)}>
-            <span className="grid size-10 place-items-center rounded-xl bg-white p-1 shadow-lg shadow-blue-950/30"><Image src={companyBrand.logoPath} alt="ASGC" width={40} height={32} className="h-auto w-full" /></span>
+            <span className="grid size-11 place-items-center overflow-hidden rounded-xl bg-white p-1.5 shadow-lg shadow-blue-950/30"><Image src={companyBrand.logoPath} alt="ASGC" width={44} height={44} className="size-full object-contain" priority /></span>
             <div><p className="text-sm font-extrabold tracking-wide">{companyBrand.arabicName}</p><p className="text-[10px] text-slate-400">{companyBrand.englishName}</p></div>
           </Link>
           <button type="button" onClick={() => setOpen(false)} className="grid size-8 place-items-center rounded-md text-slate-400 hover:bg-white/10 lg:hidden" aria-label="إغلاق القائمة"><X className="size-4" /></button>
