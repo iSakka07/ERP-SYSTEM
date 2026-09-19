@@ -3,6 +3,7 @@ import { z } from "zod";
 import { incomingUser } from "@/lib/incoming-server";
 import { prisma } from "@/lib/prisma";
 import { postSubcontractApproval, postSubcontractPayment } from "@/lib/accounting-posting";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 
 const payload = z.discriminatedUnion("action", [
   z.object({ action: z.literal("goLive"), goLiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
@@ -12,6 +13,7 @@ const payload = z.discriminatedUnion("action", [
 export async function POST(request: Request) {
   const user = await incomingUser("accounting.manage");
   if (!user) return NextResponse.json({ error: "غير مسموح بتحديد تاريخ بدء المحاسبة." }, { status: 403 });
+  if (!isTrustedMutationOrigin(request)) return NextResponse.json({ error: "مصدر الطلب غير موثوق." }, { status: 403 });
   const parsed = payload.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "راجع بيانات المحاسبة المطلوبة." }, { status: 400 });
   try {

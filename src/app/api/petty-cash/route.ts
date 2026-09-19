@@ -5,6 +5,7 @@ import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import { assertBalances, balanceForAccount, cents, isProjectCost, validatePettyInput } from "@/lib/petty-cash";
 import { postPettyCashJournal, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status });
 export async function GET() {
@@ -23,8 +24,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await incomingUser("pettycash.manage");
   if (!user) return json({ error: "غير مصرح" }, 403);
-  const origin = req.headers.get("origin");
-  if (origin && new URL(origin).host !== req.headers.get("host")) return json({ error: "طلب غير مسموح" }, 403);
+  if (!isTrustedMutationOrigin(req)) return json({ error: "مصدر الطلب غير موثوق." }, 403);
   if (Number(req.headers.get("content-length") || 0) > 11 * 1024 * 1024) return json({ error: "حجم الطلب كبير" }, 413);
   let operationContext: FinancialOperationContext | null = null;
   try {

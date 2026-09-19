@@ -27,6 +27,13 @@ async function send(jar, key, payload, confirmation) {
   return { status: response.status, replayHeader: response.headers.get("Idempotency-Replayed"), ...(await response.json()) };
 }
 
+async function sendForeignOrigin(jar) {
+  const form = new FormData();
+  form.set("payload", JSON.stringify({ type: "OWNER_FUNDING", amount: 1, date: "2026-09-19", description: "طلب خارجي", reference: "CSRF" }));
+  const response = await fetch(`${base}/api/bank`, { method: "POST", headers: { Cookie: cookie(jar), Origin: "https://attacker.invalid", "Idempotency-Key": randomUUID() }, body: form });
+  return response.status;
+}
+
 async function setPeriod(jar, status) {
   const response = await fetch(`${base}/api/accounting`, {
     method: "POST",
@@ -40,6 +47,7 @@ try {
   const role = await db.role.findUniqueOrThrow({ where: { key: "admin" } });
   user = await db.user.create({ data: { name: tag, email: `${tag}@test.invalid`.toLowerCase(), passwordHash: await hash(password, 10), roleId: role.id } });
   const jar = await login(user.email);
+  assert.equal(await sendForeignOrigin(jar), 403, "foreign Origin cannot create a financial movement");
   const payload = { type: "OWNER_FUNDING", amount: 123.45, date: "2026-09-19", description: tag, reference: tag };
   assert.equal((await setPeriod(jar, "CLOSED")).status, 200, "accountant can close an accounting period");
   assert.equal((await send(jar, randomUUID(), { ...payload, date: "2098-12-19", description: `${tag}-closed`, reference: `${tag}-closed` })).status, 400, "closed period blocks financial posting");

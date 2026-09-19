@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { bankBalance } from "@/lib/bank";
 import { postManualBankJournal, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create").default("create"), type: z.enum(["OWNER_FUNDING", "MANUAL_DEPOSIT", "MANUAL_EXPENSE"]), amount: z.coerce.number().positive().max(10_000_000_000), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), projectId: z.string().optional(), categoryKey: z.string().optional(), counterAccountKey: z.string().optional(), description: z.string().trim().min(2).max(1000), reference: z.string().trim().max(300).optional() }),
@@ -26,6 +27,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const user = await incomingUser("bank.manage"); if (!user) return json({ error: "غير مصرح" }, 403);
+  if (!isTrustedMutationOrigin(request)) return json({ error: "مصدر الطلب غير موثوق." }, 403);
   let operationContext: FinancialOperationContext | null = null;
   try {
     const form = await request.formData(); const input = schema.parse({ action: "create", ...JSON.parse(String(form.get("payload") || "{}")) }); const files = await readIncomingFiles(form);

@@ -8,6 +8,7 @@ import { readIncomingFiles } from "@/lib/incoming-server";
 import { assertBalances } from "@/lib/petty-cash";
 import { postExecutiveAdvance, postPayrollApproval, postPayrollPayment, postPettyCashJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 
 const money = (value: unknown) => { const cents = Math.round(Number(value) * 100); if (!Number.isSafeInteger(cents) || cents < 1 || cents > 1_000_000_000_000) throw new Error("راجع القيمة المالية."); return cents; };
 const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -33,6 +34,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const session = await currentUser("salaries.manage"); if (!session) return json({ error: "غير مصرح" }, 403);
+  if (!isTrustedMutationOrigin(request)) return json({ error: "مصدر الطلب غير موثوق." }, 403);
   let operationContext: FinancialOperationContext | null = null;
   try {
     const form = await request.formData(); const action = String(form.get("action") || ""); const payload = JSON.parse(String(form.get("payload") || "{}")); const files = await readIncomingFiles(form);
