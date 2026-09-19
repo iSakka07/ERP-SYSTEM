@@ -39,7 +39,7 @@ function footerFromDom(table: HTMLTableElement, included: { label: string; index
 function calculatedFooter(rows: string[][], columns: string[], definition?: ReportDefinition) {
   if (!definition || !rows.length) return undefined;
   const footer = columns.map(() => "");
-  footer[0] = `${definition.countLabel}: ${rows.length.toLocaleString("en-US")}`;
+  footer[0] = `إجمالي — ${definition.countLabel}: ${rows.length.toLocaleString("en-US")}`;
   Object.entries(definition.totalColumns || {}).forEach(([label, mode]) => {
     const index = columns.indexOf(label);
     if (index < 0) return;
