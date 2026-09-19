@@ -6,11 +6,16 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await incomingUser("purchases.view")))
+  const user = await incomingUser("purchases.view");
+  if (!user)
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   const { id } = await params;
   const file = await prisma.purchaseAttachment.findUnique({ where: { id } });
   if (!file) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+  if (user.isProjectScoped) {
+    const invoice = await prisma.purchaseInvoice.findUnique({ where: { id: file.entityId }, select: { projectId: true } });
+    if (!invoice || !user.projectIds.includes(invoice.projectId)) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  }
   return new Response(new Uint8Array(file.data), {
     headers: {
       "content-type": file.mime,

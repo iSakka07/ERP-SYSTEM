@@ -81,6 +81,7 @@ export async function POST(request: Request) {
       const reversed = await prisma.$transaction(async (tx) => {
         const invoice = await tx.purchaseInvoice.findUnique({ where: { id: data.id } });
         if (!invoice || invoice.status !== "POSTED") throw new Error("الفاتورة ملغاة بالفعل أو غير موجودة.");
+        if (user.isProjectScoped && !user.projectIds.includes(invoice.projectId)) throw new Error("غير مصرح لهذا المشروع.");
         const reversedAt = new Date();
         await reversePostedJournal(tx, "PURCHASE", invoice.id, reversedAt, user.id, data.reason);
         if (invoice.paymentSource === "PETTY_CASH") {
@@ -111,6 +112,7 @@ export async function POST(request: Request) {
       select: { id: true },
     });
     if (!project) throw new Error("اختر مشروعًا صحيحًا.");
+    if (user.isProjectScoped && !user.projectIds.includes(project.id)) throw new Error("غير مصرح لهذا المشروع.");
     if (data.supplierId) {
       const supplier = await prisma.company.findFirst({
         where: { id: data.supplierId, active: true, type: "SUPPLIER" },

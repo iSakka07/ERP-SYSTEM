@@ -4,11 +4,13 @@ import { incomingUser } from "@/lib/incoming-server";
 import { PurchasesCenter } from "@/components/purchases-center";
 
 export default async function PurchasesPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
-  if (!(await incomingUser("purchases.view"))) redirect("/");
+  const viewer = await incomingUser("purchases.view");
+  if (!viewer) redirect("/");
   const requestedProject = (await searchParams).project ?? "";
   const manager = await incomingUser("purchases.manage");
   const [invoices, projects, suppliers, attachments] = await Promise.all([
     prisma.purchaseInvoice.findMany({
+      where: viewer.isProjectScoped ? { projectId: { in: viewer.projectIds } } : undefined,
       include: {
         project: true,
         supplier: true,
@@ -17,7 +19,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
       orderBy: { createdAt: "desc" },
     }),
     prisma.project.findMany({
-      where: { active: true },
+      where: { active: true, ...(viewer.isProjectScoped ? { id: { in: viewer.projectIds } } : {}) },
       orderBy: { name: "asc" },
     }),
     prisma.company.findMany({

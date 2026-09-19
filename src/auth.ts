@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { clearLoginFailures, loginIsBlocked, recordLoginFailure } from "@/lib/login-rate-limit";
 import { assertSecureRuntimeConfig } from "@/lib/runtime-config";
+import { applyPermissionOverrides } from "@/lib/access-control";
 
 const credentialsSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -31,7 +32,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
-          include: { role: { include: { permissions: { include: { permission: true } } } } },
+          include: { role: { include: { permissions: { include: { permission: true } } } }, permissionOverrides: { include: { permission: true } } },
         });
 
         if (!user?.active || !user.role) { recordLoginFailure(parsed.data.email, ip); return null; }
@@ -45,7 +46,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           roleKey: user.role.key,
           roleName: user.role.name,
-          permissions: user.role.permissions.map(({ permission }) => permission.key),
+          permissions: user.role.key === "admin" ? user.role.permissions.map(({ permission }) => permission.key) : applyPermissionOverrides(user.role.permissions.map(({ permission }) => permission.key), user.permissionOverrides),
           sessionVersion: user.updatedAt.toISOString(),
         };
       },
@@ -63,12 +64,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Password changes and disabled accounts revoke existing encrypted sessions.
       const current = await prisma.user.findUnique({
         where: { id: String(token.userId ?? "") },
-        include: { role: { include: { permissions: { include: { permission: true } } } } },
+        include: { role: { include: { permissions: { include: { permission: true } } } }, permissionOverrides: { include: { permission: true } } },
       });
       if (!current?.active || !current.role || token.sessionVersion !== current.updatedAt.toISOString()) return null;
       token.roleKey = current.role.key;
       token.roleName = current.role.name;
-      token.permissions = current.role.permissions.map(p => p.permission.key);
+      token.permissions = current.role.key === "admin" ? current.role.permissions.map(p => p.permission.key) : applyPermissionOverrides(current.role.permissions.map(p => p.permission.key), current.permissionOverrides);
       return token;
     },
     session({ session, token }) {

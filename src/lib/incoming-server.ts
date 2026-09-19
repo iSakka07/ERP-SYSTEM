@@ -1,22 +1,16 @@
 import "server-only";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { accessProfile } from "@/lib/access-control";
 
 export async function incomingUser(permission: string) {
   const session = await auth();
   if (!session?.user?.id) return null;
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: {
-      role: { include: { permissions: { include: { permission: true } } } },
-    },
-  });
+  const profile = await accessProfile(session.user.id);
   if (
-    !user?.active ||
-    !user.role?.permissions.some((p) => p.permission.key === permission)
+    !profile || !profile.permissions.includes(permission)
   )
     return null;
-  return { id: user.id, admin: user.role.key === "admin" };
+  return { id: profile.user.id, admin: profile.user.role!.key === "admin", roleKey: profile.user.role!.key, projectIds: profile.projectIds, isProjectScoped: profile.isProjectScoped };
 }
 
 export async function readIncomingFiles(form: FormData, field = "files") {

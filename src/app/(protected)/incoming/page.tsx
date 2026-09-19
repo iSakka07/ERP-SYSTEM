@@ -20,13 +20,14 @@ function movementLabel(action: string, details: string) {
 }
 
 export default async function IncomingPage({ searchParams }: { searchParams: Promise<{ project?: string; owner?: string; stage?: string; q?: string }> }) {
-  if (!(await incomingUser("incoming.view"))) redirect("/");
+  const viewer = await incomingUser("incoming.view");
+  if (!viewer) redirect("/");
   const requested = await searchParams;
   const requestedProject = requested.project ?? "";
   const manager = await incomingUser("incoming.manage");
   const [contracts, projects, attachments, movements] = await Promise.all([
     prisma.incomingContract.findMany({
-      where: { active: true },
+      where: { active: true, ...(viewer.isProjectScoped ? { projectId: { in: viewer.projectIds } } : {}) },
       include: {
         project: {
           include: {
@@ -46,7 +47,7 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
       orderBy: { createdAt: "desc" },
     }),
     prisma.project.findMany({
-      where: { active: true, company: { active: true, type: "OWNER" } },
+      where: { active: true, company: { active: true, type: "OWNER" }, ...(viewer.isProjectScoped ? { id: { in: viewer.projectIds } } : {}) },
       include: { company: true },
       orderBy: { name: "asc" },
     }),

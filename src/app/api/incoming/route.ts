@@ -114,6 +114,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     const d = parsed.data;
+    const canUseProject = (projectId: string) => !user.isProjectScoped || user.projectIds.includes(projectId);
     const files = await readIncomingFiles(form);
     const estimateFiles = await readIncomingFiles(form, "estimateFiles");
     const allFiles = [...files, ...estimateFiles];
@@ -138,6 +139,7 @@ export async function POST(request: Request) {
           include,
         });
         if (!c) throw new Error("العقد غير موجود.");
+        if (!canUseProject(c.projectId)) throw new Error("غير مصرح لهذا المشروع.");
         return c;
       }
       const locked = (
@@ -156,6 +158,7 @@ export async function POST(request: Request) {
           project.company.type !== "OWNER"
         )
           throw new Error("اختر مشروعًا نشطًا مرتبطًا بجهة مالكة.");
+        if (!canUseProject(project.id)) throw new Error("غير مصرح لهذا المشروع.");
         const data = {
           number: d.number,
           name: d.name,

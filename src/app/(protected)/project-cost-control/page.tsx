@@ -5,8 +5,9 @@ import { getProjectCostControl } from "@/lib/project-cost-control";
 import { ProjectCostControlCenter } from "@/components/project-cost-control-center";
 
 export default async function ProjectCostControlPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
-  if (!(await incomingUser("project_cost_control.view"))) redirect("/");
-  const projects = await prisma.project.findMany({ where: { active: true }, select: { id: true, name: true, code: true }, orderBy: { name: "asc" } });
+  const viewer = await incomingUser("project_cost_control.view");
+  if (!viewer) redirect("/");
+  const projects = await prisma.project.findMany({ where: { active: true, ...(viewer.isProjectScoped ? { id: { in: viewer.projectIds } } : {}) }, select: { id: true, name: true, code: true }, orderBy: { name: "asc" } });
   const requested = (await searchParams).project || "";
   const projectId = projects.some((project) => project.id === requested) ? requested : projects[0]?.id;
   const initial = projectId ? await getProjectCostControl(projectId) : null;

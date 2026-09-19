@@ -10,11 +10,13 @@ const createSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8).max(128),
   roleId: z.string().min(1),
+  employeeId: z.string().optional(),
 });
 
 const updateSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("user-role"), userId: z.string(), roleId: z.string() }),
   z.object({ type: z.literal("user-active"), userId: z.string(), active: z.boolean() }),
+  z.object({ type: z.literal("user-profile"), userId: z.string(), employeeId: z.string().nullable().optional(), incomingVisible: z.boolean(), financialVisible: z.boolean() }),
   z.object({ type: z.literal("role-permissions"), roleId: z.string(), permissionIds: z.array(z.string()) }),
 ]);
 
@@ -50,7 +52,9 @@ export async function POST(request: Request) {
       ]);
       if (existing) throw new Error("EMAIL_EXISTS");
       if (!role) throw new Error("ROLE_NOT_FOUND");
-      const user = await tx.user.create({ data: { ...userData, passwordHash } });
+      const employeeId = userData.employeeId || null;
+      if (employeeId && !(await tx.employee.findUnique({ where: { id: employeeId } }))) throw new Error("EMPLOYEE_NOT_FOUND");
+      const user = await tx.user.create({ data: { name: userData.name, email: userData.email, roleId: userData.roleId, employeeId, passwordHash } });
       await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.create", target: user.id, details: JSON.stringify({ email: user.email, roleId: user.roleId }) } });
     });
     return NextResponse.json({ ok: true }, { status: 201 });
@@ -80,6 +84,20 @@ export async function PATCH(request: Request) {
     await prisma.$transaction(async (tx) => {
       await tx.user.update({ where: { id: data.userId }, data: { active: data.active } });
       await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.status.update", target: data.userId, details: JSON.stringify({ active: data.active }) } });
+    });
+  }
+  if (data.type === "user-profile") {
+    if (data.userId === session.user.id) return NextResponse.json({ error: "SELF_PROFILE_CHANGE" }, { status: 400 });
+    await prisma.$transaction(async (tx) => {
+      if (data.employeeId && !(await tx.employee.findUnique({ where: { id: data.employeeId } }))) throw new Error("EMPLOYEE_NOT_FOUND");
+      const [incoming, financial] = await Promise.all([
+        tx.permission.findUniqueOrThrow({ where: { key: "incoming.view" } }),
+        tx.permission.findUniqueOrThrow({ where: { key: "project_cost_control.view" } }),
+      ]);
+      await tx.user.update({ where: { id: data.userId }, data: { employeeId: data.employeeId || null } });
+      await tx.userPermissionOverride.upsert({ where: { userId_permissionId: { userId: data.userId, permissionId: incoming.id } }, update: { enabled: data.incomingVisible }, create: { userId: data.userId, permissionId: incoming.id, enabled: data.incomingVisible } });
+      await tx.userPermissionOverride.upsert({ where: { userId_permissionId: { userId: data.userId, permissionId: financial.id } }, update: { enabled: data.financialVisible }, create: { userId: data.userId, permissionId: financial.id, enabled: data.financialVisible } });
+      await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.profile.update", target: data.userId, details: JSON.stringify({ employeeId: data.employeeId || null, incomingVisible: data.incomingVisible, financialVisible: data.financialVisible }) } });
     });
   }
   if (data.type === "role-permissions") {

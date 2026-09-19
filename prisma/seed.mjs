@@ -22,10 +22,13 @@ const permissions = [
   ["masterdata.view", "عرض البيانات الأساسية", "masterdata"], ["masterdata.manage", "إدارة البيانات الأساسية", "masterdata"],
 ];
 
-const roles = [["admin", "مدير النظام"], ["accountant", "محاسب"], ["storekeeper", "أمين مخزن"], ["sales", "مبيعات"]];
+const roles = [["admin", "مدير النظام"], ["executive_director", "المدير التنفيذي"], ["accountant", "محاسب"], ["technical_office_engineer", "مهندس مكتب فني"], ["site_supervisor_engineer", "مهندس مشرف"], ["storekeeper", "أمين مخزن"], ["sales", "مبيعات"]];
 const grants = /** @type {Record<string, string[]>} */ ({
   admin: permissions.map(([key]) => key),
+  executive_director: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage"),
   accountant: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage" && key !== "masterdata.manage" && !key.startsWith("expenses.approve_") && key !== "expenses.return"),
+  technical_office_engineer: ["dashboard.view", "masterdata.view", "expenses.view", "expenses.manage", "expenses.approve_technical", "purchases.view"],
+  site_supervisor_engineer: ["dashboard.view", "masterdata.view", "expenses.view", "expenses.approve_site"],
   storekeeper: ["dashboard.view", "purchases.view", "purchases.manage", "masterdata.view"],
   sales: ["dashboard.view"],
 });

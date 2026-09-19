@@ -176,6 +176,17 @@ export async function POST(request: Request) {
         { error: "ليس لديك صلاحية لهذه العملية." },
         { status: 403 },
       );
+    const canUseProject = (projectId: string) => !user.isProjectScoped || user.projectIds.includes(projectId);
+    if (user.isProjectScoped) {
+      let projectId: string | null = null;
+      if (data.action === "account") projectId = data.projectId;
+      if (data.action === "statement") projectId = (await prisma.subcontractAccount.findUnique({ where: { id: data.accountId }, select: { projectId: true } }))?.projectId ?? null;
+      if (data.action === "stage" || data.action === "payment" || data.action === "accountingPayment") projectId = (await prisma.subcontractStatement.findUnique({ where: { id: data.action === "stage" ? data.id : data.statementId }, include: { account: { select: { projectId: true } } } }))?.account.projectId ?? null;
+      if (data.action === "reversePayment") projectId = (await prisma.subcontractPayment.findUnique({ where: { id: data.paymentId }, include: { statement: { include: { account: { select: { projectId: true } } } } } }))?.statement.account.projectId ?? null;
+      if (data.action === "withdrawal") projectId = (await prisma.subcontractAccount.findUnique({ where: { id: data.sourceAccountId }, select: { projectId: true } }))?.projectId ?? null;
+      if (data.action === "withdrawalStage" || data.action === "withdrawalAssign") projectId = (await prisma.workWithdrawal.findUnique({ where: { id: data.id }, include: { sourceAccount: { select: { projectId: true } } } }))?.sourceAccount.projectId ?? null;
+      if (!projectId || !canUseProject(projectId)) return NextResponse.json({ error: "غير مصرح لهذا المشروع." }, { status: 403 });
+    }
     const files = await readIncomingFiles(form);
     if (["stage", "payment", "accountingPayment", "reversePayment"].includes(data.action)) {
       const guarded = await guardFinancialOperation(request, { actorId: user.id, operation: `expenses.${data.action}`, requestData: data, businessData: data });
@@ -195,6 +206,7 @@ export async function POST(request: Request) {
               statements: { orderBy: { sequence: "asc" }, include: relations },
             },
           });
+          if (!canUseProject(account.projectId)) throw new Error("غير مصرح لهذا المشروع.");
           const source = account.statements.at(-1);
           if (
             !account.active ||
@@ -459,6 +471,7 @@ export async function POST(request: Request) {
             !project?.active
           )
             throw new Error("اختر مقاول باطن ومشروعًا نشطين.");
+          if (!canUseProject(project.id)) throw new Error("غير مصرح لهذا المشروع.");
           if (!files.length)
             throw new Error("أعمال المقاول تحتاج مرفق إسناد أو حصر.");
           const account = await tx.subcontractAccount.create({
@@ -484,6 +497,7 @@ export async function POST(request: Request) {
           });
           if (!account || !account.active || !account.company.active || !account.project.active)
             throw new Error("أعمال المقاول أو المشروع غير نشط.");
+          if (!canUseProject(account.projectId)) throw new Error("غير مصرح لهذا المشروع.");
           if (
             account.withdrawals.some(
               (w) => !["EXECUTIVE", "CANCELLED"].includes(w.stage),
@@ -924,6 +938,8 @@ export async function DELETE(request: Request) {
     if (!parsed.success)
       return NextResponse.json({ error: "أعمال المقاول غير صالحة." }, { status: 400 });
     await prisma.$transaction(async (tx) => {
+      const account = await tx.subcontractAccount.findUnique({ where: { id: parsed.data.id }, select: { projectId: true } });
+      if (!account || (user.isProjectScoped && !user.projectIds.includes(account.projectId))) throw new Error("غير مصرح لهذا المشروع.");
       const updated = await tx.subcontractAccount.updateMany({
         where: { id: parsed.data.id, active: true },
         data: { active: false },

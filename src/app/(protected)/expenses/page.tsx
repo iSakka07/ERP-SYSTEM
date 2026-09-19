@@ -4,13 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { incomingUser } from "@/lib/incoming-server";
 import { ExpensesCenter } from "@/components/expenses-center";
 export default async function ExpensesPage({ searchParams }: { searchParams: Promise<{ project?: string; account?: string }> }) {
-  if (!(await incomingUser("expenses.view"))) redirect("/");
+  const viewer = await incomingUser("expenses.view");
+  if (!viewer) redirect("/");
   const params = await searchParams;
   const requestedProject = params.project ?? "";
   const session = await auth();
   const [accounts, projects, companies, attachments] = await Promise.all([
     prisma.subcontractAccount.findMany({
-      where: { active: true },
+      where: { active: true, ...(viewer.isProjectScoped ? { projectId: { in: viewer.projectIds } } : {}) },
       include: {
         company: true,
         withdrawals: { orderBy: { createdAt: "asc" } },
@@ -29,7 +30,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
       orderBy: { createdAt: "desc" },
     }),
     prisma.project.findMany({
-      where: { active: true },
+      where: { active: true, ...(viewer.isProjectScoped ? { id: { in: viewer.projectIds } } : {}) },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
