@@ -19,6 +19,7 @@ const updateSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("user-profile"), userId: z.string(), employeeId: z.string().nullable().optional(), incomingVisible: z.boolean(), financialVisible: z.boolean() }),
   z.object({ type: z.literal("role-permissions"), roleId: z.string(), permissionIds: z.array(z.string()) }),
 ]);
+const engineerRoles = new Set(["technical_office_engineer", "site_supervisor_engineer"]);
 
 async function adminSession() {
   const session = await auth();
@@ -53,7 +54,11 @@ export async function POST(request: Request) {
       if (existing) throw new Error("EMAIL_EXISTS");
       if (!role) throw new Error("ROLE_NOT_FOUND");
       const employeeId = userData.employeeId || null;
-      if (employeeId && !(await tx.employee.findUnique({ where: { id: employeeId } }))) throw new Error("EMPLOYEE_NOT_FOUND");
+      if (employeeId) {
+        const employee = await tx.employee.findUnique({ where: { id: employeeId }, include: { user: true } });
+        if (!employee) throw new Error("EMPLOYEE_NOT_FOUND");
+        if (employee.user) throw new Error("EMPLOYEE_ALREADY_LINKED");
+      }
       const user = await tx.user.create({ data: { name: userData.name, email: userData.email, roleId: userData.roleId, employeeId, passwordHash } });
       await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.create", target: user.id, details: JSON.stringify({ email: user.email, roleId: user.roleId }) } });
     });
@@ -88,8 +93,14 @@ export async function PATCH(request: Request) {
   }
   if (data.type === "user-profile") {
     if (data.userId === session.user.id) return NextResponse.json({ error: "SELF_PROFILE_CHANGE" }, { status: 400 });
+    const target = await prisma.user.findUnique({ where: { id: data.userId }, include: { role: true } });
+    if (!target || !target.role || !engineerRoles.has(target.role.key)) return NextResponse.json({ error: "ENGINEER_PROFILE_REQUIRED" }, { status: 400 });
+    if (data.employeeId) {
+      const employee = await prisma.employee.findUnique({ where: { id: data.employeeId }, include: { user: true } });
+      if (!employee) return NextResponse.json({ error: "EMPLOYEE_NOT_FOUND" }, { status: 404 });
+      if (employee.user && employee.user.id !== data.userId) return NextResponse.json({ error: "EMPLOYEE_ALREADY_LINKED" }, { status: 409 });
+    }
     await prisma.$transaction(async (tx) => {
-      if (data.employeeId && !(await tx.employee.findUnique({ where: { id: data.employeeId } }))) throw new Error("EMPLOYEE_NOT_FOUND");
       const [incoming, financial] = await Promise.all([
         tx.permission.findUniqueOrThrow({ where: { key: "incoming.view" } }),
         tx.permission.findUniqueOrThrow({ where: { key: "project_cost_control.view" } }),
