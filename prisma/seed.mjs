@@ -44,7 +44,10 @@ try {
   }
 
   if (demoMode) {
-    const passwordHash = await hash("Admin@123456", 12);
+    const demoPassword = process.env.DEMO_USER_PASSWORD;
+    if (!demoPassword || demoPassword.length < 12 || demoPassword === "Admin@123456")
+      throw new Error("تجهيز بيانات العرض يحتاج DEMO_USER_PASSWORD آمنة من 12 حرفًا على الأقل وغير مساوية لكلمة المرور القديمة.");
+    const passwordHash = await hash(demoPassword, 12);
     const seededUsers = [
       ["مدير النظام", "admin@erp.local", "admin"], ["المحاسب التجريبي", "accountant@erp.local", "accountant"],
       ["أمين المخزن التجريبي", "storekeeper@erp.local", "storekeeper"], ["مستخدم المبيعات التجريبي", "sales@erp.local", "sales"],

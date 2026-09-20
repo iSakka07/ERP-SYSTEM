@@ -34,7 +34,7 @@ BOOTSTRAP_ADMIN_PASSWORD="كلمة-مرور-قوية-وفريدة"
 pnpm db:demo-setup
 ```
 
-لا تستخدم `db:demo-setup` على قاعدة تشغيل حقيقية.
+قبل تشغيله اضبط `DEMO_USER_PASSWORD` بكلمة مرور عرض قوية من 12 حرفًا على الأقل. لا تستخدم `db:demo-setup` على قاعدة تشغيل حقيقية.
 
 ## فحوصات التطوير
 
@@ -86,6 +86,7 @@ pnpm start --port 3090
 - [المحاسبة](./docs/modules/ACCOUNTINGmodule.md)
 - [الصندوق والنثريات](./docs/modules/PETTYCASHmodule.md)
 - [مرجع V1 المعتمد](./docs/PRODUCT_BIBLE_V1.md)
+- [خطة استضافة وتسليم نسخة العميل](./docs/operations/CLIENT_HOSTING_CONTROL_PLAN.md)
 - [تقرير مراجعة V1](./docs/audit-v1/AUDIT_V1.md)
 - [دليل التشغيل والاستعادة](./docs/operations/PRODUCTION_RUNBOOK.md)
 

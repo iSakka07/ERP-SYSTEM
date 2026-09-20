@@ -15,4 +15,4 @@ Status: Ready for user review.
 Demo account:
 
 - Email: `admin@erp.local`
-- Password: `Admin@123456`
+- Password: قيمة `DEMO_USER_PASSWORD` الخاصة ببيئة العرض.

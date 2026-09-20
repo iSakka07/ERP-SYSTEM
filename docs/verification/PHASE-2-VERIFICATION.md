@@ -15,7 +15,7 @@ Status: Ready for user review.
 - Lint and production build pass.
 - Browser console contains no errors in the tested admin flow.
 
-All demo users use password `Admin@123456`:
+All demo users use the environment-specific `DEMO_USER_PASSWORD` value:
 
 - `admin@erp.local`
 - `accountant@erp.local`
