@@ -233,6 +233,11 @@ export function ExpenseSheet({
       row.entitlementPercent >= 0 &&
       row.entitlementPercent <= 100,
   );
+  const hasIncompleteStartedRow = rows.some((row) => {
+    const started = Boolean(row.name.trim()) || row.currentQuantity > 0 || row.price > 0 || (row.correctionQuantity ?? 0) > 0;
+    if (!started) return false;
+    return !row.name.trim() || !row.unit.trim() || !Number.isFinite(row.price) || row.price <= 0 || !Number.isFinite(row.currentQuantity) || row.currentQuantity < 0 || !Number.isFinite(row.entitlementPercent) || row.entitlementPercent < 0 || row.entitlementPercent > 100;
+  });
   let submissionPreview: ReturnType<typeof calculateExpense> | null = null;
   try {
     if (previewRows.length)
@@ -244,6 +249,7 @@ export function ExpenseSheet({
   } catch {
     submissionPreview = null;
   }
+  const previewReady = previewRows.length > 0 && !hasIncompleteStartedRow && Boolean(submissionPreview);
   const computed = rows.map((i) => {
     const old = previousItems.find((p) => p.itemKey === i.itemKey);
     const previousQuantity = old ? expenseCumulativeQuantity(old) : 0;
@@ -258,10 +264,7 @@ export function ExpenseSheet({
       old,
     };
   });
-  const gross =
-    submissionPreview?.grossCents ??
-    previous?.grossCents ??
-    computed.reduce((sum, item) => sum + item.total, 0);
+  const gross = submissionPreview?.grossCents ?? previous?.grossCents ?? 0;
   const discountAmounts = deductions.map((d) =>
     Math.round(d.kind === "PERCENT" ? (gross * d.value) / 100 : d.value * 100),
   );
@@ -750,18 +753,19 @@ export function ExpenseSheet({
             )}
           </section>
           <section className="space-y-3 rounded-xl border bg-white p-4">
+            {!previewReady && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-6 text-amber-900">أكمل بيانات بند صالح (الاسم والوحدة والكمية والسعر ونسبة الاستحقاق) لعرض حسابات الجاري. لن يعرض النظام أرقامًا تقديرية أثناء الإدخال.</p>}
             {[
-              ["إجمالي الأعمال التراكمي", gross],
+              ["إجمالي الأعمال التراكمي", previewReady ? gross : previous?.grossCents ?? 0],
               ["الأعمال السابقة", previous?.grossCents ?? 0],
-              ["أعمال الجاري الحالي", gross - (previous?.grossCents ?? 0)],
-              ["إجمالي الخصومات", discount],
-              ["صافي المستحق التراكمي", net],
+              ["أعمال الجاري الحالي", previewReady ? gross - (previous?.grossCents ?? 0) : "—"],
+              ["إجمالي الخصومات", previewReady ? discount : "—"],
+              ["صافي المستحق التراكمي", previewReady ? net : "—"],
               ["سابق الصرف الفعلي لأعمال المقاول", paid],
-              ["المتبقي للمقاول", Math.max(0, net - paid)],
-              ...(previewDebt > 0
+              ["المتبقي للمقاول", previewReady ? Math.max(0, net - paid) : "—"],
+              ...(previewReady && previewDebt > 0
                 ? [["مديونية على المقاول — بعد الاعتماد", previewDebt]]
                 : []),
-              ...(previewAdvance > 0
+              ...(previewReady && previewAdvance > 0
                 ? [["رصيد مقدم للمقاول", previewAdvance]]
                 : []),
             ].map(([label, value]) => (
@@ -774,7 +778,7 @@ export function ExpenseSheet({
                   className="font-extrabold tabular-nums text-blue-800"
                   dir="ltr"
                 >
-                  {money(Number(value))}
+                  {typeof value === "number" ? money(value) : value}
                 </span>
               </div>
             ))}

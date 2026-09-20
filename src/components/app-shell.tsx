@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { BanknoteArrowUp, BookOpenCheck, Building2, ChartNoAxesCombined, FileSpreadsheet, Landmark, LayoutDashboard, LockKeyhole, Menu, Paperclip, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
+import { BanknoteArrowUp, BookOpenCheck, Building2, ChartNoAxesCombined, FileSpreadsheet, Landmark, LayoutDashboard, LockKeyhole, Menu, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { can } from "@/lib/permissions";
 import { companyBrand } from "@/lib/company-brand";
@@ -21,7 +21,6 @@ const navItems = [
   { label: "البنك", icon: Landmark, href: "/bank", permission: "bank.view" },
   { label: "موقف تكلفة المشروع", icon: ChartNoAxesCombined, href: "/project-cost-control", permission: "project_cost_control.view" },
   { label: "المحاسبة", icon: BookOpenCheck, href: "/accounting", permission: "accounting.view" },
-  { label: "المرفقات", icon: Paperclip, href: "/#modules", permission: "dashboard.view" },
   { label: "إدارة الحسابات", icon: Settings2, href: "/admin/accounts", permission: "accounts.manage" },
 ];
 
@@ -59,7 +58,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
           {navItems.filter((item) => can(user, item.permission) && (!projectScopedEngineer || !globalFinancialPermissions.has(item.permission)) && (item.href !== "/admin/accounts" || user.roleKey === "admin")).map((item) => {
             const Icon = item.icon;
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            return <Link key={item.label} href={item.href} onClick={() => setOpen(false)} className={`flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition ${active ? "bg-blue-600 text-white shadow-md shadow-blue-950/20" : "text-slate-300 hover:bg-white/7 hover:text-white"}`}><Icon className="size-4.5" /><span className="flex-1">{item.label}</span>{item.href === "/#modules" && <span className="rounded bg-white/6 px-1.5 py-0.5 text-[9px] text-slate-500">قريبًا</span>}</Link>;
+            return <Link key={item.label} href={item.href} onClick={() => setOpen(false)} className={`flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition ${active ? "bg-blue-600 text-white shadow-md shadow-blue-950/20" : "text-slate-300 hover:bg-white/7 hover:text-white"}`}><Icon className="size-4.5" /><span className="flex-1">{item.label}</span></Link>;
           })}
         </nav>
         <div className="absolute inset-x-3 bottom-4 rounded-xl border border-white/10 bg-white/5 p-3">

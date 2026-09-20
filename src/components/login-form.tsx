@@ -38,7 +38,7 @@ export function LoginForm() {
         <label htmlFor="email" className="text-sm font-bold text-slate-700">البريد الإلكتروني</label>
         <div className="relative">
           <Mail className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <input id="email" name="email" type="email" autoComplete="email" required defaultValue="admin@erp.local" className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pr-11 pl-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" />
+          <input id="email" name="email" type="email" autoComplete="email" required className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pr-11 pl-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" />
         </div>
       </div>
       <div className="space-y-2">
