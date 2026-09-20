@@ -54,7 +54,11 @@ try {
     ];
     for (const [name, email, roleKey] of seededUsers) {
       const role = await prisma.role.findUniqueOrThrow({ where: { key: roleKey } });
-      await prisma.user.upsert({ where: { email }, update: {}, create: { name, email, passwordHash, roleId: role.id } });
+      await prisma.user.upsert({
+        where: { email },
+        update: { name, passwordHash, roleId: role.id, active: true },
+        create: { name, email, passwordHash, roleId: role.id },
+      });
     }
     const company = await prisma.company.upsert({ where: { name: "إدارة الأشغال العسكرية" }, update: { active: true }, create: { name: "إدارة الأشغال العسكرية", type: "OWNER" } });
     const project = await prisma.project.upsert({ where: { code: "MAYAN-27" }, update: { companyId: company.id }, create: { code: "MAYAN-27", name: "عمارة 27 - كمبوند مايان", companyId: company.id } });
