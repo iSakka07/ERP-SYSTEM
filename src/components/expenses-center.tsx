@@ -91,6 +91,13 @@ export function ExpensesCenter({
       ),
   );
   const totals = visible.map((a) => expenseSummary(a.statements));
+  const totalGross = totals.reduce((sum, total) => sum + total.grossCents, 0);
+  const totalNet = totals.reduce((sum, total) => sum + total.netCents, 0);
+  const totalPaid = totals.reduce((sum, total) => sum + total.paidCents, 0);
+  const totalRemaining = totals.reduce((sum, total) => sum + total.remainingCents, 0);
+  const totalDebt = totals.reduce((sum, total) => sum + total.debtCents, 0);
+  const totalAdvance = totals.reduce((sum, total) => sum + total.advanceCents, 0);
+  const totalStatements = visible.reduce((sum, account) => sum + account.statements.length, 0);
   function saved() {
     setEditor(null);
     setNewAccount(false);
@@ -948,6 +955,20 @@ export function ExpensesCenter({
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-blue-700 bg-blue-50 font-black text-slate-900">
+                    <td colSpan={3} className="p-4 text-right">
+                      <span className="text-blue-800">الإجمالي</span>
+                      <span className="mr-2 text-xs font-bold text-slate-500">({visible.length} مقاولة)</span>
+                    </td>
+                    <td data-label="إجمالي تكلفة الأعمال" className="p-4 text-center"><MoneyValue>{money(totalGross)} ج.م</MoneyValue></td>
+                    <td data-label="إجمالي صافي المستحق" className="p-4 text-center"><MoneyValue>{money(totalNet)} ج.م</MoneyValue></td>
+                    <td data-label="إجمالي المدفوع" className="p-4 text-center"><MoneyValue>{money(totalPaid)} ج.م</MoneyValue></td>
+                    <td data-label="إجمالي المتبقي" className="p-4 text-center"><MoneyValue>{money(totalRemaining)} ج.م</MoneyValue>{totalDebt > 0 && <span className="mt-1 block text-[10px] font-bold text-amber-700">مديونية: {money(totalDebt)} ج.م</span>}{totalAdvance > 0 && <span className="block text-[10px] font-bold text-amber-700">مقدم: {money(totalAdvance)} ج.م</span>}</td>
+                    <td data-label="إجمالي الجواري" className="p-4 text-center text-blue-800">{totalStatements} جاري</td>
+                    <td className="p-4 text-center text-slate-400">—</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
             {!visible.length && (

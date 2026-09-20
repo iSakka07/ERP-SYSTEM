@@ -21,15 +21,15 @@ function daysInPeriod(start: Date, end: Date | null, year: number, month: number
 
 export async function GET() {
   const session = await currentUser("salaries.view"); if (!session) return json({ error: "غير مصرح" }, 403);
-  const [employees, projects, allocations, runs, advances, bonuses, deductions] = await Promise.all([
+  const [employees, projects, allocations, runs, advances, bonuses, deductions, paymentDay] = await Promise.all([
     prisma.employee.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.employeeSalaryAllocation.findMany({ include: { employee: true, project: true }, orderBy: { startDate: "desc" } }),
     prisma.payrollRun.findMany({ include: { lines: { include: { employee: true } }, attachments: { select: { id: true, name: true } } }, orderBy: { month: "desc" } }),
     prisma.employeeAdvance.findMany({ include: { employee: true, installments: true, attachments: { select: { id: true, name: true } } }, orderBy: { issuedAt: "desc" } }),
-    prisma.employeeBonus.findMany({ orderBy: { createdAt: "desc" } }), prisma.employeeDeduction.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.employeeBonus.findMany({ orderBy: { createdAt: "desc" } }), prisma.employeeDeduction.findMany({ orderBy: { createdAt: "desc" } }), prisma.systemMetadata.findUnique({ where: { key: "salary-payment-day" } }),
   ]);
-  return json({ employees, projects, allocations, runs, advances, bonuses, deductions, canManage: !!(await currentUser("salaries.manage")) });
+  return json({ employees, projects, allocations, runs, advances, bonuses, deductions, paymentDay: Number(paymentDay?.value || 0) || null, canManage: !!(await currentUser("salaries.manage")) });
 }
 
 export async function POST(request: Request) {
@@ -47,6 +47,13 @@ export async function POST(request: Request) {
     const result = await prisma.$transaction(async (tx) => {
       const audit = (actionName: string, target: string, details: unknown) => tx.auditLog.create({ data: { actorId: session.user.id, action: actionName, target, details: JSON.stringify(details) } });
       const finish = async (body: { id: string }, entityType: string, summary: Record<string, unknown>) => { if (operationContext) await completeFinancialOperation(tx, operationContext, { status: 201, body: { ok: true, ...body }, entityType, entityId: body.id, summary }); return body; };
+      if (action === "payroll-settings") {
+        const paymentDay = Number(payload.paymentDay);
+        if (!Number.isInteger(paymentDay) || paymentDay < 1 || paymentDay > 28) throw new Error("حدد يوم صرف من 1 إلى 28.");
+        const setting = await tx.systemMetadata.upsert({ where: { key: "salary-payment-day" }, create: { key: "salary-payment-day", value: String(paymentDay) }, update: { value: String(paymentDay) } });
+        await audit("salary.payroll.settings", setting.key, { paymentDay });
+        return { id: setting.key };
+      }
       if (action === "employee-config") {
         const employee = await tx.employee.findFirst({ where: { id: String(payload.employeeId), active: true } });
         const project = payload.projectId ? await tx.project.findFirst({ where: { id: String(payload.projectId), active: true } }) : true;
