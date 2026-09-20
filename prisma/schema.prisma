@@ -79,6 +79,8 @@ model AuditLog {
   target    String
   details   String?
   createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
 }
 
 model FinancialOperationRequest {
@@ -151,6 +153,7 @@ model IncomingContract {
   updatedAt         DateTime            @updatedAt
 
   @@index([active])
+  @@index([projectId, active])
 }
 
 model IncomingStatement {
@@ -171,6 +174,8 @@ model IncomingStatement {
   updatedAt        DateTime              @updatedAt
 
   @@unique([contractId, sequence])
+  @@index([contractId, stage])
+  @@index([stage, paidAt])
 }
 
 model MaterialCertificate {
@@ -183,6 +188,8 @@ model MaterialCertificate {
   items       MaterialCertificateItem[]
   createdAt   DateTime                  @default(now())
   updatedAt   DateTime                  @updatedAt
+
+  @@index([statementId])
 }
 
 model MaterialCertificateItem {
@@ -194,6 +201,8 @@ model MaterialCertificateItem {
   quantity       Float
   unitPriceCents Float
   totalCents     Float
+
+  @@index([certificateId])
 }
 
 model IncomingMemo {
@@ -395,6 +404,7 @@ model SubcontractAccount {
   createdAt   DateTime               @default(now())
 
   @@index([active])
+  @@index([projectId, active])
 }
 
 model SubcontractStatement {
@@ -422,6 +432,7 @@ model SubcontractStatement {
   withdrawals         WorkWithdrawal[]
 
   @@unique([accountId, sequence])
+  @@index([accountId, stage])
 }
 
 model SubcontractItem {
@@ -471,6 +482,8 @@ model SubcontractPayment {
   reversedAt  DateTime?
   reversalReason String?
   createdAt   DateTime             @default(now())
+
+  @@index([statementId, status, paymentDate])
 }
 
 model SubcontractApproval {
@@ -550,6 +563,7 @@ model PurchaseInvoice {
   updatedAt   DateTime           @updatedAt
 
   @@index([projectId])
+  @@index([projectId, status, invoiceDate])
   @@index([supplierId])
 }
 
@@ -632,6 +646,8 @@ model PettyCashTransaction {
   createdAt          DateTime             @default(now())
   @@index([transactionDate, type])
   @@index([projectId])
+  @@index([sourceAccountId, transactionDate])
+  @@index([destinationAccountId, transactionDate])
 }
 
 model PettyCashAttachment {
@@ -644,6 +660,8 @@ model PettyCashAttachment {
   data          Bytes
   actorId       String
   createdAt     DateTime             @default(now())
+
+  @@index([transactionId])
 }
 
 model PettyCashCount {
@@ -697,6 +715,7 @@ model BankTransaction {
   @@index([transactionDate, type])
   @@index([projectId])
   @@index([status])
+  @@index([accountId, transactionDate])
 }
 
 model BankAttachment {
@@ -709,6 +728,8 @@ model BankAttachment {
   data          Bytes
   actorId       String
   createdAt     DateTime         @default(now())
+
+  @@index([transactionId])
 }
 
 model AccountingAccount {
