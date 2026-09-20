@@ -83,6 +83,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const isLoggedIn = Boolean(session?.user);
       const isLoginPage = request.nextUrl.pathname === "/login";
 
+      if (request.nextUrl.pathname === "/api/health") return true;
+
       if (request.nextUrl.pathname.startsWith("/api/") && !isLoggedIn) {
         return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
           status: 401,
