@@ -39,7 +39,8 @@
     "db:accounting-setup": "node scripts/accounting-setup.mjs",
     "db:demo-expenses": "node scripts/seed-expenses-demo.mjs",
     "db:setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed && pnpm db:accounting-setup",
-    "db:demo-setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed-demo && pnpm db:accounting-setup"
+    "db:demo-setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed-demo && pnpm db:accounting-setup",
+    "verify:production-env": "node scripts/verify-production-env.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

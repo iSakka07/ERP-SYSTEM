@@ -25,6 +25,7 @@ BOOTSTRAP_ADMIN_PASSWORD="كلمة-مرور-قوية-وفريدة"
 ```bash
 pnpm install --frozen-lockfile
 pnpm db:setup
+pnpm verify:production-env
 pnpm build
 pnpm start --port 3090
 ```

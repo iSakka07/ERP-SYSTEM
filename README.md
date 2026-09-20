@@ -58,6 +58,7 @@ pnpm test:isolated-api
 ```bash
 pnpm install --frozen-lockfile
 pnpm db:setup
+pnpm verify:production-env
 pnpm build
 pnpm start --port 3090
 ```
@@ -65,6 +66,7 @@ pnpm start --port 3090
 قبل أي نشر فعلي:
 
 - استخدم `AUTH_SECRET` قويًا ومختلفًا لكل بيئة.
+- شغّل `pnpm verify:production-env` بملف بيئة النشر قبل البناء؛ لا يطبع أي سر لكنه يرفض الرابط غير الآمن أو قاعدة `dev.db` أو سرًا افتراضيًا.
 - وفر تخزينًا دائمًا لملف SQLite ونسخًا احتياطيًا دوريًا مع تجربة الاستعادة.
 - قبل أي migration على بيانات العمل شغّل `pnpm db:backup` ثم `pnpm db:verify-backup`. مشغل migrations يحفظ بصمة لكل migration ويوقف التشغيل إذا تغير ملف سبق تطبيقه، كما ينفذ كل migration داخل transaction واحدة؛ لكن النسخ والاستعادة تظل شرط تشغيل قبل أي ترحيل على بيانات العمل.
 - لا تستخدم `db:demo-setup` أو حسابات العرض في التشغيل الحقيقي.
