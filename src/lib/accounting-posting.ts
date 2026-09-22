@@ -46,8 +46,19 @@ export async function postPettyCashJournal(tx: Tx, movement: { id: string; type:
   return null;
 }
 
-export async function postPurchaseJournal(tx: Tx, invoice: { id: string; totalCents: number; invoiceDate: Date; name: string; projectId: string; paymentSource: string; actorId: string }) {
-  return postJournal(tx, { sourceType: "PURCHASE", sourceId: invoice.id, entryDate: invoice.invoiceDate, description: `فاتورة مشتريات: ${invoice.name}`, actorId: invoice.actorId, projectId: invoice.projectId, lines: [{ accountKey: "PURCHASE_COST", debitCents: invoice.totalCents }, { accountKey: invoice.paymentSource === "PETTY_CASH" ? "PETTY_CASH" : "OWNER_FUNDING", creditCents: invoice.totalCents }] });
+export async function postPurchaseJournal(tx: Tx, invoice: { id: string; totalCents: number; invoiceDate: Date; name: string; projectId: string; paymentSource: string; stockMode?: string; actorId: string }) {
+  const inventory = invoice.stockMode === "WAREHOUSE" || invoice.stockMode === "DIRECT_PROJECT";
+  return postJournal(tx, { sourceType: "PURCHASE", sourceId: invoice.id, entryDate: invoice.invoiceDate, description: `فاتورة مشتريات: ${invoice.name}`, actorId: invoice.actorId, projectId: inventory ? null : invoice.projectId, lines: [{ accountKey: inventory ? "INVENTORY_ASSET" : "PURCHASE_COST", debitCents: invoice.totalCents }, { accountKey: invoice.paymentSource === "PETTY_CASH" ? "PETTY_CASH" : "OWNER_FUNDING", creditCents: invoice.totalCents }] });
+}
+
+export async function postStockIssueJournal(tx: Tx, movement: { id: string; movementDate: Date; projectId: string | null; actorId: string; totalCents: number }) {
+  if (!movement.projectId || !movement.totalCents) return null;
+  return postJournal(tx, { sourceType: "WAREHOUSE_ISSUE", sourceId: movement.id, entryDate: movement.movementDate, description: "صرف خامات من المخزن للمشروع", actorId: movement.actorId, projectId: movement.projectId, lines: [{ accountKey: "PROJECT_MATERIAL_COST", debitCents: movement.totalCents }, { accountKey: "INVENTORY_ASSET", creditCents: movement.totalCents }] });
+}
+
+export async function postStockReturnJournal(tx: Tx, movement: { id: string; movementDate: Date; projectId: string | null; actorId: string; totalCents: number }) {
+  if (!movement.projectId || !movement.totalCents) return null;
+  return postJournal(tx, { sourceType: "WAREHOUSE_RETURN", sourceId: movement.id, entryDate: movement.movementDate, description: "مرتجع خامات من المشروع إلى المخزن", actorId: movement.actorId, projectId: movement.projectId, lines: [{ accountKey: "INVENTORY_ASSET", debitCents: movement.totalCents }, { accountKey: "PROJECT_MATERIAL_COST", creditCents: movement.totalCents }] });
 }
 
 type PayrollPostingLine = { employeeId: string; basicCents: number; bonusCents: number; deductionCents: number; advanceCents: number; netCents: number; allocationJson: string };

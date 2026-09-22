@@ -12,6 +12,7 @@ import { confirmSimilarFinancialOperation, financialHeaders, financialResult } f
 
 type Project = { id: string; name: string };
 type Supplier = { id: string; name: string };
+type Warehouse = { id: string; name: string };
 type Row = { key: string; name: string; unit: string; quantity: number; price: number };
 
 function blankRow(): Row {
@@ -21,16 +22,19 @@ function blankRow(): Row {
 export function PurchaseInvoicePage({
   projects,
   suppliers,
+  warehouses,
   returnHref = "/purchases",
 }: {
   projects: Project[];
   suppliers: Supplier[];
+  warehouses: Warehouse[];
   returnHref?: string;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([blankRow()]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [stockMode, setStockMode] = useState<"WAREHOUSE" | "DIRECT_PROJECT" | "LEGACY_DIRECT">("WAREHOUSE");
   const total = rows.reduce((sum, row) => sum + Math.round(row.quantity * row.price * 100), 0);
 
   function updateRow(index: number, patch: Partial<Row>) {
@@ -64,6 +68,8 @@ export function PurchaseInvoicePage({
         supplierId: data.get("supplierId") || undefined,
         invoiceDate: data.get("invoiceDate"),
         paymentSource: data.get("paymentSource"),
+        stockMode,
+        warehouseId: stockMode === "LEGACY_DIRECT" ? undefined : data.get("warehouseId"),
         notes: data.get("notes") || undefined,
         items: rows.map(({ name, unit, quantity, price }) => ({ name, unit, quantity, price })),
       }),
@@ -87,7 +93,7 @@ export function PurchaseInvoicePage({
         <div>
           <p className="text-xs font-bold text-blue-700">Purchases Module</p>
           <h1 className="mt-1 text-2xl font-black text-slate-950">إضافة فاتورة مشتريات</h1>
-          <p className="mt-2 text-sm text-slate-500">سجّل تكلفة المشتريات على المشروع، مع إرفاق إثبات الفاتورة.</p>
+          <p className="mt-2 text-sm text-slate-500">سجّل الفاتورة وحدد هل تدخل الخامات المخزن أو تُستلم وتُصرف للمشروع في نفس العملية.</p>
         </div>
         <button type="button" className="erp-back-tab" onClick={() => router.push(returnHref)}>
           <ArrowRight className="size-4" /> رجوع
@@ -125,6 +131,27 @@ export function PurchaseInvoicePage({
               <option value="PETTY_CASH">Petty Cash</option>
             </ERPSelect>
           </label>
+          <label className="text-xs font-bold md:col-span-2">
+            مسار الخامات *
+            <ERPSelect value={stockMode} onValueChange={(value) => setStockMode(value as typeof stockMode)} className={`${expenseInput} mt-2`}>
+              <option value="WAREHOUSE">استلام وإضافة إلى رصيد المخزن</option>
+              <option value="DIRECT_PROJECT">استلام وصرف مباشر على المشروع</option>
+              <option value="LEGACY_DIRECT">خدمة أو مصروف مباشر بدون مخزن</option>
+            </ERPSelect>
+          </label>
+          {stockMode !== "LEGACY_DIRECT" && <label className="text-xs font-bold">
+            المخزن المستلم *
+            <ERPSelect name="warehouseId" required className={`${expenseInput} mt-2`}>
+              <option value="">اختر المخزن</option>
+              {warehouses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </ERPSelect>
+          </label>}
+        </div>
+
+        <div className={`rounded-xl border p-3 text-xs ${stockMode === "DIRECT_PROJECT" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-blue-100 bg-blue-50 text-blue-900"}`}>
+          {stockMode === "WAREHOUSE" && "السداد لا يُحمّل تكلفة المشروع. تُثبت الخامات بالمخزن، وتُحمّل على المشروع عند صرفها فقط."}
+          {stockMode === "DIRECT_PROJECT" && "ستُسجل حركة استلام للمخزن ثم حركة صرف للمشروع بالقيم نفسها؛ فتظهر العملية كاملة من شاشة واحدة."}
+          {stockMode === "LEGACY_DIRECT" && "استخدم هذا المسار للخدمات والمصروفات التي لا تمثل خامات مخزنية؛ ستُحمّل القيمة مباشرة على المشروع."}
         </div>
 
         <section className="overflow-hidden rounded-xl border">

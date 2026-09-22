@@ -18,6 +18,7 @@ type PurchaseInvoice = {
   invoiceDate: string;
   notes?: string | null;
   totalCents: number;
+  stockMode: string;
   status: string;
   reversedAt?: string | null;
   reversalReason?: string | null;
@@ -103,7 +104,7 @@ export function PurchasesCenter({ invoices, projects, suppliers, attachments, ca
 
   return <div className="space-y-5">
     <section className="flex flex-wrap items-end justify-between gap-3">
-      <div><p className="text-xs font-bold text-blue-700">Purchases Module</p><h1 className="mt-1 text-2xl font-black text-slate-950">مشتريات المشروع</h1><p className="mt-2 text-sm text-slate-500">فواتير المشتريات تُحمّل على تكلفة المشروع؛ الصرف الفعلي يسجل في دورته المالية.</p></div>
+      <div><p className="text-xs font-bold text-blue-700">Purchases Module</p><h1 className="mt-1 text-2xl font-black text-slate-950">المشتريات وفواتير الموردين</h1><p className="mt-2 text-sm text-slate-500">سداد المورد لا يحمّل المشروع؛ تكلفة الخامات تُحمّل عند صرفها من المخزن للمشروع.</p></div>
       {canManage && <button className={`${expenseButton} bg-blue-700 text-white`} onClick={newInvoice}><Plus className="size-4" />إضافة فاتورة مشتريات</button>}
     </section>
 
@@ -126,7 +127,7 @@ export function PurchasesCenter({ invoices, projects, suppliers, attachments, ca
           const invoiceFiles = attachments.filter((file) => file.entityId === invoice.id);
           return <Fragment key={invoice.id}>
             <tr className={invoice.status === "REVERSED" ? "bg-rose-50/70 text-slate-500" : ""}>
-              <td data-label="اسم الفاتورة" className="font-bold"><span className="inline-flex items-center gap-2"><FileText className="size-4 text-blue-700" /><span className={invoice.status === "REVERSED" ? "line-through" : ""}>{invoice.name}</span>{invoice.status === "REVERSED" && <span className="rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700">ملغاة</span>}</span>{invoice.notes && <p className="mt-1 text-[11px] font-normal text-slate-500">{invoice.notes}</p>}{invoice.status === "REVERSED" && invoice.reversalReason && <p className="mt-1 text-[11px] font-bold text-rose-700">سبب الإلغاء: {invoice.reversalReason}</p>}</td>
+              <td data-label="اسم الفاتورة" className="font-bold"><span className="inline-flex items-center gap-2"><FileText className="size-4 text-blue-700" /><span className={invoice.status === "REVERSED" ? "line-through" : ""}>{invoice.name}</span>{invoice.status === "REVERSED" && <span className="rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700">ملغاة</span>}</span><p className="mt-1 text-[10px] font-bold text-blue-700">{invoice.stockMode === "WAREHOUSE" ? "تم الاستلام بالمخزن" : invoice.stockMode === "DIRECT_PROJECT" ? "استلام وصرف مباشر للمشروع" : "مصروف مباشر"}</p>{invoice.notes && <p className="mt-1 text-[11px] font-normal text-slate-500">{invoice.notes}</p>}{invoice.status === "REVERSED" && invoice.reversalReason && <p className="mt-1 text-[11px] font-bold text-rose-700">سبب الإلغاء: {invoice.reversalReason}</p>}</td>
               <td data-label="المشروع">{invoice.project.name}<p className="mt-1 text-[11px] text-slate-400">{invoice.project.code}</p></td>
               <td data-label="المورد">{invoice.supplier?.name ?? "—"}</td>
               <td data-label="التاريخ" dir="ltr">{invoice.invoiceDate.slice(0, 10)}</td>

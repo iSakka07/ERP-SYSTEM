@@ -3,7 +3,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
-import { postPurchaseJournal, reversePostedJournal } from "@/lib/accounting-posting";
+import { postPurchaseJournal, postStockIssueJournal, reversePostedJournal } from "@/lib/accounting-posting";
 import { assertBalances, balanceForAccount } from "@/lib/petty-cash";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
 
@@ -25,6 +25,8 @@ const invoiceSchema = z.object({
   name: z.string().trim().min(1).max(160),
   notes: z.string().trim().max(2000).optional(),
   paymentSource: z.enum(["EXECUTIVE_DIRECTOR", "PETTY_CASH"]),
+  stockMode: z.enum(["WAREHOUSE", "DIRECT_PROJECT", "LEGACY_DIRECT"]).default("LEGACY_DIRECT"),
+  warehouseId: z.string().trim().optional().nullable(),
   items: z.array(itemSchema).min(1).max(200),
 });
 
@@ -79,8 +81,9 @@ export async function POST(request: Request) {
       if ("response" in guarded) return guarded.response;
       operationContext = guarded.context;
       const reversed = await prisma.$transaction(async (tx) => {
-        const invoice = await tx.purchaseInvoice.findUnique({ where: { id: data.id } });
+        const invoice = await tx.purchaseInvoice.findUnique({ where: { id: data.id }, include: { stockMovements: { select: { id: true } } } });
         if (!invoice || invoice.status !== "POSTED") throw new Error("الفاتورة ملغاة بالفعل أو غير موجودة.");
+        if (invoice.stockMovements.length) throw new Error("لا يمكن إلغاء فاتورة لها حركات مخزن. اعكس حركات المخزن أولًا للحفاظ على الأرصدة.");
         if (user.isProjectScoped && !user.projectIds.includes(invoice.projectId)) throw new Error("غير مصرح لهذا المشروع.");
         const reversedAt = new Date();
         await reversePostedJournal(tx, "PURCHASE", invoice.id, reversedAt, user.id, data.reason);
@@ -120,12 +123,17 @@ export async function POST(request: Request) {
       });
       if (!supplier) throw new Error("اختر موردًا صحيحًا.");
     }
+    if (data.stockMode !== "LEGACY_DIRECT") {
+      const warehouse = await prisma.warehouse.findFirst({ where: { id: data.warehouseId || "", active: true }, select: { id: true } });
+      if (!warehouse) throw new Error("اختر مخزنًا صحيحًا لاستلام الخامات.");
+    }
     const number = nextNumber();
     const exists = await prisma.purchaseInvoice.findUnique({ where: { number } });
     if (exists) throw new Error("رقم فاتورة المشتريات مستخدم بالفعل.");
     const items = data.items.map((item, position) => {
       const unitPriceCents = cents(item.price);
       return {
+        id: randomUUID(),
         position,
         name: item.name,
         unit: item.unit,
@@ -140,7 +148,7 @@ export async function POST(request: Request) {
         throw new Error("إجمالي الفاتورة أكبر من الحد المسموح.");
       return total;
     }, 0);
-    const guarded = await guardFinancialOperation(request, { actorId: user.id, operation: "purchases.invoice", requestData: data, businessData: { projectId: data.projectId, supplierId: data.supplierId || null, invoiceDate: data.invoiceDate, name: data.name, totalCents, paymentSource: data.paymentSource } });
+    const guarded = await guardFinancialOperation(request, { actorId: user.id, operation: "purchases.invoice", requestData: data, businessData: { projectId: data.projectId, supplierId: data.supplierId || null, invoiceDate: data.invoiceDate, name: data.name, totalCents, paymentSource: data.paymentSource, stockMode: data.stockMode } });
     if ("response" in guarded) return guarded.response;
     operationContext = guarded.context;
     const invoice = await prisma.$transaction(async (tx) => {
@@ -154,6 +162,8 @@ export async function POST(request: Request) {
           notes: data.notes || null,
           totalCents,
           paymentSource: data.paymentSource,
+          stockMode: data.stockMode,
+          warehouseId: data.stockMode === "LEGACY_DIRECT" ? null : data.warehouseId,
           actorId: user.id,
           items: { createMany: { data: items } },
         },
@@ -176,6 +186,30 @@ export async function POST(request: Request) {
           actorId: user.id,
         })),
       });
+      if (data.stockMode !== "LEGACY_DIRECT") {
+        const movementDate = new Date(data.invoiceDate);
+        const receiptLines: { itemId: string; quantity: number; unitCostCents: number; totalCents: number; sourcePurchaseItemId: string }[] = [];
+        for (const purchaseItem of items) {
+          const inventoryItem = await tx.inventoryItem.upsert({
+            where: { name_unit: { name: purchaseItem.name, unit: purchaseItem.unit } },
+            update: { active: true },
+            create: { code: `ITM-${randomUUID().slice(0, 8).toUpperCase()}`, name: purchaseItem.name, unit: purchaseItem.unit },
+          });
+          await tx.purchaseItem.update({ where: { id: purchaseItem.id }, data: { inventoryItemId: inventoryItem.id } });
+          receiptLines.push({ itemId: inventoryItem.id, quantity: purchaseItem.quantity, unitCostCents: purchaseItem.unitPriceCents, totalCents: purchaseItem.totalCents, sourcePurchaseItemId: purchaseItem.id });
+        }
+        const receiptId = randomUUID();
+        await tx.stockMovement.create({
+          data: { id: receiptId, number: `RCV-${movementDate.toISOString().slice(0, 10).replaceAll("-", "")}-${receiptId.slice(0, 6).toUpperCase()}`, type: "RECEIPT", movementDate, toWarehouseId: data.warehouseId!, purchaseInvoiceId: created.id, recipient: "مسؤول المخزن", notes: `استلام تلقائي من الفاتورة ${number}`, actorId: user.id, lines: { createMany: { data: receiptLines } } },
+        });
+        if (data.stockMode === "DIRECT_PROJECT") {
+          const issueId = randomUUID();
+          const issue = await tx.stockMovement.create({
+            data: { id: issueId, number: `ISS-${movementDate.toISOString().slice(0, 10).replaceAll("-", "")}-${issueId.slice(0, 6).toUpperCase()}`, type: "ISSUE_PROJECT", movementDate, fromWarehouseId: data.warehouseId!, projectId: data.projectId, purchaseInvoiceId: created.id, recipient: "مسؤول المشروع", notes: `استلام وصرف مباشر من الفاتورة ${number}`, actorId: user.id, lines: { createMany: { data: receiptLines.map((line) => ({ itemId: line.itemId, quantity: line.quantity, unitCostCents: line.unitCostCents, totalCents: line.totalCents })) } } },
+          });
+          await postStockIssueJournal(tx, { ...issue, totalCents });
+        }
+      }
       await postPurchaseJournal(tx, created);
       await tx.auditLog.create({
         data: {

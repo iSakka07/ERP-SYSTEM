@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, BellRing, Building2, CalendarDays, ChartNoAxesCombined, ChevronLeft, CircleAlert, FileSpreadsheet, FileText, Landmark, ReceiptText, ShoppingCart, TrendingDown, TrendingUp, UsersRound, Vault } from "lucide-react";
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, BellRing, Boxes, Building2, CalendarDays, ChartNoAxesCombined, ChevronLeft, CircleAlert, FileSpreadsheet, FileText, Landmark, ReceiptText, ShoppingCart, TrendingDown, TrendingUp, UsersRound, Vault } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type Project = { id: string; name: string; owner: string; contractValue: string; incoming: string; cost: string; paid: string; margin: string; risk: string };
@@ -25,6 +25,7 @@ const moduleLinks = [
   { label: "الوارد", href: "/incoming", permission: "incoming.view", icon: BanknoteArrowUp },
   { label: "أعمال المقاولين", href: "/expenses", permission: "expenses.view", icon: FileSpreadsheet },
   { label: "المشتريات", href: "/purchases", permission: "purchases.view", icon: ShoppingCart },
+  { label: "المخزن", href: "/warehouse", permission: "warehouse.view", icon: Boxes },
   { label: "الخزنة والنثريات", href: "/petty-cash", permission: "pettycash.view", icon: Vault },
   { label: "المحاسبة", href: "/accounting", permission: "accounting.view", icon: Landmark },
   { label: "المرتبات", href: "/salaries", permission: "salaries.view", icon: UsersRound },

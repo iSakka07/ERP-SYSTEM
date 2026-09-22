@@ -13,9 +13,10 @@ export default async function NewPurchaseInvoicePage({
   searchParams: Promise<{ return?: string }>;
 }) {
   if (!(await incomingUser("purchases.manage"))) redirect("/purchases");
-  const [projects, suppliers] = await Promise.all([
+  const [projects, suppliers, warehouses] = await Promise.all([
     prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.company.findMany({ where: { active: true, type: "SUPPLIER" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.warehouse.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
-  return <PurchaseInvoicePage projects={projects} suppliers={suppliers} returnHref={safeReturn((await searchParams).return)} />;
+  return <PurchaseInvoicePage projects={projects} suppliers={suppliers} warehouses={warehouses} returnHref={safeReturn((await searchParams).return)} />;
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { BanknoteArrowUp, BookOpenCheck, Building2, ChartNoAxesCombined, FileSpreadsheet, Landmark, LayoutDashboard, LockKeyhole, Menu, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
+import { BanknoteArrowUp, BookOpenCheck, Boxes, Building2, ChartNoAxesCombined, FileSpreadsheet, Landmark, LayoutDashboard, LockKeyhole, Menu, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { can } from "@/lib/permissions";
 import { companyBrand } from "@/lib/company-brand";
@@ -16,6 +16,7 @@ const navItems = [
   { label: "الوارد", icon: BanknoteArrowUp, href: "/incoming", permission: "incoming.view" },
   { label: "مستخلصات المقاولين", icon: FileSpreadsheet, href: "/expenses", permission: "expenses.view" },
   { label: "المشتريات", icon: ShoppingCart, href: "/purchases", permission: "purchases.view" },
+  { label: "المخزن", icon: Boxes, href: "/warehouse", permission: "warehouse.view" },
   { label: "المرتبات", icon: UsersRound, href: "/salaries", permission: "salaries.view" },
   { label: "Petty Cash", icon: Vault, href: "/petty-cash", permission: "pettycash.view" },
   { label: "البنك", icon: Landmark, href: "/bank", permission: "bank.view" },
