@@ -1,16 +1,23 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { Building2, Factory, HardHat, LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { Building2, Factory, LoaderCircle, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ERPSelect } from "@/components/erp-select";
 import { DataTable, IconAction } from "@/components/erp-ui";
+import { employeeJobPrefixes } from "@/lib/employee-codes";
+import { pdfColumns, previewDataPdf, usePdfDataExport } from "@/components/pdf-data-export";
 
 type Company = { id: string; name: string; type: string; phone: string | null };
 type Engineer = { id: string; employeeCode: string; name: string; jobTitle: string; phone: string | null; supervisors: { project: { id: string; name: string } }[] };
 type Project = { id: string; code: string; name: string; company: Company; supervisors: { employee: { id: string; name: string } }[] };
 type Tab = "companies" | "projects" | "engineers";
 const companyTypes: Record<string, string> = { OWNER: "جهة مالكة", SUBCONTRACTOR: "مقاول باطن", SUPPLIER: "مورد" };
+const companyTypeStyles: Record<string, string> = {
+  OWNER: "border border-blue-200 bg-blue-50 text-blue-700",
+  SUBCONTRACTOR: "border border-amber-200 bg-amber-50 text-amber-700",
+  SUPPLIER: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+};
 
 export function ManagementCenter({ companies, projects, engineers, canManage }: { companies: Company[]; projects: Project[]; engineers: Engineer[]; canManage: boolean }) {
   const router = useRouter();
@@ -20,11 +27,29 @@ export function ManagementCenter({ companies, projects, engineers, canManage }: 
   const [companyType, setCompanyType] = useState("OWNER");
   const [editingEngineer, setEditingEngineer] = useState<Engineer | null>(null);
   const [engineerProjectId, setEngineerProjectId] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [employeeCodePreview, setEmployeeCodePreview] = useState("");
+  useEffect(() => {
+    if (editingEngineer) return;
+    if (!jobTitle) return;
+    const controller = new AbortController();
+    fetch(`/api/management?jobTitle=${encodeURIComponent(jobTitle)}`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : Promise.reject())
+      .then(result => setEmployeeCodePreview(result.employeeCode))
+      .catch(() => { if (!controller.signal.aborted) setEmployeeCodePreview(""); });
+    return () => controller.abort();
+  }, [jobTitle, editingEngineer, engineers]);
   const tabs = [
     { key: "companies" as const, label: "الشركات والجهات", icon: Factory, count: companies.length },
     { key: "projects" as const, label: "المشروعات", icon: Building2, count: projects.length },
-    { key: "engineers" as const, label: "المهندسون المشرفون", icon: HardHat, count: engineers.length },
+    { key: "engineers" as const, label: "الموظفون", icon: Users, count: engineers.length },
   ];
+  usePdfDataExport(() => {
+    const report = tab === "companies" ? { title: "الشركات والجهات", tables: [{ columns: pdfColumns(["نوع الجهة", 2], ["الاسم", 3], ["الهاتف", 2]), rows: companies.map((item) => [companyTypes[item.type] || item.type, item.name, item.type === "SUBCONTRACTOR" ? item.phone || "—" : "—"]) }] }
+      : tab === "projects" ? { title: "المشروعات", tables: [{ columns: pdfColumns(["كود المشروع", 2], ["اسم المشروع", 3], ["الجهة المالكة", 2], ["المهندس المشرف", 3]), rows: projects.map((item) => [item.code, item.name, item.company.name, [...new Set(item.supervisors.map(({ employee }) => employee.name))].join("، ") || "غير محدد"]) }] }
+      : { title: "الموظفون", tables: [{ columns: pdfColumns(["الكود", 2], ["اسم الموظف", 3], ["المسمى الوظيفي", 2], ["الهاتف", 2], ["التسكين", 2], ["المشروع", 3]), rows: engineers.map((item) => [item.employeeCode, item.name, item.jobTitle, item.phone || "—", item.supervisors[0] ? "مشروع" : "عام الشركة", item.supervisors[0]?.project.name || "—"]) }] };
+    void previewDataPdf(report);
+  });
 
   async function request(method: "POST" | "PATCH" | "DELETE", body: object, key: string) {
     setBusy(key); setMessage("");
@@ -50,22 +75,22 @@ export function ManagementCenter({ companies, projects, engineers, canManage }: 
     const method = editingEngineer ? "PATCH" : "POST";
     const body = editingEngineer ? { ...payload, id: editingEngineer.id } : { type: "engineer", ...payload };
     if (await request(method, body, editingEngineer ? `edit-${editingEngineer.id}` : "create-engineer")) {
-      form.reset(); setEditingEngineer(null); setEngineerProjectId("");
+      form.reset(); setEditingEngineer(null); setEngineerProjectId(""); setJobTitle(""); setEmployeeCodePreview("");
     }
   }
   function editEngineer(engineer: Engineer) {
-    setEditingEngineer(engineer); setEngineerProjectId(engineer.supervisors[0]?.project.id || ""); setMessage("");
+    setEditingEngineer(engineer); setEngineerProjectId(engineer.supervisors[0]?.project.id || ""); setJobTitle(engineer.jobTitle); setEmployeeCodePreview(engineer.employeeCode); setMessage("");
   }
   const empty = (columns: number, label: string) => <tr><td colSpan={columns} className="py-12 text-center text-slate-400">{label}</td></tr>;
 
   return <div className="space-y-6">
-    <section><p className="text-xs font-bold text-blue-700">البيانات الأساسية</p><h1 className="mt-1 text-2xl font-black text-slate-950">إدارة الشركة والمشروعات</h1><p className="mt-2 text-sm text-slate-500">الجهات والمشروعات والمهندسون المشرفون في مكان واحد.</p></section>
+    <section><p className="text-xs font-bold text-blue-700">البيانات الأساسية</p><h1 className="mt-1 text-2xl font-black text-slate-950">إدارة الشركة والمشروعات</h1><p className="mt-2 text-sm text-slate-500">الجهات والمشروعات والموظفون في مكان واحد.</p></section>
     <div className="grid gap-3 sm:grid-cols-3">{tabs.map(({ key, label, icon: Icon, count }) => <button key={key} onClick={() => { setTab(key); setMessage(""); }} className={`flex min-h-20 items-center gap-3 rounded-xl border p-4 text-right transition ${tab === key ? "border-blue-300 bg-blue-50 text-blue-800 shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"}`}><span className={`grid size-10 place-items-center rounded-lg ${tab === key ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}><Icon className="size-5" /></span><span><span className="block text-sm font-extrabold">{label}</span><span className="mt-1 block text-xs opacity-60">{count} سجل</span></span></button>)}</div>
     {message && <p role="status" className={`rounded-xl border px-4 py-3 text-sm font-bold ${message.includes("تعذر") || message.includes("اختر") || message.includes("مكررة") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{message}</p>}
 
     {tab === "companies" && <Section title="الشركات والجهات" description="الجدول أولًا، ثم إضافة جهة جديدة أسفله.">
-      <DataTable headers={["نوع الجهة", "الاسم", "هاتف مقاول الباطن", "الإجراءات"]}>{companies.length ? companies.map(company => <tr key={company.id}><Cell label="نوع الجهة"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{companyTypes[company.type]}</span></Cell><Cell label="الاسم" strong>{company.name}</Cell><Cell label="هاتف مقاول الباطن">{company.type === "SUBCONTRACTOR" ? company.phone || "—" : "—"}</Cell><Cell label="الإجراءات">{canManage && <IconAction label={`مسح ${company.name}`} icon={Trash2} tone="danger" disabled={busy === company.id} onClick={() => remove("company", company.id, company.name)} />}</Cell></tr>) : empty(4, "لا توجد شركات أو جهات مسجلة.")}</DataTable>
-      {canManage && <Form title="إضافة شركة أو جهة"><form onSubmit={event => submit(event, "company")} className="grid gap-3 md:grid-cols-2"><label><Label>نوع الجهة</Label><ERPSelect name="companyType" value={companyType} onValueChange={setCompanyType} className="erp-control"><option value="OWNER">جهة مالكة</option><option value="SUBCONTRACTOR">مقاول باطن</option><option value="SUPPLIER">مورد</option></ERPSelect></label><Field label="اسم الشركة أو الجهة" name="name" placeholder="اكتب الاسم" />{companyType === "SUBCONTRACTOR" && <Field label="رقم الهاتف" name="phone" required={false} placeholder="رقم هاتف المقاول" />}<Submit busy={busy === "create-company"} /></form></Form>}
+      <DataTable headers={["نوع الجهة", "الاسم", "الهاتف", "الإجراءات"]}>{companies.length ? companies.map(company => <tr key={company.id}><Cell label="نوع الجهة"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${companyTypeStyles[company.type] || "border border-slate-200 bg-slate-50 text-slate-700"}`}>{companyTypes[company.type]}</span></Cell><Cell label="الاسم" strong>{company.name}</Cell><Cell label="الهاتف">{company.type === "SUBCONTRACTOR" ? company.phone || "—" : "—"}</Cell><Cell label="الإجراءات">{canManage && <IconAction label={`مسح ${company.name}`} icon={Trash2} tone="danger" disabled={busy === company.id} onClick={() => remove("company", company.id, company.name)} />}</Cell></tr>) : empty(4, "لا توجد شركات أو جهات مسجلة.")}</DataTable>
+      {canManage && <Form title="إضافة شركة أو جهة"><form onSubmit={event => submit(event, "company")} className="grid gap-3 md:grid-cols-2"><label><Label>نوع الجهة</Label><ERPSelect name="companyType" value={companyType} onValueChange={setCompanyType} className="erp-control"><option value="OWNER">جهة مالكة</option><option value="SUBCONTRACTOR">مقاول باطن</option><option value="SUPPLIER">مورد</option></ERPSelect></label><Field label="اسم الشركة أو الجهة" name="name" placeholder="اكتب الاسم" />{companyType === "SUBCONTRACTOR" && <Field label="رقم الهاتف" name="phone" required placeholder="رقم هاتف المقاول" />}<Submit busy={busy === "create-company"} /></form></Form>}
     </Section>}
 
     {tab === "projects" && <Section title="المشروعات" description="كل مشروع مرتبط مباشرة بالجهة المالكة.">
@@ -73,9 +98,9 @@ export function ManagementCenter({ companies, projects, engineers, canManage }: 
       {canManage && <Form title="إضافة مشروع"><form onSubmit={event => submit(event, "project")} className="grid gap-3 md:grid-cols-3"><Field label="كود المشروع" name="code" placeholder="MAYAN-27" /><Field label="اسم المشروع" name="name" placeholder="عمارة 27 - كمبوند مايان" /><Select label="الجهة المالكة" name="companyId" options={companies.filter(item => item.type === "OWNER")} /><Submit busy={busy === "create-project"} /></form></Form>}
     </Section>}
 
-    {tab === "engineers" && <Section title="المهندسون المشرفون" description="بيانات المهندس وتسكينه الحالي في جدول واحد.">
-      <DataTable headers={["الكود", "اسم المهندس", "المسمى الوظيفي", "الهاتف", "التسكين", "المشروع", "الإجراءات"]}>{engineers.length ? engineers.map(engineer => { const assignment = engineer.supervisors[0]; return <tr key={engineer.id}><Cell label="الكود"><code dir="ltr" className="text-xs font-bold text-blue-700">{engineer.employeeCode}</code></Cell><Cell label="اسم المهندس" strong>{engineer.name}</Cell><Cell label="المسمى الوظيفي">{engineer.jobTitle}</Cell><Cell label="الهاتف">{engineer.phone || "—"}</Cell><Cell label="التسكين"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{assignment ? "مشروع" : "عام الشركة"}</span></Cell><Cell label="المشروع">{assignment?.project.name || "—"}</Cell><Cell label="الإجراءات"><div className="flex justify-center gap-1">{canManage && <><IconAction label={`تعديل أو نقل ${engineer.name}`} icon={Pencil} disabled={busy === `edit-${engineer.id}`} onClick={() => editEngineer(engineer)} /><IconAction label={`مسح ${engineer.name}`} icon={Trash2} tone="danger" disabled={busy === engineer.id} onClick={() => remove("engineer", engineer.id, engineer.name)} /></>}</div></Cell></tr>; }) : empty(7, "لا يوجد مهندسون مشرفون.")}</DataTable>
-      {canManage && <Form title={editingEngineer ? `تعديل وتسكين ${editingEngineer.name}` : "إضافة مهندس وتسكينه"}><form key={editingEngineer?.id || "new"} onSubmit={submitEngineer} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5"><Field label="كود الموظف" name="employeeCode" placeholder="ENG-002" defaultValue={editingEngineer?.employeeCode} /><Field label="اسم المهندس" name="name" defaultValue={editingEngineer?.name} /><Field label="المسمى الوظيفي" name="jobTitle" placeholder="مهندس موقع" defaultValue={editingEngineer?.jobTitle} /><Field label="رقم الهاتف" name="phone" required={false} defaultValue={editingEngineer?.phone || ""} /><Select label="التسكين" name="projectId" options={projects} optional value={engineerProjectId} onValueChange={setEngineerProjectId} /><Submit busy={busy === (editingEngineer ? `edit-${editingEngineer.id}` : "create-engineer")} label={editingEngineer ? "حفظ التعديل" : "إضافة"} />{editingEngineer && <button type="button" onClick={() => { setEditingEngineer(null); setEngineerProjectId(""); }} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><X className="size-4" />إلغاء</button>}</form></Form>}
+    {tab === "engineers" && <Section title="الموظفون" description="بيانات الموظف وتسكينه الحالي في جدول واحد.">
+      <DataTable headers={["الكود", "اسم الموظف", "المسمى الوظيفي", "الهاتف", "التسكين", "المشروع", "الإجراءات"]}>{engineers.length ? engineers.map(engineer => { const assignment = engineer.supervisors[0]; return <tr key={engineer.id}><Cell label="الكود"><code dir="ltr" className="text-xs font-bold text-blue-700">{engineer.employeeCode}</code></Cell><Cell label="اسم الموظف" strong>{engineer.name}</Cell><Cell label="المسمى الوظيفي">{engineer.jobTitle}</Cell><Cell label="الهاتف">{engineer.phone || "—"}</Cell><Cell label="التسكين"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{assignment ? "مشروع" : "عام الشركة"}</span></Cell><Cell label="المشروع">{assignment?.project.name || "—"}</Cell><Cell label="الإجراءات"><div className="flex justify-center gap-1">{canManage && <><IconAction label={`تعديل أو نقل ${engineer.name}`} icon={Pencil} disabled={busy === `edit-${engineer.id}`} onClick={() => editEngineer(engineer)} /><IconAction label={`مسح ${engineer.name}`} icon={Trash2} tone="danger" disabled={busy === engineer.id} onClick={() => remove("engineer", engineer.id, engineer.name)} /></>}</div></Cell></tr>; }) : empty(7, "لا يوجد موظفون مسجلون.")}</DataTable>
+      {canManage && <Form title={editingEngineer ? `تعديل وتسكين ${editingEngineer.name}` : "إضافة موظف وتسكينه"}><form key={editingEngineer?.id || "new"} onSubmit={submitEngineer} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5"><label><Label>المسمى الوظيفي</Label><ERPSelect name="jobTitle" value={jobTitle} onValueChange={value => { setJobTitle(value); setEmployeeCodePreview(""); }} required className="erp-control"><option value="">اختر المسمى</option>{editingEngineer?.jobTitle && !(editingEngineer.jobTitle in employeeJobPrefixes) && <option value={editingEngineer.jobTitle}>{editingEngineer.jobTitle}</option>}{Object.keys(employeeJobPrefixes).map(title => <option key={title} value={title}>{title}</option>)}</ERPSelect></label><label><Label>كود الموظف — تلقائي</Label><input dir="ltr" readOnly value={editingEngineer ? editingEngineer.employeeCode : employeeCodePreview} placeholder="يظهر بعد اختيار المسمى" className="bg-slate-100 font-mono" /></label><Field label="اسم الموظف" name="name" defaultValue={editingEngineer?.name} /><Field label="رقم الهاتف" name="phone" required={false} defaultValue={editingEngineer?.phone || ""} /><Select label="التسكين" name="projectId" options={projects} optional value={engineerProjectId} onValueChange={setEngineerProjectId} /><Submit busy={busy === (editingEngineer ? `edit-${editingEngineer.id}` : "create-engineer")} label={editingEngineer ? "حفظ التعديل" : "إضافة"} />{editingEngineer && <button type="button" onClick={() => { setEditingEngineer(null); setEngineerProjectId(""); setJobTitle(""); setEmployeeCodePreview(""); }} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><X className="size-4" />إلغاء</button>}</form></Form>}
     </Section>}
   </div>;
 }

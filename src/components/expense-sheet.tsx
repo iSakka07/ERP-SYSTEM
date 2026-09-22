@@ -38,7 +38,8 @@ export function ExpenseFileInput({ required = true }: { required?: boolean }) {
     <UploadBox
       name="files"
       required={required}
-      label={required ? "المرفقات" : "إضافة إثبات جديد"}
+      label={required ? "مرفق مستخلص المقاول" : "إضافة إثبات لمستخلص المقاول"}
+      hint="A3 · PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت"
     />
   );
 }
@@ -307,11 +308,11 @@ export function ExpenseSheet({
         <div>
           <button
             type="button"
-            className="mb-2 flex items-center gap-1 text-xs text-blue-700"
+            className="erp-back-tab mb-2"
             onClick={onClose}
           >
             <ArrowRight className="size-3" />
-            الرجوع لأعمال المقاولين
+            رجوع
           </button>
           <h1 className="text-xl font-extrabold">
             {statement

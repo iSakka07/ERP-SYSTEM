@@ -18,12 +18,11 @@ export function assertBalances(transactions: CashMovement[]) {
   for (const id of ids) if (balanceForAccount(transactions, id) < 0) throw new Error("الحركة تؤدي إلى رصيد سالب في الخزنة أو العهدة.");
 }
 export function isProjectCost(type: string) { return expenseTypes.has(type); }
-export function validatePettyInput(input: { type: string; amount: unknown; projectId?: string | null; allocation?: string; sourceAccountId?: string | null; description?: string; documentNumber?: string | null; hasAttachment?: boolean; requiresDocument?: boolean; requiresAttachment?: boolean }) {
+export function validatePettyInput(input: { type: string; amount: unknown; projectId?: string | null; allocation?: string; sourceAccountId?: string | null; description?: string; hasAttachment?: boolean; requiresAttachment?: boolean }) {
   if (!PETTY_TYPES.includes(input.type as PettyType)) throw new Error("نوع الحركة غير صحيح.");
   const amount = cents(input.amount);
   if (!input.description?.trim()) throw new Error("البيان مطلوب.");
   if (expenseTypes.has(input.type) && !input.projectId && input.allocation !== "GENERAL") throw new Error("اختر مشروعًا أو عام الشركة.");
-  if (input.requiresDocument && !input.documentNumber?.trim()) throw new Error("رقم المستند مطلوب.");
   if ((input.requiresAttachment ?? true) && !input.hasAttachment) throw new Error("المرفق مطلوب.");
   return amount;
 }

@@ -7,6 +7,7 @@ import { ERPSelect } from "@/components/erp-select";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
 import { confirmSimilarFinancialOperation, financialHeaders, financialResult } from "@/lib/financial-submit";
+import { pdfColumns, pdfMoney, previewDataPdf, usePdfDataExport } from "@/components/pdf-data-export";
 
 type Project = { id: string; name: string; code: string };
 type Supplier = { id: string; name: string };
@@ -70,6 +71,12 @@ export function PurchasesCenter({ invoices, projects, suppliers, attachments, ca
     for (const invoice of visible.filter((invoice) => invoice.status === "POSTED")) totals.set(invoice.projectId, (totals.get(invoice.projectId) ?? 0) + invoice.totalCents);
     return projects.map((item) => ({ item, total: totals.get(item.id) ?? 0 })).sort((a, b) => b.total - a.total)[0];
   })();
+  usePdfDataExport(() => void previewDataPdf({
+    title: "تقرير مشتريات المشروعات",
+    filters: [search && `بحث: ${search}`, project && `المشروع: ${projects.find((item) => item.id === project)?.name || project}`, supplier && `المورد: ${suppliers.find((item) => item.id === supplier)?.name || supplier}`].filter(Boolean).join(" · ") || "كل الفواتير",
+    kpis: [{ label: "قيمة فواتير المشتريات", value: pdfMoney(total), tone: "blue" }, { label: "عدد الفواتير", value: String(visible.length), tone: "violet" }, { label: "أعلى تكلفة مشتريات", value: pdfMoney(byProject?.total ?? 0), tone: "amber" }],
+    tables: [{ columns: pdfColumns(["اسم الفاتورة", 3], ["المشروع", 2], ["المورد", 2], ["التاريخ", 2], ["عدد البنود", 1], ["الإجمالي", 2], ["الحالة", 1]), rows: visible.map((invoice) => [invoice.name, invoice.project.name, invoice.supplier?.name || "—", invoice.invoiceDate.slice(0, 10), String(invoice.items.length), pdfMoney(invoice.totalCents), invoice.status === "REVERSED" ? "ملغاة" : "مسجلة"]), footer: [`${visible.length} فاتورة`, "", "", "", "", pdfMoney(total), ""] }],
+  }));
   function newInvoice() {
     const params = new URLSearchParams();
     if (project) params.set("project", project);

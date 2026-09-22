@@ -39,7 +39,7 @@ export function ExpenseAccountPage({ projects, companies, returnHref }: {
   }
   return (
     <div className="space-y-4">
-      <button type="button" className="inline-flex items-center gap-2 text-xs font-bold text-blue-700" onClick={() => router.push(returnHref)}><ArrowRight className="size-4" />الرجوع لأعمال المقاولين</button>
+      <button type="button" className="erp-back-tab" onClick={() => router.push(returnHref)}><ArrowRight className="size-4" />رجوع</button>
       <DocumentLayout>
         <form className="space-y-4 rounded-xl border border-slate-200 bg-white p-5" onSubmit={(event) => { event.preventDefault(); void submit(event.currentTarget); }}>
           <div><p className="text-xs font-bold text-blue-700">أعمال المقاولين</p><h1 className="mt-1 text-xl font-extrabold">إضافة مقاولة جديدة</h1><p className="mt-2 text-xs leading-6 text-slate-500">حدد المقاول والمشروع ونطاق الأعمال، وبعد الحفظ سيفتح شيت جاري 1 مباشرة.</p></div>

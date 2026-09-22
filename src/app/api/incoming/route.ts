@@ -15,6 +15,7 @@ const amount = z.coerce
   .positive()
   .max(10_000_000_000)
   .transform((v) => Math.round(v * 100));
+const adjustmentAmount = z.preprocess((v) => v === "" || v == null ? 0 : v, z.coerce.number().finite().nonnegative().max(10_000_000_000).transform((v) => Math.round(v * 100)));
 const schema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("contract"),
@@ -34,6 +35,9 @@ const schema = z.discriminatedUnion("action", [
     kind: z.enum(["CURRENT", "FINAL"]),
     value: amount,
     notes: z.string().max(2000).optional(),
+    finalAdjustment: z.object({ increase: adjustmentAmount, decrease: adjustmentAmount, cancelled: adjustmentAmount }).optional(),
+    materialNumber: text.optional(),
+    materials: z.array(z.object({ name: text, unit: text, quantity: z.coerce.number().finite().positive(), price: amount })).max(100).optional(),
   }),
   z.object({
     action: z.literal("material"),
@@ -52,13 +56,6 @@ const schema = z.discriminatedUnion("action", [
       )
       .min(1)
       .max(100),
-  }),
-  z.object({
-    action: z.literal("memo"),
-    contractId: text,
-    kind: z.enum(["INCREASE", "DECREASE"]),
-    value: amount,
-    reason: text,
   }),
   z.object({
     action: z.literal("stage"),
@@ -121,14 +118,14 @@ export async function POST(request: Request) {
     if (allFiles.length > 5 || allFiles.reduce((n, f) => n + f.size, 0) > 10 * 1024 * 1024)
       throw new Error("الحد الأقصى 5 مرفقات بإجمالي 10 ميجابايت لكل المستند.");
     if (estimateFiles.length && d.action !== "contract") throw new Error("مرفق المقايسة خاص بالعقد فقط.");
-    if (["statement", "material", "memo", "stage"].includes(d.action)) {
+    if (["statement", "material", "stage"].includes(d.action)) {
       const guarded = await guardFinancialOperation(request, { actorId: user.id, operation: `incoming.${d.action}`, requestData: d, businessData: d });
       if ("response" in guarded) return guarded.response;
       operationContext = guarded.context;
     }
     const result = await prisma.$transaction(async (tx) => {
       let target = "";
-      let entityType = d.action;
+      let entityType: string = d.action;
       let before: unknown = null;
       const requireFiles = () => {
         if (!files.length) throw new Error("المرفق إلزامي قبل الحفظ.");
@@ -192,8 +189,15 @@ export async function POST(request: Request) {
       if (d.action === "statement") {
         const c = await contract(d.contractId);
         const f = financials(c);
+        const adjustment = d.finalAdjustment;
+        if (d.kind !== "FINAL" && adjustment)
+          throw new Error("مذكرة الختامي لا تُضاف إلى مستخلص جاري.");
+        const adjustmentNet = adjustment ? adjustment.increase - adjustment.decrease - adjustment.cancelled : 0;
+        const adjustedContractValue = f.value + adjustmentNet;
         const existing = d.id ? c.statements.find((s) => s.id === d.id) : null;
         if (d.id && !existing) throw new Error("المستخلص غير تابع للعقد.");
+        if (existing?.kind === "FINAL" && d.kind !== "FINAL")
+          throw new Error("الختامي المحفوظ يقفل العقد ولا يمكن تحويله إلى جاري.");
         if (existing && locked(c, existing.sequence))
           throw new Error(
             "المستخلص مقفل ماليًا. يجب الرجوع الموثق قبل التعديل.",
@@ -208,8 +212,10 @@ export async function POST(request: Request) {
           .filter((s) => s.sequence < sequence)
           .at(-1);
         const next = c.statements.find((s) => s.sequence > sequence);
+        if (d.kind === "FINAL" && d.value !== adjustedContractValue)
+          throw new Error("قيمة الختامي يجب أن تساوي قيمة العقد النهائية بعد مذكرة الخفض/الرفع.");
         if (
-          d.value > f.value ||
+          d.value > adjustedContractValue ||
           d.value < (previous?.grossCents ?? 0) ||
           (next && d.value > next.grossCents)
         )
@@ -246,6 +252,24 @@ export async function POST(request: Request) {
             });
           await postIncomingAccrual(tx, { ...created, contract: { projectId: c.projectId } }, previous?.grossCents ?? 0, c.project.companyId, user.id);
           target = created.id;
+        }
+        if (d.kind === "FINAL" && adjustment && (adjustment.increase > 0 || adjustment.decrease > 0 || adjustment.cancelled > 0)) {
+          await tx.incomingMemo.create({ data: {
+            contractId: c.id,
+            kind: adjustmentNet > 0 ? "INCREASE" : "DECREASE",
+            amountCents: Math.abs(adjustmentNet),
+            reason: JSON.stringify({ type: "FINAL_ADJUSTMENT", increase: adjustment.increase, decrease: adjustment.decrease, cancelled: adjustment.cancelled }),
+          } });
+        }
+        if (d.materials?.length) {
+          if (!d.materialNumber) throw new Error("أدخل رقم شهادة الخامات.");
+          const totalCents = d.materials.reduce((sum, item) => sum + Math.round(item.quantity * item.price), 0);
+          await tx.materialCertificate.create({ data: {
+            number: d.materialNumber,
+            statementId: target,
+            totalCents,
+            items: { create: d.materials.map(item => ({ name: item.name, unit: item.unit, quantity: item.quantity, unitPriceCents: item.price, totalCents: Math.round(item.quantity * item.price) })) },
+          } });
         }
       }
       if (d.action === "material") {
@@ -318,26 +342,6 @@ export async function POST(request: Request) {
           target = created.id;
         }
       }
-      if (d.action === "memo") {
-        requireFiles();
-        const c = await contract(d.contractId);
-        const current =
-          financials(c).value + (d.kind === "INCREASE" ? d.value : -d.value);
-        if (current <= 0 || c.statements.some((s) => s.grossCents > current))
-          throw new Error(
-            "قيمة العقد بعد المذكرة يجب ألا تقل عن أي مستخلص مسجل.",
-          );
-        target = (
-          await tx.incomingMemo.create({
-            data: {
-              contractId: c.id,
-              kind: d.kind,
-              amountCents: d.value,
-              reason: d.reason,
-            },
-          })
-        ).id;
-      }
       if (d.action === "stage") {
         const s = await tx.incomingStatement.findUnique({
           where: { id: d.id },
@@ -392,7 +396,10 @@ export async function POST(request: Request) {
           }
         }
         if (d.stage === "PAID") {
+          if (s.kind === "FINAL" && s.grossCents !== financials(c).value)
+            throw new Error("لا يمكن صرف الختامي قبل إقفال قيمته على كامل قيمة العقد النهائية.");
           requireFiles();
+          entityType = "payment-proof";
           if (
             !d.paidAt ||
             !d.paymentMethod ||

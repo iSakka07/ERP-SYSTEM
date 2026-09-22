@@ -3,14 +3,16 @@ import { ERPSelect } from "@/components/erp-select";
 import { CurrencyInput } from "@/components/currency-input";
 import { DocumentLayout, type Movement } from "@/components/document-layout";
 import { UploadBox } from "@/components/upload-box";
+import { filteredIncomingReport, singleIncomingReport } from "@/components/incoming-pdf-report";
+import { createPdfReportUrl } from "@/components/pdf-report-document";
 
-import { Fragment, FormEvent, useState } from "react";
+import { Fragment, FormEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { confirmSimilarFinancialOperation, financialHeaders, financialResult } from "@/lib/financial-submit";
 import {
   ArrowRight,
   Banknote,
-  CircleDollarSign,
   ClipboardList,
   FileDown,
   FilePenLine,
@@ -86,7 +88,7 @@ export type Attachment = {
   size: number;
 };
 export type Editor = {
-  action: "contract" | "statement" | "material" | "memo" | "stage";
+  action: "contract" | "statement" | "material" | "stage";
   contract?: Contract;
   statement?: Statement;
   material?: Material;
@@ -132,6 +134,13 @@ export function IncomingCenter({
   const [editor, setEditor] = useState<Editor | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [pdfChoiceOpen, setPdfChoiceOpen] = useState(false);
+  const [pdfWorking, setPdfWorking] = useState(false);
+  useEffect(() => {
+    const showChoice = () => setPdfChoiceOpen(true);
+    window.addEventListener("incoming-pdf-request", showChoice);
+    return () => window.removeEventListener("incoming-pdf-request", showChoice);
+  }, []);
   const filtered = contracts.filter(
     (c) =>
       (!query || `${c.name} ${c.number} ${c.project.name}`.includes(query)) &&
@@ -144,7 +153,7 @@ export function IncomingCenter({
       const f = financials(c);
       return {
         value: n.value + f.value,
-        entitlement: n.entitlement + f.entitlement,
+        entitlement: n.entitlement + f.gross,
         materials: n.materials + f.materials,
         net: n.net + f.net,
         remaining: n.remaining + f.remaining,
@@ -155,6 +164,34 @@ export function IncomingCenter({
   const unique = (items: { id: string; name: string }[]) => [
     ...new Map(items.map((i) => [i.id, i])).values(),
   ];
+  async function exportIncomingPdf(single: boolean) {
+    const selected = filtered.find((contract) => contract.id === expanded);
+    if (single && !selected) return;
+    const filterLabels = [
+      query && `بحث: ${query}`,
+      project && `المشروع: ${projects.find((item) => item.id === project)?.name || project}`,
+      owner && `الجهة المالكة: ${projects.find((item) => item.company.id === owner)?.company.name || owner}`,
+      stage && `المرحلة: ${incomingStages.find(([id]) => id === stage)?.[1] || stage}`,
+    ].filter(Boolean).join(" · ");
+    const report = single && selected ? singleIncomingReport(selected) : filteredIncomingReport(filtered, filterLabels || "كل العقود");
+    const preview = window.open("", "_blank");
+    if (!preview) { window.alert("اسمح بالنوافذ المنبثقة لفتح معاينة PDF."); return; }
+    preview.opener = null;
+    preview.document.write("<title>ASGC ERP · جاري تجهيز التقرير</title><body style='font-family:Arial,sans-serif;padding:32px;color:#10192d'>جاري تجهيز تقرير PDF…</body>");
+    preview.document.close();
+    setPdfChoiceOpen(false);
+    setPdfWorking(true);
+    try {
+      const userName = document.querySelector("[data-export-user] p:first-child")?.textContent?.trim();
+      const url = await createPdfReportUrl({ ...report, userName });
+      preview.location.href = url;
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      console.error(error);
+      preview.close();
+      window.alert("تعذّر تجهيز ملف PDF. حاول مرة أخرى.");
+    } finally { setPdfWorking(false); }
+  }
   const open = (e: Editor) => {
     setMessage("");
     const returnParams = new URLSearchParams();
@@ -192,7 +229,7 @@ export function IncomingCenter({
       form.set("payload", JSON.stringify(payload));
       files.forEach((f) => form.append("files", f));
       estimateFiles.forEach((f) => form.append("estimateFiles", f));
-      const action = "action" in payload ? String(payload.action) : "unknown", record = payload as { id?: string; contractId?: string; statementId?: string }, financial = ["statement", "material", "memo", "stage"].includes(action), scope = `incoming-${action}-${record.id || record.statementId || record.contractId || "new"}`;
+      const action = "action" in payload ? String(payload.action) : "unknown", record = payload as { id?: string; contractId?: string; statementId?: string }, financial = ["statement", "material", "stage"].includes(action), scope = `incoming-${action}-${record.id || record.statementId || record.contractId || "new"}`;
       const send = async (): Promise<boolean> => { try { const response = await fetch("/api/incoming", { method: "POST", body: form, ...(financial ? { headers: financialHeaders(scope) } : {}) }); if (financial) return (await financialResult(response, scope)).replayed; const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر الحفظ."); return false; } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("توجد عملية وارد مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return send(); } throw reason; } };
       const replayed = await send();
       setMessage(replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم الحفظ بنجاح.");
@@ -216,6 +253,7 @@ export function IncomingCenter({
         "الخامات المسجلة",
         "الوارد",
         "المتبقي",
+        "نسبة الصرف",
       ],
       ...filtered.map((c) => {
         const f = financials(c);
@@ -229,6 +267,7 @@ export function IncomingCenter({
           f.materials / 100,
           f.net / 100,
           f.remaining / 100,
+          f.value ? `${Math.min(100, Math.max(0, (f.gross / f.value) * 100)).toFixed(2)}%` : "0%",
         ];
       }),
     ];
@@ -258,6 +297,17 @@ export function IncomingCenter({
   );
   return (
     <div className="space-y-5">
+      {pdfChoiceOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPdfChoiceOpen(false); }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="incoming-pdf-title" className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 text-right shadow-2xl" dir="rtl">
+          <h2 id="incoming-pdf-title" className="text-base font-extrabold text-slate-950">تصدير PDF للعقود والوارد</h2>
+          <p className="mt-2 text-xs text-slate-500">اختر نطاق التقرير. سيحتوي على البيانات فقط دون المرفقات.</p>
+          <div className="mt-5 grid gap-2">
+            <button type="button" disabled={pdfWorking} onClick={() => exportIncomingPdf(false)} className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-right text-sm font-bold text-blue-800 hover:bg-blue-100">كل العقود المطابقة للفلاتر ({filtered.length})</button>
+            {filtered.some((contract) => contract.id === expanded) && <button type="button" disabled={pdfWorking} onClick={() => exportIncomingPdf(true)} className="rounded-lg border border-slate-200 px-4 py-3 text-right text-sm font-bold text-slate-800 hover:bg-slate-50">العقد المفتوح: {filtered.find((contract) => contract.id === expanded)?.name}</button>}
+          </div>
+          <button type="button" onClick={() => setPdfChoiceOpen(false)} className="mt-4 text-xs font-semibold text-slate-500 hover:text-slate-800">إلغاء</button>
+        </div>
+      </div>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold text-blue-700">Incoming Module</p>
@@ -314,7 +364,7 @@ export function IncomingCenter({
         <>
           <div className="incoming-kpi-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <KpiCard label="القيمة التعاقدية" value={money(totals.value)} icon={Landmark} tone="blue" />
-            <KpiCard label="المستحقات بعد الخامات" value={money(totals.entitlement)} icon={ClipboardList} tone="violet" />
+            <KpiCard label="تم الصرف" value={money(totals.entitlement)} icon={ClipboardList} tone="violet" />
             <KpiCard label="الخامات" value={money(totals.materials)} icon={PackageOpen} tone="amber" />
             <KpiCard label="الوارد" value={money(totals.net)} icon={Banknote} tone="emerald" />
             <KpiCard label="المتبقي من القيمة التعاقدية" value={money(totals.remaining)} icon={Scale} tone="rose" />
@@ -369,6 +419,7 @@ export function IncomingCenter({
                       "إجمالي الوارد",
                       "الخامات",
                       "المتبقي",
+                      "نسبة الصرف",
                       "الإجراءات",
                     ].map((h) => (
                       <th key={h}>
@@ -381,7 +432,7 @@ export function IncomingCenter({
                   {!filtered.length && (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={11}
                         className="py-16 text-center text-slate-400"
                       >
                         لا توجد عقود. أضف أول عقد لبدء متابعة الوارد.
@@ -409,7 +460,7 @@ export function IncomingCenter({
                             {c.project.company.name}
                           </td>
                           <td data-label="قيمة العقد" className="text-center">
-                            <MoneyValue>{money(f.value)}</MoneyValue>
+                            <FloatingPanel width={360} trigger={<button type="button" className="inline-flex items-center gap-1 font-bold text-blue-700 underline decoration-solid underline-offset-4 focus:outline-none focus:ring-2 focus:ring-blue-300" aria-label="عرض تفاصيل قيمة العقد"><MoneyValue>{money(f.value)}</MoneyValue>{f.value !== c.originalCents && <span aria-label={f.value > c.originalCents ? "العقد زاد بمذكرة رفع" : "العقد انخفض بمذكرة خفض"} title={f.value > c.originalCents ? "مذكرة رفع" : "مذكرة خفض"} className={`text-[10px] ${f.value > c.originalCents ? "text-emerald-600" : "text-rose-600"}`}>{f.value > c.originalCents ? "▲" : "▼"}</span>}</button>}><ContractValueBreakdown contract={c} currentValue={f.value} /></FloatingPanel>
                           </td>
                           <td data-label="موقف المستخلصات">
                             {c.statements.at(-1) ? <button
@@ -431,9 +482,13 @@ export function IncomingCenter({
                           <td data-label="المتبقي" className="text-center">
                             <MoneyValue>{money(f.remaining)}</MoneyValue>
                           </td>
+                          <td data-label="نسبة الصرف" className="min-w-[150px] text-center">
+                            <PaymentProgress paid={f.gross} total={f.value} />
+                          </td>
                           <td data-label="الإجراءات">
                             <div className="flex items-center justify-center gap-1">
                               <IconAction label="فتح إدارة الجواري" icon={ListChecks} onClick={() => setExpanded(show ? "" : c.id)} />
+                              {canManage && <IconAction label="تعديل العقد" icon={FilePenLine} onClick={() => open({ action: "contract", contract: c, edit: true })} />}
                               {fileLinks(c.id)}
                               {canManage && <IconAction label={`مسح ${c.name}`} icon={Trash2} tone="danger" disabled={busy} onClick={() => removeContract(c)} />}
                             </div>
@@ -442,24 +497,27 @@ export function IncomingCenter({
                         {show && (
                           <tr>
                             <td
-                              colSpan={10}
+                              colSpan={11}
                               data-label="تفاصيل العقد"
                               className="erp-table-details"
                             >
                               <div className="space-y-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
                                   <p className="text-xs text-slate-500">المهندس المشرف: <b className="text-slate-800">{[...new Set(c.project.supervisors?.map((x) => x.employee.name))].join("، ") || "غير محدد"}</b></p>
-                                  {canManage && <div className="flex gap-1"><IconAction label="تعديل العقد" icon={FilePenLine} onClick={() => open({ action: "contract", contract: c, edit: true })} /><IconAction label="مذكرة رفع أو خفض" icon={CircleDollarSign} onClick={() => open({ action: "memo", contract: c })} /></div>}
                                 </div>
-                                <div className="flex gap-3 overflow-x-auto pb-2">
+                                <div className="flex items-start gap-3 overflow-x-auto pb-2">
                                   {c.statements.map((s) => (
                                     <StatementCard
                                       key={s.id}
                                       statement={s}
                                       locked={c.statements.some((x) => x.sequence >= s.sequence && x.stage === "PAID")}
                                       canManage={canManage}
-                                      statementFiles={attachments.filter((f) => f.entityId === s.id)}
+                                      statementFiles={attachments.filter((f) => f.entityId === s.id && f.entityType === "statement")}
+                                      paymentProofFiles={attachments.filter((f) => f.entityId === s.id && f.entityType === "payment-proof")}
                                       materialFiles={attachments}
+                                      memoFiles={attachments.filter((file) => c.memos.some((memo) => memo.id === file.entityId))}
+                                      memos={c.memos}
+                                      originalCents={c.originalCents}
                                       onStage={() => open({ action: "stage", contract: c, statement: s })}
                                       onEdit={() => open({ action: "statement", contract: c, statement: s, edit: true })}
                                     />
@@ -489,27 +547,6 @@ export function IncomingCenter({
                                   <KpiCard label="نسبة الصرف من العقد" value={`${f.pct.toFixed(1)}%`} icon={Percent} tone="blue" />
                                   <KpiCard label="نسبة الخامات" value={`${(f.value ? (f.materials / f.value) * 100 : 0).toFixed(1)}%`} icon={Scale} tone="rose" />
                                 </div>
-                                {c.memos.length > 0 && (
-                                  <details>
-                                    <summary className="cursor-pointer font-bold text-slate-600">
-                                      مذكرات الرفع والخفض ({c.memos.length})
-                                    </summary>
-                                    <div className="mt-3 space-y-2">
-                                      {c.memos.map((m) => (
-                                        <p
-                                          key={m.id}
-                                          className="rounded border border-slate-200 bg-white p-3"
-                                        >
-                                          {m.kind === "INCREASE"
-                                            ? "رفع"
-                                            : "خفض"}{" "}
-                                          · {money(m.amountCents)} · {m.reason}{" "}
-                                          {fileLinks(m.id)}
-                                        </p>
-                                      ))}
-                                    </div>
-                                  </details>
-                                )}
                                 {c.notes && (
                                   <p className="text-slate-500">{c.notes}</p>
                                 )}
@@ -530,6 +567,7 @@ export function IncomingCenter({
                     <td data-label="إجمالي الوارد" className="text-center"><MoneyValue>{money(totals.net)}</MoneyValue></td>
                     <td data-label="إجمالي الخامات" className="text-center"><MoneyValue>{money(totals.materials)}</MoneyValue></td>
                     <td data-label="إجمالي المتبقي" className="text-center"><MoneyValue>{money(totals.remaining)}</MoneyValue></td>
+                    <td data-label="إجمالي نسبة الصرف" className="text-center"><PaymentProgress paid={totals.entitlement} total={totals.value} /></td>
                     <td></td>
                   </tr>
                 </tfoot>
@@ -541,7 +579,6 @@ export function IncomingCenter({
     </div>
   );
 }
-
 const stageStyles: Record<string, string> = {
   COMPANY: "border-slate-300 bg-slate-50 text-slate-700",
   BATTALION: "border-sky-200 bg-sky-50 text-sky-800",
@@ -554,26 +591,87 @@ const stageStyles: Record<string, string> = {
   PAID: "border-emerald-200 bg-emerald-50 text-emerald-800",
 };
 function stageClass(stage: string) { return stageStyles[stage] || stageStyles.COMPANY; }
+function PaymentProgress({ paid, total }: { paid: number; total: number }) {
+  const percent = total > 0 ? Math.min(100, Math.max(0, (paid / total) * 100)) : 0;
+  const tone = percent >= 100 ? "bg-emerald-500" : percent >= 60 ? "bg-amber-400" : "bg-rose-400";
+  return <div className="mx-auto w-full max-w-[150px] space-y-1" title={`تم صرف ${percent.toFixed(2)}% من قيمة العقد`}><div className="flex items-center justify-center gap-1.5"><strong className="text-xs text-slate-700">{percent.toFixed(2)}%</strong><span className="text-[10px] text-slate-400">من العقد</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><span className={`block h-full rounded-full transition-all ${tone}`} style={{ width: `${percent}%` }} /></div></div>;
+}
+function ContractValueBreakdown({ contract, currentValue }: { contract: Contract; currentValue: number }) {
+  const estimate = contract.estimateCents ?? null;
+  const original = contract.originalCents;
+  const { increase, decrease, cancelled } = adjustmentTotals(contract.memos);
+  const change = increase - decrease - cancelled;
+  const estimatePercent = estimate && estimate > 0 ? ((original - estimate) / estimate) * 100 : null;
+  const certificates = contract.statements.flatMap((statement) => statement.materials.map((certificate) => ({ ...certificate, statement })));
+  const reportMoney = (cents: number) => `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(cents / 100)} ج`;
+  return <div dir="rtl" className="text-[10px] text-slate-700">
+    <header className="flex items-start gap-2 border-b border-slate-200 px-3 py-2"><ClipboardList className="mt-0.5 size-3.5 text-blue-700" /><div><h3 className="text-[11px] font-extrabold text-slate-950">تفاصيل قيمة العقد</h3><p dir="ltr" className="text-right font-bold text-slate-500">{contract.number}</p></div></header>
+    <div className="space-y-2 p-2.5">
+      <section className="rounded-lg border border-rose-200 border-r-[3px] border-r-rose-500 bg-rose-50/50 p-2"><div className="flex items-center justify-between gap-2"><span>قيمة المقايسة المرتبطة{contract.estimateReference ? ` · ${contract.estimateReference}` : ""}</span><strong dir="ltr" className="text-[11px] text-slate-900">{estimate == null ? "غير مسجلة" : reportMoney(estimate)}</strong></div><div className="mt-1 flex items-center justify-between gap-2 text-rose-700"><span>نسبة تجاوز العقد للمقايسة</span><strong dir="ltr">{estimatePercent == null ? "—" : `${estimatePercent.toFixed(1)}%`}</strong></div></section>
+      <section className="rounded-lg border border-slate-200 bg-slate-50 p-2"><h4 className="mb-1.5 flex items-center gap-1 font-extrabold text-slate-900"><Scale className="size-3.5 text-blue-700" />مذكرات خفض/رفع</h4><div className="grid grid-cols-2 gap-1.5"><div className="rounded border border-slate-200 bg-white p-1.5"><p className="text-slate-500">قيمة العقد</p><strong dir="ltr" className="block text-right text-blue-700">{reportMoney(original)}</strong></div><div className="rounded border border-slate-200 bg-white p-1.5"><p className="text-slate-500">القيمة الحالية</p><strong dir="ltr" className="block text-right text-blue-700">{reportMoney(currentValue)}</strong></div></div><div className="mt-1.5 rounded border border-slate-200 bg-white p-1.5"><p className={`flex items-center justify-between font-bold ${change < 0 ? "text-rose-700" : "text-emerald-700"}`}><span>صافي {change < 0 ? "النقصان" : "الزيادة"}</span><span dir="ltr">{reportMoney(Math.abs(change))}</span></p><p className="mt-1 text-rose-700">خفض وإلغاء: {reportMoney(decrease + cancelled)}</p><p className="text-emerald-700">رفع: {reportMoney(increase)}</p></div></section>
+      <section className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-2">
+        <h4 className="mb-1.5 flex items-center gap-1 font-extrabold text-emerald-950"><PackageOpen className="size-3.5" />شهادات الخامات المرتبطة <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] text-emerald-800">{certificates.length} شهادة</span></h4>
+        {certificates.length ? <div className="space-y-1.5">{certificates.map((certificate) => <div key={certificate.id} className="rounded border border-emerald-200 bg-white p-1.5">
+          <div className="flex items-start justify-between gap-2 border-b border-emerald-100 pb-1">
+            <div><strong className="block text-slate-900">شهادة {certificate.number}</strong><span className="text-slate-500">على {statementLabel(certificate.statement)}</span></div>
+            <strong dir="ltr" className="shrink-0 text-emerald-700">{reportMoney(certificate.totalCents)}</strong>
+          </div>
+          <div className="mt-1 space-y-1">{certificate.items.map((item, index) => <div key={`${item.name}-${index}`} className="flex items-start justify-between gap-2"><span><strong className="text-slate-700">{item.name}</strong><span className="block text-slate-500">الكمية: {item.quantity} {item.unit}</span></span><span dir="ltr" className="shrink-0 text-emerald-700">{reportMoney(item.totalCents)}</span></div>)}</div>
+        </div>)}</div> : <p className="text-slate-500">لا توجد شهادات خامات.</p>}
+      </section>
+    </div>
+  </div>;
+}
 function stageLabel(stage: string) { return incomingStages.find(([id]) => id === stage)?.[1] || stage; }
+function adjustmentTotals(memos: Contract["memos"]) {
+  return memos.reduce((totals, memo) => {
+    try {
+      const parts = JSON.parse(memo.reason) as { type?: string; increase?: number; decrease?: number; cancelled?: number };
+      if (parts.type === "FINAL_ADJUSTMENT") {
+        totals.increase += parts.increase || 0;
+        totals.decrease += parts.decrease || 0;
+        totals.cancelled += parts.cancelled || 0;
+        return totals;
+      }
+    } catch { /* Older memos store plain text. */ }
+    totals[memo.kind === "INCREASE" ? "increase" : "decrease"] += memo.amountCents;
+    return totals;
+  }, { increase: 0, decrease: 0, cancelled: 0 });
+}
 
-function StatementCard({ statement, locked, canManage, statementFiles, materialFiles, onStage, onEdit }: { statement: Statement; locked: boolean; canManage: boolean; statementFiles: Attachment[]; materialFiles: Attachment[]; onStage: () => void; onEdit: () => void }) {
+function StatementCard({ statement, locked, canManage, statementFiles, paymentProofFiles, materialFiles, memoFiles, memos, originalCents, onStage, onEdit }: { statement: Statement; locked: boolean; canManage: boolean; statementFiles: Attachment[]; paymentProofFiles: Attachment[]; materialFiles: Attachment[]; memoFiles: Attachment[]; memos: Contract["memos"]; originalCents: number; onStage: () => void; onEdit: () => void }) {
   const [open, setOpen] = useState(false);
   const materialTotal = statement.materials.reduce((sum, material) => sum + material.totalCents, 0);
-  return <article className={`group relative min-w-[220px] max-w-[260px] rounded-xl border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${stageClass(statement.stage)}`}>
+  const adjustment = adjustmentTotals(memos);
+  const netAdjustment = adjustment.increase - adjustment.decrease - adjustment.cancelled;
+  const adjustmentItems = [
+    { label: "رفع", amount: adjustment.increase, tone: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+    { label: "خفض", amount: adjustment.decrease, tone: "border-rose-200 bg-rose-50 text-rose-700" },
+    { label: "ملغى", amount: adjustment.cancelled, tone: "border-slate-200 bg-slate-100 text-slate-700" },
+  ];
+  return <article className={`relative min-w-[220px] max-w-[260px] rounded-xl border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${stageClass(statement.stage)}`}>
     <button type="button" className="w-full text-right" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       <div className="flex items-start justify-between gap-3"><strong className="text-sm text-slate-950">{statementLabel(statement)}</strong><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${stageClass(statement.stage)}`}>{stageLabel(statement.stage)}</span></div>
       <MoneyValue className="mt-3 w-full text-center text-base">{money(statement.grossCents)}</MoneyValue>
     </button>
-    <div className={`${open ? "block" : "hidden group-hover:block group-focus-within:block"} mt-3 rounded-xl border border-slate-200 bg-white p-3 text-slate-700 shadow-lg`}>
+    {open && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-slate-700 shadow-lg">
       <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">الخامات</span><MoneyValue>{money(materialTotal)}</MoneyValue></div>
-      {statement.materials.length ? <div className="mt-2 space-y-2">{statement.materials.map(material => <div key={material.id} className="rounded-lg bg-amber-50 p-2"><p className="text-[10px] font-bold text-amber-900">تفاصيل الشهادة</p>{material.items.map((item, index) => <p key={index} className="mt-1 text-[10px] text-slate-600">{item.name} · {item.quantity} {item.unit} × {money(item.unitPriceCents)} = {money(item.totalCents)}</p>)}<Files compact files={materialFiles.filter(file => file.entityId === material.id)} /></div>)}</div> : <p className="mt-2 text-[10px] text-slate-400">لا توجد شهادة خامات.</p>}
+      {statement.materials.length ? <div className="mt-2 space-y-2">{statement.materials.map(material => <div key={material.id} className="rounded-lg bg-amber-50 p-2"><p className="text-[10px] font-bold text-amber-900">تفاصيل الشهادة</p>{material.items.map((item, index) => <p key={index} className="mt-1 text-[10px] text-slate-600">{item.name} · {item.quantity} {item.unit} × {money(item.unitPriceCents)} = {money(item.totalCents)}</p>)}<div className="mt-2"><AttachmentLinks label="مرفق شهادة الخامات" files={materialFiles.filter(file => file.entityId === material.id)} /></div></div>)}</div> : <p className="mt-2 text-[10px] text-slate-400">لا توجد شهادة خامات.</p>}
+      {statement.kind === "FINAL" && memos.length > 0 && <section className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
+        <div className="flex items-center justify-between gap-2 text-xs font-bold text-slate-800"><span>مذكرة خفض/رفع</span><span className="flex items-center gap-1"><Scale className="size-3.5 text-blue-700" />{memoFiles.length > 0 && <Files compact files={memoFiles} />}</span></div>
+        <div className="mt-2 grid grid-cols-3 gap-1">
+          {adjustmentItems.map(item => <FloatingPanel key={item.label} fullWidth width={210} trigger={<button type="button" className={`w-full rounded-md border px-1 py-1.5 text-center text-[10px] font-bold ${item.tone}`} aria-label={`${item.label}: ${money(item.amount)}`}><span className="block">{item.label}</span><span dir="ltr" className="block">{originalCents > 0 ? (item.amount / originalCents * 100).toFixed(2) : "0.00"}%</span></button>}><div className="p-3 text-xs"><span className="font-bold">{item.label}</span><MoneyValue className="mt-1 block">{money(item.amount)}</MoneyValue></div></FloatingPanel>)}
+        </div>
+        <p className={`mt-2 text-[10px] font-bold ${netAdjustment >= 0 ? "text-emerald-700" : "text-rose-700"}`}>صافي {netAdjustment >= 0 ? "الزيادة" : "النقصان"}: {money(Math.abs(netAdjustment))}</p>
+      </section>}
       {statement.paidAt && <div className="mt-3 border-t border-slate-200 pt-3 text-[10px]"><b>{statement.paymentMethod === "CHEQUE" ? "شيك" : "تحويل"}</b> · {statement.paidAt.slice(0, 10)}</div>}
-      <div className="mt-3 flex items-center gap-1 border-t border-slate-100 pt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-slate-100 pt-3">
         {canManage && <IconAction label="تغيير المرحلة" icon={RefreshCcw} onClick={onStage} />}
         {canManage && !locked && <IconAction label={`تعديل ${statementLabel(statement)}`} icon={Pencil} onClick={onEdit} />}
-        <Files compact files={statementFiles} />
+        <AttachmentLinks label="مرفق المستخلص" files={statementFiles} />
+        <AttachmentLinks label="مرفق إثبات الصرف" files={paymentProofFiles} />
       </div>
-    </div>
+    </div>}
   </article>;
 }
 
@@ -617,6 +715,13 @@ export function IncomingEditor({
         ][0]
       : "COMPANY",
   );
+  const [statementKind, setStatementKind] = useState(s?.kind || "CURRENT");
+  const [hasFinalAdjustment, setHasFinalAdjustment] = useState(false);
+  const [adjustmentIncrease, setAdjustmentIncrease] = useState("");
+  const [adjustmentDecrease, setAdjustmentDecrease] = useState("");
+  const [adjustmentCancelled, setAdjustmentCancelled] = useState("");
+  const [hasMaterials, setHasMaterials] = useState(false);
+  const [materialNumber, setMaterialNumber] = useState("");
   const [value, setValue] = useState(
     String(
       e.action === "contract"
@@ -646,11 +751,9 @@ export function IncomingEditor({
       case "statement":
         return e.edit && s
           ? `تعديل ${statementLabel(s)}`
-          : `إضافة جاري ${(c?.statements.at(-1)?.sequence ?? 0) + 1}`;
+          : `إضافة ${statementKind === "FINAL" ? "ختامي" : "جاري"} ${(c?.statements.at(-1)?.sequence ?? 0) + 1}`;
       case "material":
         return e.edit ? "تعديل شهادة الخامات" : "شهادة خامات جديدة";
-      case "memo":
-        return "إضافة مذكرة رفع / خفض";
       case "stage":
         return `تغيير مرحلة ${s ? statementLabel(s) : ""}`;
     }
@@ -673,16 +776,27 @@ export function IncomingEditor({
     .filter((x) => x.sequence < (s?.sequence ?? Infinity))
     .at(-1);
   const beforePaid = c ? financials(c) : null;
+  const finalValueCents = (beforePaid?.value ?? 0) + (hasFinalAdjustment
+    ? Math.round(Number(adjustmentIncrease || 0) * 100) - Math.round(Number(adjustmentDecrease || 0) * 100) - Math.round(Number(adjustmentCancelled || 0) * 100)
+    : 0);
+  const statementValue = statementKind === "FINAL" ? String(finalValueCents / 100) : value;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.currentTarget));
+    const finalAdjustment = e.action === "statement" && statementKind === "FINAL" && hasFinalAdjustment
+      ? { increase: adjustmentIncrease, decrease: adjustmentDecrease, cancelled: adjustmentCancelled }
+      : undefined;
+    const statementMaterials = e.action === "statement" && hasMaterials ? items.filter(item => item.name && item.quantity && item.price).map(item => ({ name: item.name, unit: item.unit, quantity: item.quantity, price: item.price })) : undefined;
     const payload = {
       ...data,
       action: e.action,
+      ...(e.action === "statement" ? { value: statementValue } : {}),
       ...(e.edit ? { id: m?.id || s?.id || c?.id } : {}),
       ...(e.action === "stage" ? { id: s?.id, stage } : {}),
       ...(c ? { contractId: c.id } : {}),
       ...(e.action === "material" ? { statementId: s?.id, items } : {}),
+      ...(finalAdjustment ? { finalAdjustment } : {}),
+      ...(statementMaterials?.length ? { materialNumber, materials: statementMaterials } : {}),
     };
     await onSave(payload, files, estimateFiles);
   }
@@ -691,17 +805,17 @@ export function IncomingEditor({
       rows.map((r, i) => (i === index ? { ...r, ...patch } : r)),
     );
   return (
-    <DocumentLayout movements={movements.filter(x => x.entityId === (m?.id || s?.id || (e.edit ? c?.id : undefined)))}>
+    <DocumentLayout movementPosition="bottom" movements={movements.filter(x => x.entityId === (m?.id || s?.id || (e.edit ? c?.id : undefined)))}>
     <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
       <div className="mb-5 flex items-center gap-3">
-        <button disabled={busy} onClick={onCancel} className={secondary}>
+        <button disabled={busy} onClick={onCancel} className="erp-back-tab">
           <ArrowRight className="size-4" />
           رجوع
         </button>
         <h2 className="text-lg font-extrabold">{title}</h2>
       </div>
       <form onSubmit={submit} className="space-y-5">
-        {(e.action === "statement" || e.action === "material") && (
+        {((e.action === "statement" && statementKind !== "FINAL") || e.action === "material") && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-7 text-amber-900">
             {grossNotice}
           </p>
@@ -794,21 +908,31 @@ export function IncomingEditor({
                 <Label>نوع المستخلص</Label>
                 <ERPSelect
                   name="kind"
-                  defaultValue={s?.kind || "CURRENT"}
+                  value={statementKind}
+                  onValueChange={setStatementKind}
                   className={inputClass}
                 >
                   <option value="CURRENT">جاري</option>
                   <option value="FINAL">ختامي</option>
                 </ERPSelect>
               </label>
-              <Field
+              {statementKind === "FINAL" ? <label>
+                <Label>إجمالي الختامي — قيمة العقد النهائية (ج.م)</Label>
+                <div className="flex h-10 items-center rounded-lg border border-blue-200 bg-blue-50 px-3"><MoneyValue>{money(finalValueCents)}</MoneyValue></div>
+                <input type="hidden" name="value" value={statementValue} />
+              </label> : <Field
                 label="إجمالي المستخلص التراكمي قبل خصم الخامات (ج.م)"
                 name="value"
                 type="number"
                 value={value}
                 onChange={setValue}
-              />
+              />}
             </div>
+            {statementKind === "FINAL" && <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold text-slate-900">مذكرة خفض/رفع</h3><p className="mt-1 text-xs text-slate-500">هل يوجد مذكرة خفض/رفع؟</p></div><div className="flex gap-2"><button type="button" onClick={() => setHasFinalAdjustment(true)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${hasFinalAdjustment ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white text-slate-700"}`}>نعم</button><button type="button" onClick={() => setHasFinalAdjustment(false)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${!hasFinalAdjustment ? "border-slate-500 bg-slate-200 text-slate-800" : "border-slate-300 bg-white text-slate-700"}`}>لا</button></div></div>
+              {hasFinalAdjustment && <div className="grid gap-3 md:grid-cols-3"><Field label="بنود رفع (زيادة العقد)" name="adjustmentIncrease" type="number" value={adjustmentIncrease} onChange={setAdjustmentIncrease} required={false} /><Field label="بنود خفض" name="adjustmentDecrease" type="number" value={adjustmentDecrease} onChange={setAdjustmentDecrease} required={false} /><Field label="بنود ملغاة" name="adjustmentCancelled" type="number" value={adjustmentCancelled} onChange={setAdjustmentCancelled} required={false} /></div>}
+            </section>}
+            {statementKind === "FINAL" && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-900">الختامي يقفل قيمة العقد تلقائيًا بعد احتساب مذكرة الخفض/الرفع.</p>}
             <div className="grid gap-3 rounded-lg bg-blue-50 p-4 text-xs md:grid-cols-3">
               <p>
                 التراكمي السابق: <b>{money(previous?.grossCents ?? 0)}</b>
@@ -817,7 +941,7 @@ export function IncomingEditor({
                 أعمال الفترة:{" "}
                 <b>
                   {money(
-                    Math.round(Number(value || 0) * 100) -
+                    Math.round(Number(statementValue || 0) * 100) -
                       (previous?.grossCents ?? 0),
                   )}
                 </b>
@@ -826,11 +950,12 @@ export function IncomingEditor({
                 آخر إجمالي مصروف: <b>{money(beforePaid?.gross ?? 0)}</b>
               </p>
             </div>
-            <div className="rounded-lg border-2 border-dashed border-slate-200 p-4 text-xs text-slate-500">
-              إجمالي المستخلص يُدخل قبل خصم الخامات. الخامات مرتبطة بالمستخلص وتدار من هذا القسم بعد حفظ الجاري.
-            </div>
-            {e.edit && s && onOpen && <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold text-slate-900">شهادات الخامات</h3><p className="mt-1 text-xs text-slate-500">الإضافة والتعديل متاحان من داخل تعديل المستخلص فقط.</p></div><button type="button" className={secondary} onClick={() => onOpen({ action: "material", contract: c, statement: s })}><Plus className="size-3" />إضافة شهادة خامات</button></div>
+            <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold text-slate-900">هل يوجد على المستخلص خامات؟</h3><p className="mt-1 text-xs text-slate-500">تُخصم تلقائيًا من صافي المستخلص وتظهر في إجماليات العقد.</p></div><div className="flex gap-2"><button type="button" onClick={() => setHasMaterials(true)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${hasMaterials ? "border-amber-600 bg-amber-600 text-white" : "border-slate-300 bg-white text-slate-700"}`}>نعم</button><button type="button" onClick={() => setHasMaterials(false)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${!hasMaterials ? "border-slate-500 bg-slate-200 text-slate-800" : "border-slate-300 bg-white text-slate-700"}`}>لا</button></div></div>
+              {hasMaterials && <div className="space-y-3 rounded-lg border border-amber-200 bg-white p-3"><Field label="رقم شهادة الخامات" name="materialNumber" value={materialNumber} onChange={setMaterialNumber} /><div className="grid gap-2"><div className="grid grid-cols-[1.5fr_.7fr_.8fr_.8fr] gap-2 text-[10px] font-bold text-slate-500"><span>البند</span><span>الوحدة</span><span>الكمية</span><span>السعر</span></div>{items.map((item, index) => <div key={index} className="grid grid-cols-[1.5fr_.7fr_.8fr_.8fr] gap-2"><input value={item.name} onChange={ev => patchItem(index, { name: ev.target.value })} placeholder="اسم البند" /><input value={item.unit} onChange={ev => patchItem(index, { unit: ev.target.value })} placeholder="طن" /><input value={item.quantity} onChange={ev => patchItem(index, { quantity: ev.target.value })} type="number" min="0" step="any" /><input value={item.price} onChange={ev => patchItem(index, { price: ev.target.value })} type="number" min="0" step="any" /></div>)}</div><button type="button" className={secondary} onClick={() => setItems(rows => [...rows, { name: "", unit: "طن", quantity: "", price: "" }])}><Plus className="size-3" />إضافة بند خامات</button><UploadBox label="مرفق شهادة الخامات" required name="materialFiles" hint="PDF / Excel / صورة · حتى 5 ملفات" onFilesChange={setFiles} /></div>}
+            </section>
+            {e.edit && s && onOpen && <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold text-slate-900">شهادات الخامات</h3><p className="mt-1 text-xs text-slate-500">تظهر هنا الشهادات المرتبطة بهذا المستخلص.</p></div></div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">{s.materials.length ? s.materials.map(material => <div key={material.id} className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white p-3"><div><p className="text-xs font-bold text-slate-800">شهادة خامات</p><MoneyValue className="mt-1">{money(material.totalCents)}</MoneyValue></div><IconAction label="تعديل شهادة الخامات" icon={Pencil} onClick={() => onOpen({ action: "material", contract: c, statement: s, material, edit: true })} /></div>) : <p className="text-xs text-slate-500">لم تُضف شهادة خامات لهذا المستخلص.</p>}</div>
             </section>}
           </>
@@ -1009,19 +1134,6 @@ export function IncomingEditor({
             </div>
           </>
         )}
-        {e.action === "memo" && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <label>
-              <Label>نوع المذكرة</Label>
-              <ERPSelect name="kind" className={inputClass}>
-                <option value="INCREASE">رفع</option>
-                <option value="DECREASE">خفض</option>
-              </ERPSelect>
-            </label>
-            <Field label="قيمة المذكرة (ج.م)" name="value" type="number" />
-            <Field label="سبب المذكرة" name="reason" />
-          </div>
-        )}
         {e.action === "stage" && (
           <>
             <p className="text-sm">
@@ -1082,7 +1194,7 @@ export function IncomingEditor({
             </p>
           </>
         )}
-        {e.action !== "stage" && e.action !== "memo" && (
+        {e.action !== "stage" && (
           <label>
             <Label>ملاحظات</Label>
             <textarea
@@ -1099,11 +1211,12 @@ export function IncomingEditor({
             />
           </label>
         )}
-        <UploadBox
-          label={e.action === "stage" && stage === "PAID" ? "إثبات الصرف" : "المرفقات"}
+        {!(e.action === "statement" && hasMaterials) && <UploadBox
+          label={e.action === "stage" && stage === "PAID" ? "إثبات الصرف" : e.action === "contract" ? "مرفق العقد" : e.action === "statement" ? "مرفق المستخلص" : e.action === "material" ? "مرفق شهادة الخامات" : "مرفق المذكرة"}
+          hint={e.action === "statement" ? "A3 · PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت" : undefined}
           required={needsFile}
           onFilesChange={setFiles}
-        />
+        />}
         {e.edit && <Files files={existingFiles.filter(f => f.entityType !== "estimate")} />}
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
           <button
@@ -1199,12 +1312,52 @@ function Filter({
     </label>
   );
 }
+function FloatingPanel({ trigger, children, width = 280, clickOnly = false, fullWidth = false }: { trigger: ReactNode; children: ReactNode; width?: number; clickOnly?: boolean; fullWidth?: boolean }) {
+  const anchor = useRef<HTMLSpanElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 0, top: 0 });
+  const clearClose = () => { if (closeTimer.current) clearTimeout(closeTimer.current); };
+  const scheduleClose = () => { clearClose(); closeTimer.current = setTimeout(() => setOpen(false), 120); };
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const rect = anchor.current?.getBoundingClientRect();
+      if (!rect) return;
+      const panelWidth = Math.min(width, window.innerWidth - 16);
+      const panelHeight = panel.current?.offsetHeight ?? 0;
+      const left = Math.max(8, Math.min(rect.left + rect.width / 2 - panelWidth / 2, window.innerWidth - panelWidth - 8));
+      const below = rect.bottom + 6;
+      const top = below + panelHeight > window.innerHeight - 8 && rect.top > panelHeight + 6
+        ? rect.top - panelHeight - 6
+        : Math.max(8, Math.min(below, window.innerHeight - panelHeight - 8));
+      setPosition(previous => previous.left === left && previous.top === top ? previous : { left, top });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => { window.removeEventListener("scroll", update, true); window.removeEventListener("resize", update); };
+  }, [open, width]);
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!anchor.current?.contains(target) && !panel.current?.contains(target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [open]);
+  useEffect(() => () => clearClose(), []);
+  return <span ref={anchor} className={fullWidth ? "inline-flex w-full align-middle" : "inline-flex align-middle"} onMouseEnter={() => { if (!clickOnly) { clearClose(); setOpen(true); } }} onMouseLeave={() => { if (!clickOnly) scheduleClose(); }} onFocus={() => { if (!clickOnly) setOpen(true); }} onBlur={(event) => { if (!clickOnly && !event.currentTarget.contains(event.relatedTarget)) scheduleClose(); }} onClick={() => { if (clickOnly) setOpen(value => !value); }}>
+    {trigger}
+    {open && createPortal(<div ref={panel} className="fixed z-[100] max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl border border-slate-200 bg-white text-right shadow-xl" style={{ width: `min(${width}px, calc(100vw - 16px))`, left: position.left, top: position.top }} onMouseEnter={clearClose} onMouseLeave={() => { if (!clickOnly) scheduleClose(); }} dir="rtl">{children}</div>, document.body)}
+  </span>;
+}
+
 function Files({ files, compact = false }: { files: Attachment[]; compact?: boolean }) {
   if (!files.length) return compact ? <span className="inline-grid size-[34px] place-items-center text-slate-300" aria-label="لا توجد مرفقات"><Paperclip className="size-4" /></span> : null;
-  if (compact) return <details className="relative">
-    <summary className="erp-icon-action relative list-none cursor-pointer" aria-label={`عرض ${files.length} مرفق`} title={`عرض ${files.length} مرفق`}><Paperclip className="size-4" />{files.length > 1 && <span className="absolute -left-1 -top-1 grid size-4 place-items-center rounded-full bg-blue-700 text-[9px] font-bold text-white">{files.length}</span>}</summary>
-    <div className="absolute left-0 top-10 z-40 min-w-56 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">{files.map(file => <a key={file.id} className="block rounded-md px-2 py-2 text-xs text-blue-700 hover:bg-blue-50" href={`/api/incoming/attachments/${file.id}`}>{file.name}</a>)}</div>
-  </details>;
+  if (compact) return <FloatingPanel clickOnly trigger={<button type="button" className="erp-icon-action relative" aria-label={`عرض ${files.length} مرفق`} title={`عرض ${files.length} مرفق`}><Paperclip className="size-4" />{files.length > 1 && <span className="absolute -left-1 -top-1 grid size-4 place-items-center rounded-full bg-blue-700 text-[9px] font-bold text-white">{files.length}</span>}</button>}><div className="p-2">{files.map(file => <a key={file.id} className="block rounded-md px-2 py-2 text-xs text-blue-700 hover:bg-blue-50" href={`/api/incoming/attachments/${file.id}`}>{file.name}</a>)}</div></FloatingPanel>;
   return (
     <span className="inline-flex flex-wrap gap-2">
       {files.map((f) => (
@@ -1219,4 +1372,11 @@ function Files({ files, compact = false }: { files: Attachment[]; compact?: bool
       ))}
     </span>
   );
+}
+
+function AttachmentLinks({ label, files }: { label: string; files: Attachment[] }) {
+  if (!files.length) return null;
+  return <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+    {files.map((file, index) => <a key={file.id} className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.name}>{label}{files.length > 1 ? ` ${index + 1}` : ""}</a>)}
+  </span>;
 }

@@ -2,6 +2,8 @@
 import { ERPSelect } from "@/components/erp-select";
 import { CurrencyInput } from "@/components/currency-input";
 import { DocumentLayout } from "@/components/document-layout";
+import { previewDataPdf, usePdfDataExport } from "@/components/pdf-data-export";
+import { filteredExpensesReport, singleExpensesReport } from "@/components/expenses-pdf-report";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { WorkWithdrawalsCenter } from "./work-withdrawals-center";
@@ -82,6 +84,8 @@ export function ExpensesCenter({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [pdfChoiceOpen, setPdfChoiceOpen] = useState(false);
+  usePdfDataExport(() => setPdfChoiceOpen(true));
   const visible = accounts.filter(
     (a) =>
       (!project || a.projectId === project) &&
@@ -98,6 +102,13 @@ export function ExpensesCenter({
   const totalDebt = totals.reduce((sum, total) => sum + total.debtCents, 0);
   const totalAdvance = totals.reduce((sum, total) => sum + total.advanceCents, 0);
   const totalStatements = visible.reduce((sum, account) => sum + account.statements.length, 0);
+  function exportExpensesPdf(single: boolean) {
+    const account = visible.find((item) => item.id === expanded);
+    if (single && !account) return;
+    const filters = [search && `بحث: ${search}`, project && `المشروع: ${projects.find((item) => item.id === project)?.name || project}`, company && `المقاول: ${companies.find((item) => item.id === company)?.name || company}`].filter(Boolean).join(" · ") || "كل المقاولات";
+    setPdfChoiceOpen(false);
+    void previewDataPdf(single && account ? singleExpensesReport(account) : filteredExpensesReport(visible, filters));
+  }
   function saved() {
     setEditor(null);
     setNewAccount(false);
@@ -594,6 +605,7 @@ export function ExpensesCenter({
   }
   return (
     <div className="space-y-5">
+      {pdfChoiceOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPdfChoiceOpen(false); }}><div role="dialog" aria-modal="true" aria-labelledby="expenses-pdf-title" dir="rtl" className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 text-right shadow-2xl"><h2 id="expenses-pdf-title" className="text-base font-extrabold">تصدير PDF لمستخلصات مقاولي الباطن</h2><p className="mt-2 text-xs text-slate-500">بيانات المقاولات والجواري دون المرفقات.</p><div className="mt-5 grid gap-2"><button type="button" onClick={() => exportExpensesPdf(false)} className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-right text-sm font-bold text-blue-800">كل المقاولات المطابقة للفلاتر ({visible.length})</button>{visible.some((item) => item.id === expanded) && <button type="button" onClick={() => exportExpensesPdf(true)} className="rounded-lg border border-slate-200 px-4 py-3 text-right text-sm font-bold text-slate-800">المقاولة المفتوحة: {visible.find((item) => item.id === expanded)?.name}</button>}</div><button type="button" onClick={() => setPdfChoiceOpen(false)} className="mt-4 text-xs text-slate-500">إلغاء</button></div></div>}
       {!newAccount && (
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -635,7 +647,7 @@ export function ExpensesCenter({
       {detail && detailAccount ? (
         <>
           <button
-            className="flex items-center gap-2 text-xs text-blue-700"
+            className="erp-back-tab"
             onClick={() => {
               setSelected(null);
               setPaymentId(null);
@@ -644,7 +656,7 @@ export function ExpensesCenter({
             }}
           >
             <ArrowRight className="size-4" />
-            الرجوع لأعمال المقاولين
+            رجوع
           </button>
           {statementDetail(detail, detailAccount)}
         </>

@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       const finish = async (body: { id: string }, entityType: string, summary: Record<string, unknown>) => { if (operationContext) await completeFinancialOperation(tx, operationContext, { body: { ok: true, ...body }, entityType, entityId: body.id, summary }); return body; };
       if (action === "category") {
         const name = str("name"); if (!name || name.length > 150) throw new Error("اسم التصنيف مطلوب وبحد أقصى 150 حرفًا.");
-        const data = { name, active: str("active") === "true", requiresDocument: str("requiresDocument") === "true", requiresAttachment: str("requiresAttachment") === "true" };
+        const data = { name, active: str("active") === "true", requiresAttachment: str("requiresAttachment") === "true" };
         const id = str("id");
         const category = id ? await tx.pettyCashCategory.update({ where: { id }, data }) : await tx.pettyCashCategory.create({ data: { ...data, key: randomUUID() } });
         await audit("category", category.id, data); return { id: category.id };
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
         await audit("reverse", id, { reason, original }); return finish({ id }, "pettyCashTransaction", { action: "reverse", originalId: id, amountCents: original.amountCents });
       }
       let type = str("type"), amountCents = 0, sourceAccountId: string | null = null, destinationAccountId: string | null = null;
-      let projectId: string | null = null, categoryId: string | null = null, documentNumber = str("documentNumber") || null;
+      let projectId: string | null = null, categoryId: string | null = null, documentNumber: string | null = null;
       const description = str("description"); if (!description || description.length > 2000) throw new Error("البيان مطلوب وبحد أقصى 2000 حرف.");
       if (action === "adjust") {
         if (!files.length) throw new Error("إثبات التسوية مطلوب.");
@@ -100,14 +100,19 @@ export async function POST(req: Request) {
           } else if (str("projectId")) throw new Error("المصروف العام لا يرتبط بمشروع.");
           categoryId = category!.id;
         } else if (str("projectId") || str("categoryId")) throw new Error("التحميل والتصنيف للمصروف الفعلي فقط.");
-        amountCents = validatePettyInput({ type, amount: str("amount"), projectId, allocation: str("allocation"), description, documentNumber, hasAttachment: files.length > 0, requiresAttachment: category?.requiresAttachment ?? true, requiresDocument: category?.requiresDocument });
+        amountCents = validatePettyInput({ type, amount: str("amount"), projectId, allocation: str("allocation"), description, hasAttachment: files.length > 0, requiresAttachment: category?.requiresAttachment ?? true });
         if (type === "OPENING_BALANCE" && movements.some(t => t.status === "POSTED" && (t.sourceAccountId === main.id || t.destinationAccountId === main.id))) throw new Error("الرصيد الافتتاحي يسبق جميع حركات الصندوق.");
         if (type === "FUNDING" || type === "OPENING_BALANCE") destinationAccountId = main.id;
         if (type === "DIRECT_EXPENSE" || type === "CUSTODY_ISSUE") sourceAccountId = main.id;
         if (type === "CUSTODY_EXPENSE" || type === "CUSTODY_RETURN") {
           const custody = accounts.find(a => a.id === str("sourceAccountId") && a.type === "CUSTODY" && a.active);
           if (!custody) throw new Error("اختر عهدة صحيحة."); sourceAccountId = custody.id;
-          if (type === "CUSTODY_RETURN") destinationAccountId = main.id;
+          if (type === "CUSTODY_RETURN") {
+            const remainingCents = balanceForAccount(movements, custody.id);
+            if (remainingCents <= 0) throw new Error("لا يوجد رصيد قائم في هذه العهدة.");
+            if (amountCents !== remainingCents) throw new Error("رد العهدة يجب أن يكون بكامل رصيدها القائم.");
+            destinationAccountId = main.id;
+          }
         }
         if (type === "CUSTODY_ISSUE") {
           const employee = await tx.employee.findFirst({ where: { id: str("employeeId"), active: true } });
@@ -123,7 +128,7 @@ export async function POST(req: Request) {
       await tx.pettyCashTransaction.create({ data: { ...movement, attachments: { create: files.map(f => ({ ...f, actorId: user.id })) } } });
       await postPettyCashJournal(tx, movement);
       await audit(action === "adjust" ? "adjust" : type.toLowerCase(), id, movement);
-      return finish({ id }, "pettyCashTransaction", { number: movement.number, type, amountCents, date: str("date"), documentNumber });
+      return finish({ id }, "pettyCashTransaction", { number: movement.number, type, amountCents, date: str("date") });
     }, { maxWait: 10000, timeout: 20000 });
     return json({ ok: true, ...result });
   } catch (e) { const replay = await replayAfterConflict(e, operationContext); if (replay) return replay; return json({ error: e instanceof Error ? e.message : "تعذر حفظ الحركة." }, 400); }

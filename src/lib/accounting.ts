@@ -6,7 +6,7 @@ export const money = (cents: number) => (cents / 100).toLocaleString("en-US", { 
 export async function accountingSnapshot() {
   const [accounts, entries, periods, goLive, projects] = await Promise.all([
     prisma.accountingAccount.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
-    prisma.journalEntry.findMany({ include: { lines: { include: { account: true } } }, orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }], take: 500 }),
+    prisma.journalEntry.findMany({ include: { lines: { include: { account: true } } }, orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }] }),
     prisma.accountingPeriod.findMany({ orderBy: { month: "desc" }, take: 24 }),
     prisma.systemMetadata.findUnique({ where: { key: "accounting.goLiveDate" } }),
     prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),

@@ -89,8 +89,8 @@ export function PurchaseInvoicePage({
           <h1 className="mt-1 text-2xl font-black text-slate-950">إضافة فاتورة مشتريات</h1>
           <p className="mt-2 text-sm text-slate-500">سجّل تكلفة المشتريات على المشروع، مع إرفاق إثبات الفاتورة.</p>
         </div>
-        <button type="button" className={expenseButton} onClick={() => router.push(returnHref)}>
-          <ArrowRight className="size-4" /> الرجوع للمشتريات
+        <button type="button" className="erp-back-tab" onClick={() => router.push(returnHref)}>
+          <ArrowRight className="size-4" /> رجوع
         </button>
       </section>
 

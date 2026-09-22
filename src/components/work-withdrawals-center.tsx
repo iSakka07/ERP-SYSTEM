@@ -311,8 +311,8 @@ export function WorkWithdrawalsCenter({
         </form></DocumentLayout>
       ) : (
         <>
-          <button className={expenseButton} onClick={onClose}>
-            الرجوع لأعمال المقاولين
+          <button className="erp-back-tab" onClick={onClose}>
+            رجوع
           </button>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
