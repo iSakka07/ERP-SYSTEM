@@ -221,7 +221,7 @@ export function IncomingCenter({
     } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر مسح العقد."); }
     finally { setBusy(false); }
   }
-  async function save(payload: object, files: File[], estimateFiles: File[] = []) {
+  async function save(payload: object, files: File[], estimateFiles: File[] = [], memoFiles: File[] = []) {
     setBusy(true);
     setMessage("");
     try {
@@ -229,6 +229,7 @@ export function IncomingCenter({
       form.set("payload", JSON.stringify(payload));
       files.forEach((f) => form.append("files", f));
       estimateFiles.forEach((f) => form.append("estimateFiles", f));
+      memoFiles.forEach((f) => form.append("memoFiles", f));
       const action = "action" in payload ? String(payload.action) : "unknown", record = payload as { id?: string; contractId?: string; statementId?: string }, financial = ["statement", "material", "stage"].includes(action), scope = `incoming-${action}-${record.id || record.statementId || record.contractId || "new"}`;
       const send = async (): Promise<boolean> => { try { const response = await fetch("/api/incoming", { method: "POST", body: form, ...(financial ? { headers: financialHeaders(scope) } : {}) }); if (financial) return (await financialResult(response, scope)).replayed; const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر الحفظ."); return false; } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("توجد عملية وارد مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return send(); } throw reason; } };
       const replayed = await send();
@@ -658,18 +659,19 @@ function StatementCard({ statement, locked, canManage, statementFiles, paymentPr
       <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">الخامات</span><MoneyValue>{money(materialTotal)}</MoneyValue></div>
       {statement.materials.length ? <div className="mt-2 space-y-2">{statement.materials.map(material => <div key={material.id} className="rounded-lg bg-amber-50 p-2"><p className="text-[10px] font-bold text-amber-900">تفاصيل الشهادة</p>{material.items.map((item, index) => <p key={index} className="mt-1 text-[10px] text-slate-600">{item.name} · {item.quantity} {item.unit} × {money(item.unitPriceCents)} = {money(item.totalCents)}</p>)}<div className="mt-2"><AttachmentLinks label="مرفق شهادة الخامات" files={materialFiles.filter(file => file.entityId === material.id)} /></div></div>)}</div> : <p className="mt-2 text-[10px] text-slate-400">لا توجد شهادة خامات.</p>}
       {statement.kind === "FINAL" && memos.length > 0 && <section className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
-        <div className="flex items-center justify-between gap-2 text-xs font-bold text-slate-800"><span>مذكرة خفض/رفع</span><span className="flex items-center gap-1"><Scale className="size-3.5 text-blue-700" />{memoFiles.length > 0 && <Files compact files={memoFiles} />}</span></div>
+        <div className="flex items-center justify-between gap-2 text-xs font-bold text-slate-800"><span>مذكرة خفض/رفع</span><Scale className="size-3.5 text-blue-700" /></div>
         <div className="mt-2 grid grid-cols-3 gap-1">
           {adjustmentItems.map(item => <FloatingPanel key={item.label} fullWidth width={210} trigger={<button type="button" className={`w-full rounded-md border px-1 py-1.5 text-center text-[10px] font-bold ${item.tone}`} aria-label={`${item.label}: ${money(item.amount)}`}><span className="block">{item.label}</span><span dir="ltr" className="block">{originalCents > 0 ? (item.amount / originalCents * 100).toFixed(2) : "0.00"}%</span></button>}><div className="p-3 text-xs"><span className="font-bold">{item.label}</span><MoneyValue className="mt-1 block">{money(item.amount)}</MoneyValue></div></FloatingPanel>)}
         </div>
         <p className={`mt-2 text-[10px] font-bold ${netAdjustment >= 0 ? "text-emerald-700" : "text-rose-700"}`}>صافي {netAdjustment >= 0 ? "الزيادة" : "النقصان"}: {money(Math.abs(netAdjustment))}</p>
+        <div className="mt-2"><AttachmentLinks label="مرفق المذكرة" files={memoFiles} /></div>
       </section>}
       {statement.paidAt && <div className="mt-3 border-t border-slate-200 pt-3 text-[10px]"><b>{statement.paymentMethod === "CHEQUE" ? "شيك" : "تحويل"}</b> · {statement.paidAt.slice(0, 10)}</div>}
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-slate-100 pt-3">
         {canManage && <IconAction label="تغيير المرحلة" icon={RefreshCcw} onClick={onStage} />}
         {canManage && !locked && <IconAction label={`تعديل ${statementLabel(statement)}`} icon={Pencil} onClick={onEdit} />}
         <AttachmentLinks label="مرفق المستخلص" files={statementFiles} />
-        <AttachmentLinks label="مرفق إثبات الصرف" files={paymentProofFiles} />
+        <AttachmentLinks label="إثبات الصرف" files={paymentProofFiles} />
       </div>
     </div>}
   </article>;
@@ -692,7 +694,7 @@ export function IncomingEditor({
   busy: boolean;
   isAdmin: boolean;
   onCancel: () => void;
-  onSave: (payload: object, files: File[], estimateFiles?: File[]) => Promise<void>;
+  onSave: (payload: object, files: File[], estimateFiles?: File[], memoFiles?: File[]) => Promise<void>;
   onOpen?: (editor: Editor) => void;
   movements: (Movement & { entityId: string })[];
 }) {
@@ -741,6 +743,7 @@ export function IncomingEditor({
   );
   const [files, setFiles] = useState<File[]>([]);
   const [estimateFiles, setEstimateFiles] = useState<File[]>([]);
+  const [memoFiles, setMemoFiles] = useState<File[]>([]);
   const [estimateValue, setEstimateValue] = useState(c?.estimateCents == null ? "" : String(c.estimateCents / 100));
   const selectedProject =
     projects.find((p) => p.id === projectId) || c?.project;
@@ -798,7 +801,7 @@ export function IncomingEditor({
       ...(finalAdjustment ? { finalAdjustment } : {}),
       ...(statementMaterials?.length ? { materialNumber, materials: statementMaterials } : {}),
     };
-    await onSave(payload, files, estimateFiles);
+    await onSave(payload, files, estimateFiles, memoFiles);
   }
   const patchItem = (index: number, patch: Partial<Item>) =>
     setItems((rows) =>
@@ -930,7 +933,7 @@ export function IncomingEditor({
             </div>
             {statementKind === "FINAL" && <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold text-slate-900">مذكرة خفض/رفع</h3><p className="mt-1 text-xs text-slate-500">هل يوجد مذكرة خفض/رفع؟</p></div><div className="flex gap-2"><button type="button" onClick={() => setHasFinalAdjustment(true)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${hasFinalAdjustment ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white text-slate-700"}`}>نعم</button><button type="button" onClick={() => setHasFinalAdjustment(false)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${!hasFinalAdjustment ? "border-slate-500 bg-slate-200 text-slate-800" : "border-slate-300 bg-white text-slate-700"}`}>لا</button></div></div>
-              {hasFinalAdjustment && <div className="grid gap-3 md:grid-cols-3"><Field label="بنود رفع (زيادة العقد)" name="adjustmentIncrease" type="number" value={adjustmentIncrease} onChange={setAdjustmentIncrease} required={false} /><Field label="بنود خفض" name="adjustmentDecrease" type="number" value={adjustmentDecrease} onChange={setAdjustmentDecrease} required={false} /><Field label="بنود ملغاة" name="adjustmentCancelled" type="number" value={adjustmentCancelled} onChange={setAdjustmentCancelled} required={false} /></div>}
+              {hasFinalAdjustment && <><div className="grid gap-3 md:grid-cols-3"><Field label="بنود رفع (زيادة العقد)" name="adjustmentIncrease" type="number" value={adjustmentIncrease} onChange={setAdjustmentIncrease} required={false} /><Field label="بنود خفض" name="adjustmentDecrease" type="number" value={adjustmentDecrease} onChange={setAdjustmentDecrease} required={false} /><Field label="بنود ملغاة" name="adjustmentCancelled" type="number" value={adjustmentCancelled} onChange={setAdjustmentCancelled} required={false} /></div><UploadBox label="مرفق المذكرة" required onFilesChange={setMemoFiles} hint="PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت" /></>}
             </section>}
             {statementKind === "FINAL" && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-900">الختامي يقفل قيمة العقد تلقائيًا بعد احتساب مذكرة الخفض/الرفع.</p>}
             <div className="grid gap-3 rounded-lg bg-blue-50 p-4 text-xs md:grid-cols-3">
@@ -1377,6 +1380,6 @@ function Files({ files, compact = false }: { files: Attachment[]; compact?: bool
 function AttachmentLinks({ label, files }: { label: string; files: Attachment[] }) {
   if (!files.length) return null;
   return <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-    {files.map((file, index) => <a key={file.id} className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.name}>{label}{files.length > 1 ? ` ${index + 1}` : ""}</a>)}
+    {files.map((file) => <a key={file.id} className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.name}>{label}</a>)}
   </span>;
 }

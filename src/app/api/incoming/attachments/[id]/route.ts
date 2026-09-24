@@ -10,8 +10,16 @@ export async function GET(
   const { id } = await context.params;
   const file = await prisma.incomingAttachment.findUnique({ where: { id } });
   if (!file) return new Response("Not found", { status: 404 });
-  if (user.isProjectScoped) {
-    const projectId = file.entityType === "contract" ? (await prisma.incomingContract.findUnique({ where: { id: file.entityId }, select: { projectId: true } }))?.projectId : file.entityType === "statement" ? (await prisma.incomingStatement.findUnique({ where: { id: file.entityId }, include: { contract: { select: { projectId: true } } } }))?.contract.projectId : (await prisma.materialCertificate.findUnique({ where: { id: file.entityId }, include: { statement: { include: { contract: { select: { projectId: true } } } } } }))?.statement.contract.projectId;
+ if (user.isProjectScoped) {
+    const projectId = file.entityType === "contract" || file.entityType === "estimate"
+      ? (await prisma.incomingContract.findUnique({ where: { id: file.entityId }, select: { projectId: true } }))?.projectId
+      : file.entityType === "statement" || file.entityType === "payment-proof"
+        ? (await prisma.incomingStatement.findUnique({ where: { id: file.entityId }, include: { contract: { select: { projectId: true } } } }))?.contract.projectId
+        : file.entityType === "memo"
+          ? (await prisma.incomingMemo.findUnique({ where: { id: file.entityId }, include: { contract: { select: { projectId: true } } } }))?.contract.projectId
+          : file.entityType === "material"
+            ? (await prisma.materialCertificate.findUnique({ where: { id: file.entityId }, include: { statement: { include: { contract: { select: { projectId: true } } } } } }))?.statement.contract.projectId
+            : undefined;
     if (!projectId || !user.projectIds.includes(projectId)) return new Response("Forbidden", { status: 403 });
   }
   return new Response(new Uint8Array(file.data), {

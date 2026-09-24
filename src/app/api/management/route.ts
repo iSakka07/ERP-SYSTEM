@@ -50,13 +50,14 @@ export async function POST(request: Request) {
     const create = () => prisma.$transaction(async (tx) => {
       let id = "";
       if (data.type === "company") {
-        const company = await tx.company.create({ data: { name: data.name, type: data.companyType, phone: data.companyType === "SUBCONTRACTOR" ? data.phone || null : null } });
+        const company = await tx.company.create({ data: { name: data.name, type: data.companyType, phone: ["SUBCONTRACTOR", "SUPPLIER"].includes(data.companyType) ? data.phone || null : null } });
         id = company.id;
       }
       if (data.type === "project") {
         const owner = await tx.company.findFirst({ where: { id: data.companyId, active: true, type: "OWNER" } });
         if (!owner) throw new Error("INVALID_OWNER");
         const project = await tx.project.create({ data: { code: data.code, name: data.name, companyId: owner.id } });
+        await tx.warehouse.create({ data: { code: `PRJ-${data.code}`, name: `مخزن مشروع — ${data.name}`, type: "PROJECT", projectId: project.id } });
         id = project.id;
       }
       if (data.type === "engineer") {

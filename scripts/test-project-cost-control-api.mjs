@@ -20,7 +20,7 @@ async function login(email) {
   const csrf = await fetch(`${base}/api/auth/csrf`);
   takeCookies(csrf, jar);
   const { csrfToken } = await csrf.json();
-  const response = await fetch(`${base}/api/auth/callback/credentials`, { method: "POST", redirect: "manual", headers: { ...headers(jar), "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ csrfToken, email, password: "Admin@123456", callbackUrl: `${base}/project-cost-control` }) });
+  const response = await fetch(`${base}/api/auth/callback/credentials`, { method: "POST", redirect: "manual", headers: { ...headers(jar), "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ csrfToken, email, password: process.env.ERP_TEST_ADMIN_PASSWORD || "Admin@123456", callbackUrl: `${base}/project-cost-control` }) });
   takeCookies(response, jar);
   assert.ok((await (await fetch(`${base}/api/auth/session`, { headers: headers(jar) })).json()).user, `login ${email}`);
   return jar;

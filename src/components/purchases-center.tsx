@@ -2,7 +2,7 @@
 
 import { Fragment, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, Boxes, FileText, List, Paperclip, Plus, ReceiptText, X } from "lucide-react";
+import { Ban, Boxes, FileText, List, Paperclip, Plus, ReceiptText, X, WalletCards } from "lucide-react";
 import { ERPSelect } from "@/components/erp-select";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
@@ -18,6 +18,8 @@ type PurchaseInvoice = {
   invoiceDate: string;
   notes?: string | null;
   totalCents: number;
+  paidCents: number;
+  paymentTrackingStarted: boolean;
   stockMode: string;
   status: string;
   reversedAt?: string | null;
@@ -27,6 +29,8 @@ type PurchaseInvoice = {
   project: Project;
   supplier?: Supplier | null;
   items: PurchaseItem[];
+  stockMovements: { type: string; projectId: string | null }[];
+  payments: { id: string; number: string; amountCents: number; paymentDate: string; paymentSource: string; status: string; notes?: string | null; actorId: string; createdAt: string }[];
 };
 type Attachment = { id: string; entityId: string; name: string };
 
@@ -45,23 +49,28 @@ function AttachmentMenu({ files }: { files: Attachment[] }) {
   );
 }
 
-export function PurchasesCenter({ invoices, projects, suppliers, attachments, canManage, initialProjectId = "" }: {
+export function PurchasesCenter({ invoices, projects, suppliers, attachments, canManage, initialProjectId = "", initialInvoiceId = "" }: {
   invoices: PurchaseInvoice[];
   projects: Project[];
   suppliers: Supplier[];
   attachments: Attachment[];
   canManage: boolean;
   initialProjectId?: string;
+  initialInvoiceId?: string;
 }) {
   const router = useRouter();
   const [project, setProject] = useState(initialProjectId);
   const [supplier, setSupplier] = useState("");
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState("");
+  const [expanded, setExpanded] = useState(initialInvoiceId);
   const [reversing, setReversing] = useState<PurchaseInvoice | null>(null);
   const [reverseError, setReverseError] = useState("");
   const [reverseBusy, setReverseBusy] = useState(false);
+  const [paying, setPaying] = useState<{ invoice: PurchaseInvoice; amountCents: number } | null>(null);
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentBusy, setPaymentBusy] = useState(false);
   const visible = invoices.filter((invoice) =>
+    (!initialInvoiceId || invoice.id === initialInvoiceId) &&
     (!project || invoice.projectId === project) &&
     (!supplier || invoice.supplierId === supplier) &&
     `${invoice.name} ${invoice.project.name} ${invoice.supplier?.name ?? ""}`.toLowerCase().includes(search.toLowerCase()),
@@ -101,11 +110,22 @@ export function PurchasesCenter({ invoices, projects, suppliers, attachments, ca
     };
     try { await send(); } catch (reason) { setReverseError(reason instanceof Error ? reason.message : "تعذر إلغاء الفاتورة."); } finally { setReverseBusy(false); }
   }
+  async function recordPayment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!paying) return;
+    setPaymentBusy(true); setPaymentError("");
+    const form = event.currentTarget; const body = new FormData(form); const scope = `purchase-payment-${paying.invoice.id}-${crypto.randomUUID()}`;
+    const payload = { action: "payment", id: paying.invoice.id, amount: Number(body.get("amount")), paymentDate: body.get("paymentDate"), paymentSource: body.get("paymentSource"), notes: body.get("notes") || undefined };
+    body.set("payload", JSON.stringify(payload));
+    const send = async (): Promise<void> => { try { await financialResult(await fetch("/api/purchases", { method: "POST", body, headers: financialHeaders(scope) }), scope); router.refresh(); setPaying(null); } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("توجد دفعة مشابهة. هل تريد تسجيلها كدفعة مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return send(); } throw reason; } };
+    try { await send(); } catch (reason) { setPaymentError(reason instanceof Error ? reason.message : "تعذر تسجيل دفعة المورد."); } finally { setPaymentBusy(false); }
+  }
+  const paidFor = (invoice: PurchaseInvoice) => invoice.paymentTrackingStarted ? invoice.paidCents : invoice.totalCents;
+  const paymentLabel = (paidCents: number, totalCents: number) => paidCents >= totalCents ? "مسددة بالكامل" : paidCents > 0 ? "مسددة جزئيًا" : "لم تُسدد";
 
   return <div className="space-y-5">
     <section className="flex flex-wrap items-end justify-between gap-3">
       <div><p className="text-xs font-bold text-blue-700">Purchases Module</p><h1 className="mt-1 text-2xl font-black text-slate-950">المشتريات وفواتير الموردين</h1><p className="mt-2 text-sm text-slate-500">سداد المورد لا يحمّل المشروع؛ تكلفة الخامات تُحمّل عند صرفها من المخزن للمشروع.</p></div>
-      {canManage && <button className={`${expenseButton} bg-blue-700 text-white`} onClick={newInvoice}><Plus className="size-4" />إضافة فاتورة مشتريات</button>}
+      {canManage && <button type="button" className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-700 bg-blue-700 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition hover:border-blue-800 hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200" onClick={newInvoice}><Plus className="size-4" />إضافة فاتورة مشتريات</button>}
     </section>
 
     <section className="grid gap-3 md:grid-cols-3">
@@ -120,27 +140,35 @@ export function PurchasesCenter({ invoices, projects, suppliers, attachments, ca
         <ERPSelect aria-label="فلتر المشروع" className={expenseInput} value={project} onValueChange={setProject}><option value="">كل المشروعات</option>{projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</ERPSelect>
         <ERPSelect aria-label="فلتر المورد" className={expenseInput} value={supplier} onValueChange={setSupplier}><option value="">كل الموردين</option>{suppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</ERPSelect>
       </div>
-      <div className="erp-table-scroll"><table className="erp-data-table erp-responsive-table min-w-[960px]">
-        <thead><tr>{["اسم الفاتورة", "المشروع", "المورد", "التاريخ", "عدد البنود", "الإجمالي", "الإجراءات"].map((head) => <th key={head}>{head}</th>)}</tr></thead>
+      <div className="erp-table-scroll"><table className="erp-data-table erp-responsive-table min-w-[1120px]">
+        <thead><tr>{["اسم الفاتورة", "المشروع", "المورد", "التاريخ", "عدد البنود", "الإجمالي", "السداد", "الإجراءات"].map((head) => <th key={head}>{head}</th>)}</tr></thead>
         <tbody>{visible.map((invoice) => {
           const isOpen = expanded === invoice.id;
           const invoiceFiles = attachments.filter((file) => file.entityId === invoice.id);
+          const paidCents = paidFor(invoice); const remainingCents = Math.max(0, invoice.totalCents - paidCents);
           return <Fragment key={invoice.id}>
             <tr className={invoice.status === "REVERSED" ? "bg-rose-50/70 text-slate-500" : ""}>
-              <td data-label="اسم الفاتورة" className="font-bold"><span className="inline-flex items-center gap-2"><FileText className="size-4 text-blue-700" /><span className={invoice.status === "REVERSED" ? "line-through" : ""}>{invoice.name}</span>{invoice.status === "REVERSED" && <span className="rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700">ملغاة</span>}</span><p className="mt-1 text-[10px] font-bold text-blue-700">{invoice.stockMode === "WAREHOUSE" ? "تم الاستلام بالمخزن" : invoice.stockMode === "DIRECT_PROJECT" ? "استلام وصرف مباشر للمشروع" : "مصروف مباشر"}</p>{invoice.notes && <p className="mt-1 text-[11px] font-normal text-slate-500">{invoice.notes}</p>}{invoice.status === "REVERSED" && invoice.reversalReason && <p className="mt-1 text-[11px] font-bold text-rose-700">سبب الإلغاء: {invoice.reversalReason}</p>}</td>
+              <td data-label="اسم الفاتورة" className="font-bold"><span className="inline-flex items-center gap-2"><FileText className="size-4 text-blue-700" /><span className={invoice.status === "REVERSED" ? "line-through" : ""}>{invoice.name}</span>{invoice.status === "REVERSED" && <span className="rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700">ملغاة</span>}</span>
+                {invoice.stockMode === "WAREHOUSE" && <p className="mt-1 text-[10px] font-bold text-blue-700">تم الاستلام بمخزن الشركة</p>}
+                {invoice.stockMode === "DIRECT_PROJECT" && <p className="mt-1 text-[10px] font-bold text-emerald-700">تم الاستلام بمخزن المشروع المعين عليه: {invoice.project.name}</p>}
+                {invoice.stockMode === "LEGACY_DIRECT" && <p className="mt-1 text-[10px] font-bold text-slate-500">مصروف مباشر · لا يمر بالمخزن</p>}
+                {invoice.stockMode === "WAREHOUSE" && invoice.stockMovements.some((movement) => movement.type === "ISSUE_PROJECT" && movement.projectId === invoice.projectId) && <p className="mt-1 text-[10px] font-bold text-emerald-700">وُرّدت خامات منها إلى مخزن المشروع المعين عليه: {invoice.project.name}</p>}
+                {invoice.notes && <p className="mt-1 text-[11px] font-normal text-slate-500">{invoice.notes}</p>}{invoice.status === "REVERSED" && invoice.reversalReason && <p className="mt-1 text-[11px] font-bold text-rose-700">سبب الإلغاء: {invoice.reversalReason}</p>}</td>
               <td data-label="المشروع">{invoice.project.name}<p className="mt-1 text-[11px] text-slate-400">{invoice.project.code}</p></td>
               <td data-label="المورد">{invoice.supplier?.name ?? "—"}</td>
               <td data-label="التاريخ" dir="ltr">{invoice.invoiceDate.slice(0, 10)}</td>
               <td data-label="عدد البنود"><button type="button" className="font-extrabold text-blue-700 underline decoration-blue-200 underline-offset-4" onClick={() => setExpanded(isOpen ? "" : invoice.id)}>{invoice.items.length} بند</button></td>
               <td data-label="الإجمالي" className="text-center">{invoice.status === "REVERSED" ? <span className="font-bold text-rose-600 line-through">{money(invoice.totalCents)} ج.م</span> : <MoneyValue>{money(invoice.totalCents)} ج.م</MoneyValue>}</td>
-              <td data-label="الإجراءات"><div className="flex justify-end gap-2"><IconAction label={isOpen ? "إخفاء تفاصيل البنود" : "عرض تفاصيل البنود"} icon={List} onClick={() => setExpanded(isOpen ? "" : invoice.id)} /><AttachmentMenu files={invoiceFiles} />{canManage && invoice.status === "POSTED" && <IconAction label="إلغاء الفاتورة" icon={Ban} tone="danger" onClick={() => setReversing(invoice)} />}</div></td>
+              <td data-label="السداد"><span className={`rounded-full px-2 py-1 text-[10px] font-extrabold ${paidCents >= invoice.totalCents ? "bg-emerald-50 text-emerald-800" : paidCents > 0 ? "bg-amber-50 text-amber-800" : "bg-rose-50 text-rose-800"}`}>{paymentLabel(paidCents, invoice.totalCents)}</span><p className="mt-1 text-[10px] text-slate-500">سُدد {money(paidCents)} · متبقي {money(remainingCents)} ج.م</p></td>
+              <td data-label="الإجراءات"><div className="flex flex-wrap justify-end gap-2"><IconAction label={isOpen ? "إخفاء تفاصيل البنود" : "عرض تفاصيل البنود"} icon={List} onClick={() => setExpanded(isOpen ? "" : invoice.id)} /><AttachmentMenu files={invoiceFiles} />{canManage && invoice.status === "POSTED" && remainingCents > 0 && <><button type="button" className="erp-back-tab !px-2 !py-1 text-[10px]" onClick={() => { setPaymentError(""); setPaying({ invoice, amountCents: 0 }); }}><WalletCards className="size-3.5" />دفعة جديدة</button><button type="button" className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2 py-1 text-[10px] font-bold text-white" onClick={() => { setPaymentError(""); setPaying({ invoice, amountCents: remainingCents }); }}><WalletCards className="size-3.5" />سداد الباقي</button></>}{canManage && invoice.status === "POSTED" && <IconAction label="إلغاء الفاتورة" icon={Ban} tone="danger" onClick={() => setReversing(invoice)} />}</div></td>
             </tr>
-            {isOpen && <tr><td colSpan={7} className="erp-table-details"><h2 className="mb-3 text-sm font-black">تفاصيل بنود «{invoice.name}»</h2><div className="overflow-x-auto"><table className="w-full min-w-[600px] text-xs"><thead className="bg-slate-100 text-slate-600"><tr>{["الصنف", "الوحدة", "الكمية", "سعر الوحدة", "الإجمالي"].map((head) => <th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>{invoice.items.map((item) => <tr key={item.id} className="border-b last:border-0"><td className="p-2 font-bold">{item.name}</td><td className="p-2">{item.unit}</td><td className="p-2" dir="ltr">{item.quantity}</td><td className="p-2 text-center"><MoneyValue>{money(item.unitPriceCents)} ج.م</MoneyValue></td><td className="p-2 text-center"><MoneyValue>{money(item.totalCents)} ج.م</MoneyValue></td></tr>)}</tbody></table></div></td></tr>}
+            {isOpen && <tr><td colSpan={8} className="erp-table-details"><h2 className="mb-3 text-sm font-black">تفاصيل بنود «{invoice.name}»</h2><div className="overflow-x-auto"><table className="w-full min-w-[600px] text-xs"><thead className="bg-slate-100 text-slate-600"><tr>{["الصنف", "الوحدة", "الكمية", "سعر الوحدة", "الإجمالي"].map((head) => <th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>{invoice.items.map((item) => <tr key={item.id} className="border-b last:border-0"><td className="p-2 font-bold">{item.name}</td><td className="p-2">{item.unit}</td><td className="p-2" dir="ltr">{item.quantity}</td><td className="p-2 text-center"><MoneyValue>{money(item.unitPriceCents)} ج.م</MoneyValue></td><td className="p-2 text-center"><MoneyValue>{money(item.totalCents)} ج.م</MoneyValue></td></tr>)}</tbody></table></div><h3 className="mb-2 mt-5 text-sm font-black">دفعات المورد</h3>{invoice.payments.filter((payment) => payment.status === "POSTED").length ? <div className="overflow-x-auto"><table className="w-full min-w-[540px] text-xs"><thead><tr>{["رقم الدفعة", "التاريخ", "طريقة السداد", "المبلغ", "ملاحظات"].map((head) => <th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>{invoice.payments.filter((payment) => payment.status === "POSTED").map((payment) => <tr key={payment.id} className="border-b"><td className="p-2" dir="ltr">{payment.number}</td><td className="p-2" dir="ltr">{payment.paymentDate.slice(0, 10)}</td><td className="p-2">{payment.paymentSource === "PETTY_CASH" ? "Petty Cash" : "المدير التنفيذي"}</td><td className="p-2"><MoneyValue>{money(payment.amountCents)} ج.م</MoneyValue></td><td className="p-2">{payment.notes || "—"}</td></tr>)}</tbody></table></div> : <p className="text-xs text-slate-500">لا توجد دفعات مسجلة ضمن نظام التتبع بعد.</p>}</td></tr>}
           </Fragment>;
-        })}{!visible.length && <tr><td colSpan={7} className="p-10 text-center text-sm text-slate-400">لا توجد فواتير مشتريات مطابقة.</td></tr>}</tbody>
-        {!!visible.length && <tfoot><tr><td colSpan={5}>إجمالي الفواتير غير الملغاة</td><td className="text-center"><MoneyValue>{money(total)} ج.م</MoneyValue></td><td /></tr></tfoot>}
+        })}{!visible.length && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-400">لا توجد فواتير مشتريات مطابقة.</td></tr>}</tbody>
+        {!!visible.length && <tfoot><tr><td colSpan={5}>إجمالي الفواتير غير الملغاة</td><td className="text-center"><MoneyValue>{money(total)} ج.م</MoneyValue></td><td /><td /></tr></tfoot>}
       </table></div>
     </section>
+    {paying && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4"><section role="dialog" aria-modal="true" aria-labelledby="purchase-payment-title" className="w-full max-w-lg rounded-2xl border bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-emerald-700">سداد مورد موثق</p><h2 id="purchase-payment-title" className="mt-1 text-lg font-black">دفعة لفاتورة «{paying.invoice.name}»</h2><p className="mt-2 text-sm text-slate-500">الإجمالي {money(paying.invoice.totalCents)} ج.م · المدفوع {money(paidFor(paying.invoice))} ج.م · المتبقي {money(paying.invoice.totalCents - paidFor(paying.invoice))} ج.م</p></div><button type="button" aria-label="إغلاق" title="إغلاق" onClick={() => setPaying(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="size-5" /></button></div><form onSubmit={recordPayment} className="mt-5 space-y-4"><label className="grid gap-2 text-xs font-bold">مبلغ الدفعة (ج.م) *<input name="amount" type="number" min="0.01" max={(paying.invoice.totalCents - paidFor(paying.invoice)) / 100} step="0.01" required autoFocus value={paying.amountCents ? paying.amountCents / 100 : ""} onChange={(event) => setPaying((current) => current ? { ...current, amountCents: Math.round(Number(event.target.value) * 100) } : current)} className={expenseInput} /></label><label className="grid gap-2 text-xs font-bold">تاريخ السداد *<input name="paymentDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className={expenseInput} /></label><label className="grid gap-2 text-xs font-bold">مصدر السداد *<ERPSelect name="paymentSource" defaultValue="EXECUTIVE_DIRECTOR" className={expenseInput}><option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option><option value="PETTY_CASH">Petty Cash</option></ERPSelect></label><label className="grid gap-2 text-xs font-bold">ملاحظات<textarea name="notes" maxLength={1000} className={expenseInput} rows={2} /></label><label className="grid gap-2 text-xs font-bold">إثبات السداد *<input name="files" type="file" required accept="application/pdf,image/*" className={expenseInput} /></label>{paymentError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{paymentError}</p>}<div className="flex flex-wrap justify-end gap-2"><button type="button" className="erp-back-tab" onClick={() => setPaying((current) => current ? { ...current, amountCents: Math.max(0, current.invoice.totalCents - paidFor(current.invoice)) } : current)}>سداد كامل المتبقي</button><button disabled={paymentBusy} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-extrabold text-white">{paymentBusy ? "جارٍ تسجيل الدفعة…" : "تأكيد وتسجيل الدفعة"}</button></div></form></section></div>}
     {reversing && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4"><section role="dialog" aria-modal="true" aria-labelledby="purchase-reverse-title" className="w-full max-w-lg rounded-2xl border bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-rose-700">إلغاء مالي موثق</p><h2 id="purchase-reverse-title" className="mt-1 text-lg font-black">إلغاء «{reversing.name}»</h2><p className="mt-2 text-sm text-slate-500">سيُعكس قيد تكلفة المشتريات وأي حركة صندوق مرتبطة. لا يمكن حذف الأثر المالي.</p></div><button type="button" aria-label="إغلاق" title="إغلاق" onClick={() => setReversing(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="size-5" /></button></div><form onSubmit={reverseInvoice} className="mt-5 space-y-4"><label className="grid gap-2 text-xs font-bold">سبب الإلغاء *<input name="reason" required className={expenseInput} /></label><label className="grid gap-2 text-xs font-bold">إثبات الإلغاء *<input name="files" type="file" required accept="application/pdf,image/*" className={expenseInput} /></label>{reverseError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{reverseError}</p>}<button disabled={reverseBusy} className={`${expenseButton} w-full !border-rose-700 !bg-rose-700 !text-white`}>{reverseBusy ? "جارٍ الإلغاء…" : "تأكيد الإلغاء وعكس القيد"}</button></form></section></div>}
   </div>;
 }

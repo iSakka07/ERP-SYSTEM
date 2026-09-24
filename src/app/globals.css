@@ -57,6 +57,15 @@
 html { scroll-behavior: smooth; }
 body { margin: 0; font-family: "Cairo", "Segoe UI", Tahoma, Arial, sans-serif; background: var(--background); color: var(--foreground); }
 button, input, select, textarea { font: inherit; }
+@media print {
+  body:has(.receipt-detail-print) { background: #fff !important; color: #000 !important; }
+  body:has(.receipt-detail-print) > div.min-h-screen > header,
+  body:has(.receipt-detail-print) > div.min-h-screen > aside { display: none !important; }
+  body:has(.receipt-detail-print) > div.min-h-screen > main { min-height: 0 !important; padding-top: 0 !important; }
+  body:has(.receipt-detail-print) > div.min-h-screen > main > div { max-width: 100% !important; padding: 0 !important; }
+  .receipt-detail-print { max-width: 100% !important; padding: 0 !important; }
+  .receipt-detail-print a { color: inherit !important; text-decoration: none !important; }
+}
 .hero-card {
   background-image:
     radial-gradient(circle at 5% 15%, rgba(13, 92, 199, 0.09), transparent 30%),

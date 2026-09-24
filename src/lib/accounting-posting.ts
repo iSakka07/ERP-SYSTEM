@@ -46,9 +46,17 @@ export async function postPettyCashJournal(tx: Tx, movement: { id: string; type:
   return null;
 }
 
-export async function postPurchaseJournal(tx: Tx, invoice: { id: string; totalCents: number; invoiceDate: Date; name: string; projectId: string; paymentSource: string; stockMode?: string; actorId: string }) {
+export async function postPurchaseJournal(tx: Tx, invoice: { id: string; totalCents: number; paidCents: number; invoiceDate: Date; name: string; projectId: string; supplierId: string | null; paymentSource: string; stockMode?: string; actorId: string }) {
   const inventory = invoice.stockMode === "WAREHOUSE" || invoice.stockMode === "DIRECT_PROJECT";
-  return postJournal(tx, { sourceType: "PURCHASE", sourceId: invoice.id, entryDate: invoice.invoiceDate, description: `فاتورة مشتريات: ${invoice.name}`, actorId: invoice.actorId, projectId: inventory ? null : invoice.projectId, lines: [{ accountKey: inventory ? "INVENTORY_ASSET" : "PURCHASE_COST", debitCents: invoice.totalCents }, { accountKey: invoice.paymentSource === "PETTY_CASH" ? "PETTY_CASH" : "OWNER_FUNDING", creditCents: invoice.totalCents }] });
+  const unpaidCents = invoice.totalCents - invoice.paidCents;
+  const lines: PostingLine[] = [{ accountKey: inventory ? "INVENTORY_ASSET" : "PURCHASE_COST", debitCents: invoice.totalCents }];
+  if (invoice.paidCents > 0) lines.push({ accountKey: invoice.paymentSource === "PETTY_CASH" ? "PETTY_CASH" : "OWNER_FUNDING", creditCents: invoice.paidCents });
+  if (unpaidCents > 0) lines.push({ accountKey: "SUPPLIER_PAYABLE", creditCents: unpaidCents, counterpartyType: "SUPPLIER", counterpartyId: invoice.supplierId || undefined });
+  return postJournal(tx, { sourceType: "PURCHASE", sourceId: invoice.id, entryDate: invoice.invoiceDate, description: `فاتورة مشتريات: ${invoice.name}`, actorId: invoice.actorId, projectId: inventory ? null : invoice.projectId, lines });
+}
+
+export async function postPurchasePaymentJournal(tx: Tx, payment: { id: string; amountCents: number; paymentDate: Date; paymentSource: string; invoiceName: string; invoiceId: string; projectId: string; supplierId: string | null; actorId: string }) {
+  return postJournal(tx, { sourceType: "PURCHASE_PAYMENT", sourceId: payment.id, entryDate: payment.paymentDate, description: `سداد دفعة من فاتورة مشتريات: ${payment.invoiceName}`, actorId: payment.actorId, projectId: null, lines: [{ accountKey: "SUPPLIER_PAYABLE", debitCents: payment.amountCents, counterpartyType: "SUPPLIER", counterpartyId: payment.supplierId || undefined }, { accountKey: payment.paymentSource === "PETTY_CASH" ? "PETTY_CASH" : "OWNER_FUNDING", creditCents: payment.amountCents }] });
 }
 
 export async function postStockIssueJournal(tx: Tx, movement: { id: string; movementDate: Date; projectId: string | null; actorId: string; totalCents: number }) {

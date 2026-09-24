@@ -1,0 +1,942 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SystemMetadata {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  roleId       String?
+  role         Role?    @relation(fields: [roleId], references: [id])
+  employeeId   String?  @unique
+  employee     Employee? @relation("EmployeeLogin", fields: [employeeId], references: [id], onDelete: SetNull)
+  permissionOverrides UserPermissionOverride[]
+  pettyCashTransactions PettyCashTransaction[]
+  bankTransactions      BankTransaction[]
+  approvedPayrolls PayrollRun[] @relation("PayrollApprovedBy")
+  paidPayrolls PayrollRun[] @relation("PayrollPaidBy")
+  purchasePayments PurchasePayment[]
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  name        String
+  users       User[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id     String           @id @default(cuid())
+  key    String           @unique
+  name   String
+  module String
+  roles  RolePermission[]
+  overrides UserPermissionOverride[]
+}
+
+model UserPermissionOverride {
+  userId       String
+  permissionId String
+  enabled      Boolean
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+  @@index([permissionId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  action    String
+  target    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
+}
+
+model FinancialOperationRequest {
+  id                  String   @id @default(cuid())
+  idempotencyKey      String
+  actorId             String
+  operation           String
+  requestHash         String
+  businessHash        String
+  responseStatus      Int
+  responseJson        String
+  entityType          String?
+  entityId            String?
+  summaryJson         String?
+  duplicateOfId       String?
+  duplicateConfirmed Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  @@unique([actorId, operation, idempotencyKey])
+  @@index([operation, businessHash, createdAt])
+  @@index([entityType, entityId])
+}
+
+model Company {
+  id                  String               @id @default(cuid())
+  name                String               @unique
+  type                String
+  phone               String?
+  active              Boolean              @default(true)
+  projects            Project[]
+  subcontractAccounts SubcontractAccount[]
+  purchaseInvoices    PurchaseInvoice[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model Project {
+  id                  String                      @id @default(cuid())
+  code                String                      @unique
+  name                String
+  companyId           String
+  company             Company                     @relation(fields: [companyId], references: [id])
+  status              String                      @default("ACTIVE")
+  active              Boolean                     @default(true)
+  supervisors         ProjectEngineerAssignment[]
+  incomingContracts   IncomingContract[]
+  subcontractAccounts SubcontractAccount[]
+  purchaseInvoices    PurchaseInvoice[]
+  pettyCashTransactions PettyCashTransaction[]
+  bankTransactions      BankTransaction[]
+  salaryAllocations EmployeeSalaryAllocation[]
+  warehouses          Warehouse[]
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+}
+
+model IncomingContract {
+  id                String              @id @default(cuid())
+  number            String              @unique
+  name              String
+  projectId         String
+  project           Project             @relation(fields: [projectId], references: [id])
+  originalCents     Float
+  estimateReference String?
+  estimateCents     Float?
+  notes             String?
+  active            Boolean             @default(true)
+  statements        IncomingStatement[]
+  memos             IncomingMemo[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([active])
+  @@index([projectId, active])
+}
+
+model IncomingStatement {
+  id               String                @id @default(cuid())
+  contractId       String
+  contract         IncomingContract      @relation(fields: [contractId], references: [id])
+  sequence         Int
+  kind             String                @default("CURRENT")
+  grossCents       Float
+  stage            String                @default("COMPANY")
+  submittedAt      DateTime              @default(now())
+  paidAt           DateTime?
+  paymentMethod    String?
+  paymentReference String?
+  notes            String?
+  materials        MaterialCertificate[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@unique([contractId, sequence])
+  @@index([contractId, stage])
+  @@index([stage, paidAt])
+}
+
+model MaterialCertificate {
+  id          String                    @id @default(cuid())
+  number      String                    @unique
+  statementId String
+  statement   IncomingStatement         @relation(fields: [statementId], references: [id])
+  totalCents  Float
+  notes       String?
+  items       MaterialCertificateItem[]
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@index([statementId])
+}
+
+model MaterialCertificateItem {
+  id             String              @id @default(cuid())
+  certificateId  String
+  certificate    MaterialCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  name           String
+  unit           String
+  quantity       Float
+  unitPriceCents Float
+  totalCents     Float
+
+  @@index([certificateId])
+}
+
+model IncomingMemo {
+  id          String           @id @default(cuid())
+  contractId  String
+  contract    IncomingContract @relation(fields: [contractId], references: [id])
+  kind        String
+  amountCents Float
+  reason      String
+  createdAt   DateTime         @default(now())
+}
+
+model IncomingAttachment {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  name       String
+  mime       String
+  size       Int
+  data       Bytes
+  actorId    String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model Employee {
+  id           String                      @id @default(cuid())
+  employeeCode String                      @unique
+  name         String
+  jobTitle     String
+  phone        String?
+  monthlySalaryCents Float @default(0)
+  active       Boolean                     @default(true)
+  supervisors  ProjectEngineerAssignment[]
+  user         User? @relation("EmployeeLogin")
+  createdAt    DateTime                    @default(now())
+  updatedAt    DateTime                    @updatedAt
+  pettyCashAccounts PettyCashAccount[]
+  salaryAllocations EmployeeSalaryAllocation[]
+  bonuses EmployeeBonus[]
+  deductions EmployeeDeduction[]
+  advances EmployeeAdvance[]
+  payrollLines PayrollLine[]
+}
+
+model EmployeeSalaryAllocation {
+  id         String   @id @default(cuid())
+  employeeId String
+  projectId  String?
+  startDate  DateTime
+  endDate    DateTime?
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([employeeId, startDate])
+  @@index([projectId, startDate])
+}
+
+model EmployeeBonus {
+  id String @id @default(cuid())
+  employeeId String
+  month String
+  name String
+  amountCents Float
+  reason String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  attachments SalaryAttachment[]
+  createdAt DateTime @default(now())
+  @@index([employeeId, month])
+}
+
+model EmployeeDeduction {
+  id String @id @default(cuid())
+  employeeId String
+  month String
+  name String
+  amountCents Float
+  reason String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  attachments SalaryAttachment[]
+  createdAt DateTime @default(now())
+  @@index([employeeId, month])
+}
+
+model EmployeeAdvance {
+  id String @id @default(cuid())
+  employeeId String
+  amountCents Float
+  remainingCents Float
+  issuedAt DateTime
+  repaymentMode String @default("NEXT_PAYROLL")
+  installmentCents Float?
+  source String @default("EXECUTIVE_DIRECTOR")
+  status String @default("OPEN")
+  note String?
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  installments AdvanceInstallment[]
+  attachments SalaryAttachment[]
+  createdAt DateTime @default(now())
+  @@index([employeeId, status])
+}
+
+model AdvanceInstallment {
+  id String @id @default(cuid())
+  advanceId String
+  payrollLineId String?
+  dueMonth String
+  amountCents Float
+  appliedCents Float @default(0)
+  advance EmployeeAdvance @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  payrollLine PayrollLine? @relation(fields: [payrollLineId], references: [id], onDelete: SetNull)
+  @@unique([advanceId, dueMonth])
+}
+
+model PayrollRun {
+  id String @id @default(cuid())
+  month String @unique
+  status String @default("APPROVED")
+  totalCents Float @default(0)
+  paymentSource String @default("EXECUTIVE_DIRECTOR")
+  approvedAt DateTime @default(now())
+  paidAt DateTime?
+  approvedById String
+  paidById String?
+  approvedBy User @relation("PayrollApprovedBy", fields: [approvedById], references: [id])
+  paidBy User? @relation("PayrollPaidBy", fields: [paidById], references: [id])
+  lines PayrollLine[]
+  attachments SalaryAttachment[]
+  createdAt DateTime @default(now())
+}
+
+model PayrollLine {
+  id String @id @default(cuid())
+  payrollRunId String
+  employeeId String
+  basicCents Float
+  bonusCents Float @default(0)
+  deductionCents Float @default(0)
+  advanceCents Float @default(0)
+  netCents Float
+  allocationJson String
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id])
+  installments AdvanceInstallment[]
+  @@unique([payrollRunId, employeeId])
+}
+
+model SalaryAttachment {
+  id String @id @default(cuid())
+  payrollRunId String?
+  advanceId String?
+  bonusId String?
+  deductionId String?
+  name String
+  mime String
+  size Int
+  data Bytes
+  actorId String
+  payrollRun PayrollRun? @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  advance EmployeeAdvance? @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  bonus EmployeeBonus? @relation(fields: [bonusId], references: [id], onDelete: Cascade)
+  deduction EmployeeDeduction? @relation(fields: [deductionId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([payrollRunId])
+  @@index([advanceId])
+  @@index([bonusId])
+  @@index([deductionId])
+}
+
+model ProjectEngineerAssignment {
+  id         String    @id @default(cuid())
+  projectId  String
+  employeeId String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  startDate  DateTime  @default(now())
+  endDate    DateTime?
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  @@unique([projectId, employeeId, startDate])
+}
+
+model SubcontractAccount {
+  id          String                 @id @default(cuid())
+  name        String
+  companyId   String
+  company     Company                @relation(fields: [companyId], references: [id])
+  projectId   String
+  project     Project                @relation(fields: [projectId], references: [id])
+  scope       String
+  notes       String?
+  active      Boolean                @default(true)
+  statements  SubcontractStatement[]
+  withdrawals WorkWithdrawal[]       @relation("WithdrawalSource")
+  assignments WorkWithdrawal[]       @relation("WithdrawalDestination")
+  createdAt   DateTime               @default(now())
+
+  @@index([active])
+  @@index([projectId, active])
+}
+
+model SubcontractStatement {
+  id                  String                 @id @default(cuid())
+  accountId           String
+  account             SubcontractAccount     @relation(fields: [accountId], references: [id])
+  sequence            Int
+  kind                String                 @default("CURRENT")
+  stage               String                 @default("DRAFT")
+  revision            Int                    @default(1)
+  statementDate       DateTime
+  notes               String?
+  grossCents          Float
+  deductionCents      Float
+  netCents            Float
+  previousGrossCents  Float
+  correctionDebtCents Float                  @default(0)
+  executiveApprovedAt DateTime?
+  items               SubcontractItem[]
+  deductions          SubcontractDeduction[]
+  payments            SubcontractPayment[]
+  approvals           SubcontractApproval[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  withdrawals         WorkWithdrawal[]
+
+  @@unique([accountId, sequence])
+  @@index([accountId, stage])
+}
+
+model SubcontractItem {
+  id                 String               @id @default(cuid())
+  statementId        String
+  statement          SubcontractStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  itemKey            String
+  position           Int
+  name               String
+  unit               String
+  previousQuantity   Float
+  currentQuantity    Float
+  correctionQuantity Float                @default(0)
+  correctionReason   String?
+  entitlementPercent Float
+  unitPriceCents     Float
+  previousValueCents Float
+  totalCents         Float
+  sourceItemKey      String?
+  priceChangeReason  String?
+
+  @@unique([statementId, itemKey])
+}
+
+model SubcontractDeduction {
+  id          String               @id @default(cuid())
+  statementId String
+  statement   SubcontractStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  name        String
+  kind        String
+  value       Float
+  amountCents Float
+  position    Int
+}
+
+model SubcontractPayment {
+  id          String               @id @default(cuid())
+  statementId String
+  statement   SubcontractStatement @relation(fields: [statementId], references: [id])
+  amountCents Float
+  paymentDate DateTime
+  method      String
+  reference   String
+  notes       String?
+  actorId     String
+  status      String               @default("POSTED")
+  reversedAt  DateTime?
+  reversalReason String?
+  createdAt   DateTime             @default(now())
+
+  @@index([statementId, status, paymentDate])
+}
+
+model SubcontractApproval {
+  id          String               @id @default(cuid())
+  statementId String
+  statement   SubcontractStatement @relation(fields: [statementId], references: [id])
+  fromStage   String
+  toStage     String
+  reason      String?
+  actorId     String
+  actorName   String
+  revision    Int
+  createdAt   DateTime             @default(now())
+}
+
+model WorkWithdrawal {
+  id                   String               @id @default(cuid())
+  sourceAccountId      String
+  sourceAccount        SubcontractAccount   @relation("WithdrawalSource", fields: [sourceAccountId], references: [id])
+  sourceStatementId    String
+  sourceStatement      SubcontractStatement @relation(fields: [sourceStatementId], references: [id])
+  destinationAccountId String?              @unique
+  destinationAccount   SubcontractAccount?  @relation("WithdrawalDestination", fields: [destinationAccountId], references: [id])
+  destinationCompanyId String?
+  itemKey              String
+  itemName             String
+  unit                 String
+  itemKeysJson         String
+  kind                 String
+  quantity             Float?
+  withdrawnScope       String
+  retainedScope        String?
+  retainedItemKey      String?
+  reason               String
+  effectiveDate        DateTime
+  stage                String               @default("DRAFT")
+  revision             Int                  @default(1)
+  snapshotJson         String
+  actorId              String
+  createdAt            DateTime             @default(now())
+
+  @@index([sourceAccountId, stage])
+}
+
+model ExpenseAttachment {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  name       String
+  mime       String
+  size       Int
+  data       Bytes
+  actorId    String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model PurchaseInvoice {
+  id          String             @id @default(cuid())
+  number      String             @unique
+  name        String             @default("")
+  projectId   String
+  project     Project            @relation(fields: [projectId], references: [id])
+  supplierId  String?
+  supplier    Company?           @relation(fields: [supplierId], references: [id])
+  invoiceDate DateTime
+  notes       String?
+  totalCents  Float
+  paymentSource String @default("EXECUTIVE_DIRECTOR")
+  stockMode    String             @default("LEGACY_DIRECT")
+  warehouseId  String?
+  status      String             @default("POSTED")
+  reversedAt  DateTime?
+  reversalReason String?
+  actorId     String
+  items       PurchaseItem[]
+  stockMovements StockMovement[]
+  payments     PurchasePayment[]
+  paidCents    Float              @default(0)
+  paymentTrackingStarted Boolean @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([projectId])
+  @@index([projectId, status, invoiceDate])
+  @@index([supplierId])
+}
+
+model PurchasePayment {
+  id          String         @id @default(cuid())
+  invoiceId   String
+  invoice     PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  number      String         @unique
+  amountCents Float
+  paymentDate DateTime
+  paymentSource String
+  status      String         @default("POSTED")
+  notes       String?
+  actorId     String
+  actor       User           @relation(fields: [actorId], references: [id])
+  createdAt   DateTime       @default(now())
+  reversedAt  DateTime?
+  reversalReason String?
+
+  @@index([invoiceId, status, paymentDate])
+  @@index([actorId, createdAt])
+}
+
+model PurchaseItem {
+  id             String          @id @default(cuid())
+  invoiceId      String
+  invoice        PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  position       Int
+  name           String
+  unit           String
+  quantity       Float
+  unitPriceCents Float
+  totalCents     Float
+  inventoryItemId String?
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  stockLines      StockMovementLine[]
+}
+
+model Warehouse {
+  id            String          @id @default(cuid())
+  code          String          @unique
+  name          String
+  type          String          @default("MAIN")
+  projectId     String?
+  project       Project?        @relation(fields: [projectId], references: [id])
+  active        Boolean         @default(true)
+  movementsFrom StockMovement[] @relation("StockFromWarehouse")
+  movementsTo   StockMovement[] @relation("StockToWarehouse")
+  counts        InventoryCount[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([projectId])
+}
+
+model InventoryItem {
+  id             String               @id @default(cuid())
+  code           String               @unique
+  name           String
+  unit           String
+  category       String?
+  minimumQuantity Float               @default(0)
+  active         Boolean              @default(true)
+  purchaseItems  PurchaseItem[]
+  stockLines     StockMovementLine[]
+  countLines     InventoryCountLine[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([name, unit])
+  @@index([active, name])
+}
+
+model StockMovement {
+  id              String          @id @default(cuid())
+  number          String          @unique
+  type            String
+  movementDate    DateTime
+  fromWarehouseId String?
+  fromWarehouse   Warehouse?      @relation("StockFromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouseId   String?
+  toWarehouse     Warehouse?      @relation("StockToWarehouse", fields: [toWarehouseId], references: [id])
+  projectId       String?
+  purchaseInvoiceId String?
+  purchaseInvoice PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
+  recipient       String?
+  notes           String?
+  status          String          @default("POSTED")
+  actorId         String
+  lines           StockMovementLine[]
+  createdAt       DateTime        @default(now())
+
+  @@index([movementDate, type])
+  @@index([fromWarehouseId, movementDate])
+  @@index([toWarehouseId, movementDate])
+  @@index([projectId, movementDate])
+  @@index([purchaseInvoiceId])
+}
+
+model StockMovementLine {
+  id                   String          @id @default(cuid())
+  movementId           String
+  movement             StockMovement   @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  itemId               String
+  item                 InventoryItem   @relation(fields: [itemId], references: [id])
+  quantity             Float
+  unitCostCents        Float
+  totalCents           Float
+  sourcePurchaseItemId String?
+  sourcePurchaseItem   PurchaseItem?   @relation(fields: [sourcePurchaseItemId], references: [id])
+
+  @@index([itemId, movementId])
+  @@index([sourcePurchaseItemId])
+}
+
+model InventoryCount {
+  id          String               @id @default(cuid())
+  number      String               @unique
+  warehouseId String
+  warehouse   Warehouse            @relation(fields: [warehouseId], references: [id])
+  countDate   DateTime
+  status      String               @default("POSTED")
+  notes       String?
+  actorId     String
+  lines       InventoryCountLine[]
+  createdAt   DateTime             @default(now())
+
+  @@index([warehouseId, countDate])
+}
+
+model InventoryCountLine {
+  id            String         @id @default(cuid())
+  countId       String
+  count         InventoryCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  itemId        String
+  item          InventoryItem  @relation(fields: [itemId], references: [id])
+  bookQuantity  Float
+  actualQuantity Float
+  difference    Float
+  unitCostCents Float
+  reason        String?
+
+  @@index([countId, itemId])
+}
+
+model PurchaseAttachment {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  name       String
+  mime       String
+  size       Int
+  data       Bytes
+  actorId    String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model PettyCashCategory {
+  id               String                 @id @default(cuid())
+  key              String                 @unique
+  name             String
+  requiresDocument Boolean                @default(false)
+  requiresAttachment Boolean              @default(true)
+  active           Boolean                @default(true)
+  transactions     PettyCashTransaction[]
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+}
+
+model PettyCashAccount {
+  id              String                 @id @default(cuid())
+  name            String
+  type            String                 @default("MAIN")
+  employeeId      String?
+  employee        Employee?              @relation(fields: [employeeId], references: [id])
+  active          Boolean                @default(true)
+  fromTransactions PettyCashTransaction[] @relation("PettyCashFrom")
+  toTransactions   PettyCashTransaction[] @relation("PettyCashTo")
+  counts          PettyCashCount[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  @@index([type, employeeId])
+}
+
+model PettyCashTransaction {
+  id                 String               @id @default(cuid())
+  number             String               @unique
+  type               String
+  status             String               @default("POSTED")
+  amountCents        Float
+  transactionDate    DateTime
+  sourceAccountId    String?
+  sourceAccount      PettyCashAccount?    @relation("PettyCashFrom", fields: [sourceAccountId], references: [id])
+  destinationAccountId String?
+  destinationAccount PettyCashAccount?    @relation("PettyCashTo", fields: [destinationAccountId], references: [id])
+  projectId          String?
+  project            Project?             @relation(fields: [projectId], references: [id])
+  categoryId         String?
+  category           PettyCashCategory?   @relation(fields: [categoryId], references: [id])
+  description        String
+  documentNumber     String?
+  fundingSource      String?
+  recordedById       String
+  recordedBy         User                 @relation(fields: [recordedById], references: [id])
+  reversedAt         DateTime?
+  reversalReason     String?
+  attachments        PettyCashAttachment[]
+  createdAt          DateTime             @default(now())
+  @@index([transactionDate, type])
+  @@index([projectId])
+  @@index([sourceAccountId, transactionDate])
+  @@index([destinationAccountId, transactionDate])
+}
+
+model PettyCashAttachment {
+  id            String               @id @default(cuid())
+  transactionId String
+  transaction   PettyCashTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  name          String
+  mime          String
+  size          Int
+  data          Bytes
+  actorId       String
+  createdAt     DateTime             @default(now())
+
+  @@index([transactionId])
+}
+
+model PettyCashCount {
+  id             String            @id @default(cuid())
+  accountId      String
+  account        PettyCashAccount @relation(fields: [accountId], references: [id])
+  expectedCents  Float
+  actualCents    Float
+  differenceCents Float
+  countedAt      DateTime
+  notes          String?
+  actorId        String
+  createdAt      DateTime          @default(now())
+  @@index([accountId, countedAt])
+}
+
+model BankAccount {
+  id           String            @id @default(cuid())
+  name         String            @unique
+  active       Boolean           @default(true)
+  transactions BankTransaction[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model BankTransaction {
+  id               String          @id @default(cuid())
+  number           String          @unique
+  accountId        String
+  account          BankAccount     @relation(fields: [accountId], references: [id])
+  type             String
+  amountCents      Float
+  transactionDate  DateTime
+  projectId        String?
+  project          Project?        @relation(fields: [projectId], references: [id])
+  categoryKey      String?
+  counterAccountKey String?
+  description      String
+  reference        String?
+  sourceType       String?
+  sourceId         String?
+  status           String          @default("POSTED")
+  reversedAt       DateTime?
+  reversalReason   String?
+  actorId          String
+  actor            User            @relation(fields: [actorId], references: [id])
+  attachments      BankAttachment[]
+  createdAt        DateTime        @default(now())
+
+  @@unique([sourceType, sourceId])
+  @@index([transactionDate, type])
+  @@index([projectId])
+  @@index([status])
+  @@index([accountId, transactionDate])
+}
+
+model BankAttachment {
+  id            String           @id @default(cuid())
+  transactionId String
+  transaction   BankTransaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  name          String
+  mime          String
+  size          Int
+  data          Bytes
+  actorId       String
+  createdAt     DateTime         @default(now())
+
+  @@index([transactionId])
+}
+
+model AccountingAccount {
+  id               String            @id @default(cuid())
+  code             String            @unique
+  name             String
+  type             String
+  parentId         String?
+  parent           AccountingAccount? @relation("AccountingHierarchy", fields: [parentId], references: [id])
+  children         AccountingAccount[] @relation("AccountingHierarchy")
+  systemKey        String?           @unique
+  active           Boolean           @default(true)
+  allowManualEntry Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  lines            JournalLine[]
+
+  @@index([type, active])
+  @@index([parentId])
+}
+
+model AccountingPeriod {
+  id        String   @id @default(cuid())
+  month     String   @unique
+  status    String   @default("OPEN")
+  closedAt  DateTime?
+  closedById String?
+  reopenReason String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JournalEntry {
+  id              String        @id @default(cuid())
+  number          String        @unique
+  entryDate       DateTime
+  description     String
+  status          String        @default("POSTED")
+  sourceType      String?
+  sourceId        String?
+  projectId       String?
+  actorId         String
+  reversalOfId    String?       @unique
+  reversalOf      JournalEntry? @relation("JournalReversal", fields: [reversalOfId], references: [id])
+  reversalEntry   JournalEntry? @relation("JournalReversal")
+  reversalReason  String?
+  lines           JournalLine[]
+  createdAt       DateTime      @default(now())
+
+  @@unique([sourceType, sourceId])
+  @@index([entryDate, status])
+  @@index([projectId, entryDate])
+}
+
+model JournalLine {
+  id               String            @id @default(cuid())
+  entryId          String
+  entry            JournalEntry      @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId        String
+  account          AccountingAccount @relation(fields: [accountId], references: [id])
+  projectId        String?
+  counterpartyType String?
+  counterpartyId   String?
+  description      String?
+  debitCents       Float             @default(0)
+  creditCents      Float             @default(0)
+  createdAt        DateTime          @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([counterpartyType, counterpartyId])
+}

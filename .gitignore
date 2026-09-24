@@ -18,6 +18,7 @@
 
 # next.js
 /.next/
+/.next-test/
 /.next-phase0-cache/
 /out/
 

@@ -114,7 +114,8 @@ export async function POST(request: Request) {
     const canUseProject = (projectId: string) => !user.isProjectScoped || user.projectIds.includes(projectId);
     const files = await readIncomingFiles(form);
     const estimateFiles = await readIncomingFiles(form, "estimateFiles");
-    const allFiles = [...files, ...estimateFiles];
+    const memoFiles = await readIncomingFiles(form, "memoFiles");
+    const allFiles = [...files, ...estimateFiles, ...memoFiles];
     if (allFiles.length > 5 || allFiles.reduce((n, f) => n + f.size, 0) > 10 * 1024 * 1024)
       throw new Error("الحد الأقصى 5 مرفقات بإجمالي 10 ميجابايت لكل المستند.");
     if (estimateFiles.length && d.action !== "contract") throw new Error("مرفق المقايسة خاص بالعقد فقط.");
@@ -125,6 +126,7 @@ export async function POST(request: Request) {
     }
     const result = await prisma.$transaction(async (tx) => {
       let target = "";
+      let memoAttachmentTarget = "";
       let entityType: string = d.action;
       let before: unknown = null;
       const requireFiles = () => {
@@ -253,13 +255,15 @@ export async function POST(request: Request) {
           await postIncomingAccrual(tx, { ...created, contract: { projectId: c.projectId } }, previous?.grossCents ?? 0, c.project.companyId, user.id);
           target = created.id;
         }
-        if (d.kind === "FINAL" && adjustment && (adjustment.increase > 0 || adjustment.decrease > 0 || adjustment.cancelled > 0)) {
-          await tx.incomingMemo.create({ data: {
+        if (d.kind === "FINAL" && adjustment) {
+          if (!memoFiles.length) throw new Error("مرفق مذكرة الخفض/الرفع إلزامي.");
+          const memo = await tx.incomingMemo.create({ data: {
             contractId: c.id,
             kind: adjustmentNet > 0 ? "INCREASE" : "DECREASE",
             amountCents: Math.abs(adjustmentNet),
             reason: JSON.stringify({ type: "FINAL_ADJUSTMENT", increase: adjustment.increase, decrease: adjustment.decrease, cancelled: adjustment.cancelled }),
           } });
+          memoAttachmentTarget = memo.id;
         }
         if (d.materials?.length) {
           if (!d.materialNumber) throw new Error("أدخل رقم شهادة الخامات.");
@@ -449,6 +453,10 @@ export async function POST(request: Request) {
         });
       if (estimateFiles.length)
         await tx.incomingAttachment.createMany({ data: estimateFiles.map(f => ({ ...f, entityType: "estimate", entityId: target, actorId: user.id })) });
+      if (memoFiles.length) {
+        if (!memoAttachmentTarget) throw new Error("مرفق المذكرة مرتبط بالختامي الذي يحتوي مذكرة خفض/رفع فقط.");
+        await tx.incomingAttachment.createMany({ data: memoFiles.map((f) => ({ ...f, entityType: "memo", entityId: memoAttachmentTarget, actorId: user.id })) });
+      }
       await tx.auditLog.create({
         data: {
           actorId: user.id,

@@ -15,7 +15,13 @@ function movementLabel(action: string, details: string) {
   try {
     const data = JSON.parse(details);
     const stage = incomingStages.find(s => s[0] === data.input?.stage)?.[1];
-    return { label: action === "incoming.stage" && stage ? `نقل إلى ${stage}` : labels[action] || action, note: data.input?.reason || undefined };
+    const created = !data.input?.id;
+    const label = action === "incoming.stage" && stage ? `نقل إلى ${stage}`
+      : action === "incoming.contract" ? `${created ? "إضافة" : "تعديل"} العقد`
+      : action === "incoming.statement" ? `${created ? "إضافة" : "تعديل"} المستخلص`
+      : action === "incoming.material" ? `${created ? "إضافة" : "تعديل"} شهادة الخامات`
+      : labels[action] || action;
+    return { label, note: data.input?.reason || undefined };
   } catch { return { label: labels[action] || action }; }
 }
 
@@ -64,9 +70,12 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
     prisma.auditLog.findMany({
       where: { action: { startsWith: "incoming." } },
       orderBy: { createdAt: "desc" },
-      select: { id: true, target: true, action: true, createdAt: true, details: true },
+      select: { id: true, target: true, action: true, actorId: true, createdAt: true, details: true },
     }),
   ]);
+  const actorIds = [...new Set(movements.map((movement) => movement.actorId))];
+  const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } }) : [];
+  const actorMap = new Map(actors.map((actor) => [actor.id, `${actor.name} — ${actor.email}`]));
   return (
     <IncomingCenter
       contracts={JSON.parse(JSON.stringify(contracts))}
@@ -80,6 +89,7 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
       initialQuery={requested.q ?? ""}
       movements={movements.map(m => ({
         id: m.id, entityId: m.target || "", date: m.createdAt.toISOString(),
+        actor: actorMap.get(m.actorId) || "حساب غير متاح",
         ...movementLabel(m.action, m.details || "{}"),
       }))}
     />

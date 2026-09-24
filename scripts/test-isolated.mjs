@@ -10,8 +10,12 @@ const temp = await mkdtemp(resolve(tempRoot, "isolated-test-"));
 const port = String(3200 + Math.floor(Math.random() * 400));
 const databaseUrl = `file:${resolve(temp, "test.db").replaceAll("\\", "/")}`;
 const testUrl = `http://127.0.0.1:${port}`;
-const env = { ...process.env, DATABASE_URL: databaseUrl, AUTH_SECRET: "isolated-test-secret-with-at-least-32-characters", AUTH_URL: testUrl, ERP_ISOLATED_TEST: "true", BOOTSTRAP_ADMIN_EMAIL: "admin@erp.local", BOOTSTRAP_ADMIN_PASSWORD: "Admin@123456", BOOTSTRAP_ADMIN_NAME: "مدير النظام", ERP_TEST_URL: testUrl };
+const adminPassword = "IsolatedDemo@123456";
+const env = { ...process.env, DATABASE_URL: databaseUrl, AUTH_SECRET: "isolated-test-secret-with-at-least-32-characters", AUTH_URL: testUrl, ERP_ISOLATED_TEST: "true", BOOTSTRAP_ADMIN_EMAIL: "admin@erp.local", BOOTSTRAP_ADMIN_PASSWORD: adminPassword, DEMO_USER_PASSWORD: adminPassword, ERP_TEST_ADMIN_PASSWORD: adminPassword, BOOTSTRAP_ADMIN_NAME: "مدير النظام", ERP_TEST_URL: testUrl };
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const apiTests = ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:warehouse-receipts-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:project-cost-control-api"];
+const selectedTest = process.env.ERP_TEST_ONLY;
+if (selectedTest && !apiTests.includes(selectedTest)) throw new Error(`اختبار العزل غير معروف: ${selectedTest}`);
 const windowsPnpm = process.platform === "win32" ? (() => {
   const located = spawnSync("where.exe", ["pnpm.cmd"], { encoding: "utf8" });
   const command = located.stdout.split(/\r?\n/).find(Boolean);
@@ -42,8 +46,8 @@ try {
     await new Promise((resolveWait) => setTimeout(resolveWait, 300));
   }
   if (Date.now() >= deadline) throw new Error("لم يبدأ خادم الاختبارات المعزول.");
-  for (const command of ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:project-cost-control-api"]) run([command]);
-  console.log("PASS: كل اختبارات API شُغلت على قاعدة وخادم معزولين.");
+  for (const command of selectedTest ? [selectedTest] : apiTests) run([command]);
+  console.log(selectedTest ? `PASS: ${selectedTest} شُغل على قاعدة وخادم معزولين.` : "PASS: كل اختبارات API شُغلت على قاعدة وخادم معزولين.");
 } finally {
   if (server?.pid) {
     if (process.platform === "win32") spawnSync("taskkill.exe", ["/pid", String(server.pid), "/t", "/f"], { stdio: "ignore" });

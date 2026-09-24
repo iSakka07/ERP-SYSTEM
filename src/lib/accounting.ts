@@ -12,6 +12,9 @@ export async function accountingSnapshot() {
     prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   const balances = new Map(accounts.map((account) => [account.id, { debit: 0, credit: 0 }]));
+  const actorIds = [...new Set(entries.map((entry) => entry.actorId))];
+  const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } }) : [];
+  const actorMap = new Map(actors.map((actor) => [actor.id, `${actor.name} — ${actor.email}`]));
   for (const entry of entries) for (const line of entry.lines) { const balance = balances.get(line.accountId); if (balance) { balance.debit += line.debitCents; balance.credit += line.creditCents; } }
-  return { accounts, entries, periods, projects, goLiveDate: goLive?.value || null, trialBalance: accounts.map((account) => ({ account, ...(balances.get(account.id) || { debit: 0, credit: 0 }) })).filter((row) => row.debit || row.credit) };
+  return { accounts, entries: entries.map((entry) => ({ ...entry, actor: actorMap.get(entry.actorId) || "حساب غير متاح" })), periods, projects, goLiveDate: goLive?.value || null, trialBalance: accounts.map((account) => ({ account, ...(balances.get(account.id) || { debit: 0, credit: 0 }) })).filter((row) => row.debit || row.credit) };
 }

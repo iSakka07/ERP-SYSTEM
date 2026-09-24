@@ -31,6 +31,7 @@ model User {
   bankTransactions      BankTransaction[]
   approvedPayrolls PayrollRun[] @relation("PayrollApprovedBy")
   paidPayrolls PayrollRun[] @relation("PayrollPaidBy")
+  purchasePayments PurchasePayment[]
 }
 
 model Role {
@@ -132,6 +133,7 @@ model Project {
   pettyCashTransactions PettyCashTransaction[]
   bankTransactions      BankTransaction[]
   salaryAllocations EmployeeSalaryAllocation[]
+  warehouses          Warehouse[]
   createdAt           DateTime                    @default(now())
   updatedAt           DateTime                    @updatedAt
 }
@@ -562,12 +564,35 @@ model PurchaseInvoice {
   actorId     String
   items       PurchaseItem[]
   stockMovements StockMovement[]
+  payments     PurchasePayment[]
+  paidCents    Float              @default(0)
+  paymentTrackingStarted Boolean @default(false)
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
   @@index([projectId])
   @@index([projectId, status, invoiceDate])
   @@index([supplierId])
+}
+
+model PurchasePayment {
+  id          String         @id @default(cuid())
+  invoiceId   String
+  invoice     PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  number      String         @unique
+  amountCents Float
+  paymentDate DateTime
+  paymentSource String
+  status      String         @default("POSTED")
+  notes       String?
+  actorId     String
+  actor       User           @relation(fields: [actorId], references: [id])
+  createdAt   DateTime       @default(now())
+  reversedAt  DateTime?
+  reversalReason String?
+
+  @@index([invoiceId, status, paymentDate])
+  @@index([actorId, createdAt])
 }
 
 model PurchaseItem {
@@ -590,12 +615,16 @@ model Warehouse {
   code          String          @unique
   name          String
   type          String          @default("MAIN")
+  projectId     String?
+  project       Project?        @relation(fields: [projectId], references: [id])
   active        Boolean         @default(true)
   movementsFrom StockMovement[] @relation("StockFromWarehouse")
   movementsTo   StockMovement[] @relation("StockToWarehouse")
   counts        InventoryCount[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
+
+  @@unique([projectId])
 }
 
 model InventoryItem {

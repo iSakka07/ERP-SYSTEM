@@ -3,10 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { incomingUser } from "@/lib/incoming-server";
 import { PurchasesCenter } from "@/components/purchases-center";
 
-export default async function PurchasesPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
+export default async function PurchasesPage({ searchParams }: { searchParams: Promise<{ project?: string; invoiceId?: string }> }) {
   const viewer = await incomingUser("purchases.view");
   if (!viewer) redirect("/");
-  const requestedProject = (await searchParams).project ?? "";
+  const { project: requestedProject = "", invoiceId = "" } = await searchParams;
   const manager = await incomingUser("purchases.manage");
   const [invoices, projects, suppliers, attachments] = await Promise.all([
     prisma.purchaseInvoice.findMany({
@@ -15,6 +15,8 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
         project: true,
         supplier: true,
         items: { orderBy: { position: "asc" } },
+        stockMovements: { where: { status: "POSTED", type: "ISSUE_PROJECT" }, select: { type: true, projectId: true } },
+        payments: { orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }] },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -40,6 +42,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
       attachments={attachments}
       canManage={Boolean(manager)}
       initialProjectId={projects.some((project) => project.id === requestedProject) ? requestedProject : ""}
+      initialInvoiceId={invoiceId}
     />
   );
 }

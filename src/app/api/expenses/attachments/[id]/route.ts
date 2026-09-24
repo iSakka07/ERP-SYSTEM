@@ -13,7 +13,7 @@ export async function GET(
   if (!f)
     return NextResponse.json({ error: "المرفق غير موجود." }, { status: 404 });
   if (user.isProjectScoped) {
-    const projectId = f.entityType === "account" ? (await prisma.subcontractAccount.findUnique({ where: { id: f.entityId }, select: { projectId: true } }))?.projectId : f.entityType === "statement" ? (await prisma.subcontractStatement.findUnique({ where: { id: f.entityId }, include: { account: { select: { projectId: true } } } }))?.account.projectId : (await prisma.subcontractPayment.findUnique({ where: { id: f.entityId }, include: { statement: { include: { account: { select: { projectId: true } } } } } }))?.statement.account.projectId;
+    const projectId = f.entityType === "account" ? (await prisma.subcontractAccount.findUnique({ where: { id: f.entityId }, select: { projectId: true } }))?.projectId : f.entityType === "statement" ? (await prisma.subcontractStatement.findUnique({ where: { id: f.entityId }, include: { account: { select: { projectId: true } } } }))?.account.projectId : f.entityType === "withdrawal" ? (await prisma.workWithdrawal.findUnique({ where: { id: f.entityId }, include: { sourceAccount: { select: { projectId: true } } } }))?.sourceAccount.projectId : (await prisma.subcontractPayment.findUnique({ where: { id: f.entityId }, include: { statement: { include: { account: { select: { projectId: true } } } } } }))?.statement.account.projectId;
     if (!projectId || !user.projectIds.includes(projectId)) return NextResponse.json({ error: "غير مسموح." }, { status: 403 });
   }
   return new Response(new Uint8Array(f.data), {

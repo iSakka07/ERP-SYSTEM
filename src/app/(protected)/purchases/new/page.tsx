@@ -16,7 +16,7 @@ export default async function NewPurchaseInvoicePage({
   const [projects, suppliers, warehouses] = await Promise.all([
     prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.company.findMany({ where: { active: true, type: "SUPPLIER" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.warehouse.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.warehouse.findMany({ where: { active: true, type: { not: "PROJECT" } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   return <PurchaseInvoicePage projects={projects} suppliers={suppliers} warehouses={warehouses} returnHref={safeReturn((await searchParams).return)} />;
 }

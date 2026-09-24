@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { BanknoteArrowUp, BookOpenCheck, Boxes, Building2, ChartNoAxesCombined, FileSpreadsheet, Landmark, LayoutDashboard, LockKeyhole, Menu, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
+import { BanknoteArrowUp, BookOpenCheck, Boxes, Building2, ChartNoAxesCombined, FileSpreadsheet, Landmark, LayoutDashboard, LockKeyhole, Menu, Paperclip, Settings2, ShoppingCart, UsersRound, Vault, X } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { can } from "@/lib/permissions";
 import { companyBrand } from "@/lib/company-brand";
@@ -16,6 +16,7 @@ const navItems = [
   { label: "الوارد", icon: BanknoteArrowUp, href: "/incoming", permission: "incoming.view" },
   { label: "مستخلصات المقاولين", icon: FileSpreadsheet, href: "/expenses", permission: "expenses.view" },
   { label: "المشتريات", icon: ShoppingCart, href: "/purchases", permission: "purchases.view" },
+  { label: "المرفقات", icon: Paperclip, href: "/attachments", permission: "attachments.view" },
   { label: "المخزن", icon: Boxes, href: "/warehouse", permission: "warehouse.view" },
   { label: "المرتبات", icon: UsersRound, href: "/salaries", permission: "salaries.view" },
   { label: "Petty Cash", icon: Vault, href: "/petty-cash", permission: "pettycash.view" },
@@ -29,6 +30,10 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const projectScopedEngineer = user.roleKey === "technical_office_engineer" || user.roleKey === "site_supervisor_engineer";
+  const canAttachments = user.permissions.some((permission) =>
+    ["incoming.view", "expenses.view", "purchases.view", "pettycash.view", "bank.view", "salaries.view"].includes(permission)
+    && !(projectScopedEngineer && ["pettycash.view", "bank.view", "salaries.view"].includes(permission)),
+  );
   const globalFinancialPermissions = new Set(["accounting.view", "accounting.manage", "bank.view", "bank.manage", "pettycash.view", "pettycash.manage", "salaries.view", "salaries.manage"]);
   return (
     <div className="min-h-screen">
@@ -56,7 +61,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
         </div>
         <nav className="space-y-1 overflow-y-auto px-3 py-5">
           <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">التنقل الرئيسي</p>
-          {navItems.filter((item) => can(user, item.permission) && (!projectScopedEngineer || !globalFinancialPermissions.has(item.permission)) && (item.href !== "/admin/accounts" || user.roleKey === "admin")).map((item) => {
+          {navItems.filter((item) => (item.href === "/attachments" ? canAttachments : can(user, item.permission)) && (item.href === "/attachments" || !projectScopedEngineer || !globalFinancialPermissions.has(item.permission)) && (item.href !== "/admin/accounts" || user.roleKey === "admin")).map((item) => {
             const Icon = item.icon;
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             return <Link key={item.label} href={item.href} onClick={() => setOpen(false)} className={`flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition ${active ? "bg-blue-600 text-white shadow-md shadow-blue-950/20" : "text-slate-300 hover:bg-white/7 hover:text-white"}`}><Icon className="size-4.5" /><span className="flex-1">{item.label}</span></Link>;

@@ -16,6 +16,7 @@ const permissions = [
   ["salaries.view", "عرض المرتبات", "salaries"], ["salaries.manage", "إدارة المرتبات", "salaries"],
   ["treasury.view", "عرض الخزنة", "treasury"], ["treasury.manage", "إدارة الخزنة", "treasury"],
   ["pettycash.view", "عرض Petty Cash", "pettycash"], ["pettycash.manage", "إدارة Petty Cash", "pettycash"],
+  ["warehouse.view", "عرض المخزن", "warehouse"], ["warehouse.manage", "إدارة حركات المخزن", "warehouse"],
   ["project_cost_control.view", "عرض موقف تكلفة المشروع", "project_cost_control"],
   ["accounting.view", "عرض المحاسبة", "accounting"], ["accounting.manage", "إدارة القيود والحسابات", "accounting"],
   ["accounts.manage", "إدارة الحسابات والصلاحيات", "accounts"],
@@ -29,7 +30,7 @@ const grants = /** @type {Record<string, string[]>} */ ({
   accountant: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage" && key !== "masterdata.manage" && !key.startsWith("expenses.approve_") && key !== "expenses.return"),
   technical_office_engineer: ["dashboard.view", "masterdata.view", "expenses.view", "expenses.manage", "expenses.approve_technical", "purchases.view"],
   site_supervisor_engineer: ["dashboard.view", "masterdata.view", "expenses.view", "expenses.approve_site"],
-  storekeeper: ["dashboard.view", "purchases.view", "purchases.manage", "masterdata.view"],
+  storekeeper: ["dashboard.view", "purchases.view", "purchases.manage", "masterdata.view", "warehouse.view", "warehouse.manage"],
   sales: ["dashboard.view"],
 });
 
@@ -75,6 +76,10 @@ try {
     await prisma.user.create({ data: { name, email, passwordHash: await hash(password, 12), roleId: role.id } });
   }
   await prisma.pettyCashAccount.upsert({ where: { id: "petty-main" }, update: { name: "الخزنة الرئيسية", active: true, type: "MAIN" }, create: { id: "petty-main", name: "الخزنة الرئيسية", type: "MAIN" } });
+  await prisma.warehouse.upsert({ where: { code: "MAIN" }, update: { name: "المخزن الرئيسي", active: true, type: "MAIN" }, create: { code: "MAIN", name: "المخزن الرئيسي", type: "MAIN" } });
+  for (const project of await prisma.project.findMany({ where: { active: true }, select: { id: true, code: true, name: true } })) {
+    await prisma.warehouse.upsert({ where: { projectId: project.id }, update: { active: true }, create: { code: `PRJ-${project.code.replaceAll(" ", "-").slice(0, 55)}`, name: `مخزن مشروع — ${project.name}`, type: "PROJECT", projectId: project.id } });
+  }
   const categories = [["workers_daily", "يوميات عمال"], ["project_admin", "إداريات مشروع"], ["transport", "انتقالات"], ["diesel", "سولار"], ["maintenance", "صيانة"], ["hospitality", "ضيافة"], ["small_purchases", "مشتريات صغيرة"], ["tools", "أدوات ومهمات"], ["petty", "نثريات"], ["general", "مصروفات عمومية"], ["other", "أخرى"]];
   for (const [key, name] of categories) await prisma.pettyCashCategory.upsert({ where: { key }, update: { name, active: true }, create: { key, name, requiresAttachment: true } });
   console.log(demoMode ? "Demo roles, users and master data are ready." : "Base roles, permissions and secure administrator bootstrap are ready.");

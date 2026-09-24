@@ -29,7 +29,7 @@ async function login(email) {
     body: new URLSearchParams({
       csrfToken,
       email,
-      password: "Admin@123456",
+      password: process.env.ERP_TEST_ADMIN_PASSWORD || "Admin@123456",
       callbackUrl: `${base}/incoming`,
     }),
   });
