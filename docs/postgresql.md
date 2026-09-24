@@ -6,13 +6,13 @@ The approved production architecture is a Hostinger Node.js application for the 
 
 - `pnpm db:postgres:prepare` checks that the PostgreSQL Prisma schema matches the current application schema and preserves the existing initial migration.
 - `pnpm db:postgres:validate` validates the provider-specific Prisma schema offline.
-- The current PostgreSQL history has an initial schema migration and a forward-only migration for supplier payment tracking.
-- No live PostgreSQL target is configured in this workspace. No PostgreSQL database has been created or migrated here.
+- The PostgreSQL history has an initial schema migration, supplier payment tracking, and a security migration enabling RLS and revoking Data API grants.
+- ERP-Alsalama (`djtuxtlvzwawgldpmvoq`) has all three migrations applied and recorded in `_prisma_migrations`; 57 tables have RLS and the anon/authenticated roles have no table read grants. No connection secret is configured in Hostinger yet.
 - Existing SQLite data is intentionally not copied. The approved deployment starts with a clean database; local SQLite remains available for development until a separate cleanup is approved.
 
-## Provision a new empty Supabase PostgreSQL database
+## Existing Supabase PostgreSQL database
 
-Create a new, empty Supabase project and select a region close to the Hostinger app region. Do not import any SQLite records or attachments. Keep database passwords and connection strings in Hostinger's environment-variable settings or a protected local environment file; never put them in Git.
+Use the existing ERP-Alsalama project. Do not create another project or import any SQLite records or attachments. Keep database passwords and connection strings in Hostinger's environment-variable settings or a protected local environment file; never put them in Git.
 
 In the Supabase Connect panel, choose a **Session pooler** connection string for the Hostinger Node.js app. Supavisor's shared pooler supports IPv4 and Session mode is intended for persistent backend connections. Avoid Transaction pooler for this app unless deployment becomes serverless and Prisma is configured for PgBouncer transaction mode.
 
@@ -37,7 +37,7 @@ Do not print or commit these values. Set `ERP_BACKUP_DIR` to protected durable s
 
 ## Initialize the empty database
 
-Run from a clean deployment checkout, with the Supabase URLs and production secrets already set:
+Run from a clean deployment checkout, with the Supabase URLs and production secrets already set. The first three migrations are already recorded on ERP-Alsalama; `db:postgres:migrate` should report nothing pending:
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -66,6 +66,6 @@ Never edit an initial or applied migration. For future schema changes, create a 
 ## Data handling and limitations
 
 - No SQLite records, users, secrets, or binary attachments are imported into the clean production database.
-- No Supabase project or Hostinger deployment has been provisioned from this workspace, so applying migrations to a real target, creating a restore rehearsal, and publishing the site remain pending account/project access and connection details.
+- ERP-Alsalama has been provisioned and migrated. Runtime connectivity, administrator seeding, a restore rehearsal, and Hostinger publication remain pending deployment access and secret configuration.
 - Keep the SQLite development database intact until the PostgreSQL deployment has passed acceptance. Any later removal of local test data should be a separate, explicit cleanup.
 - The current application is not yet designed for multiple app instances with shared rate limiting; deploy a single instance unless shared infrastructure is added and tested.
