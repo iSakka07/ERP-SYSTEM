@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { CompanyFooter } from "@/components/company-footer";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, BellRing, Building2, Boxes, CalendarDays, ChartNoAxesCombined, ChevronLeft, CircleAlert, FileSpreadsheet, Landmark, TrendingDown, TrendingUp, Vault } from "lucide-react";
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, BellRing, Building2, Boxes, CalendarDays, ChartNoAxesCombined, ChevronLeft, CircleAlert, FileSpreadsheet, Landmark, TrendingDown, TrendingUp, UserRound, Vault } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type Project = { id: string; name: string; owner: string; contractValue: string; incoming: string; cost: string; paid: string; margin: string; risk: string };
@@ -42,6 +42,19 @@ function DashboardFilters({ filter }: { filter: Filter }) {
     <label className="grid gap-1.5 text-xs font-bold text-slate-600"><span>إلى تاريخ</span><input value={to} onChange={(event) => setTo(event.target.value)} type="date" className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
     <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={apply} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-300"><CalendarDays className="size-4" />تطبيق</button><span className="hidden h-7 w-px bg-slate-200 sm:block" />{([['week', 'هذا الأسبوع'], ['month', 'هذا الشهر'], ['thirty', 'آخر 30 يومًا']] as const).map(([kind, label]) => <button key={kind} type="button" onClick={() => setQuickRange(kind)} className="rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">{label}</button>)}</div>
   </section>;
+}
+
+function DashboardProjectPicker({ filter }: { filter: Filter }) {
+  const router = useRouter(); const [project, setProject] = useState(filter.projectId);
+  function apply(value: string) {
+    setProject(value);
+    const params = new URLSearchParams();
+    if (value) params.set("project", value);
+    if (filter.from) params.set("from", filter.from);
+    if (filter.to) params.set("to", filter.to);
+    router.push(`/?${params.toString()}`);
+  }
+  return <label className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm"><Building2 className="size-3.5 shrink-0 text-blue-700" /><span className="sr-only">المشروع</span><select value={project} onChange={(event) => apply(event.target.value)} className="cursor-pointer bg-transparent text-xs font-bold text-slate-700 outline-none"><option value="">كل المشروعات</option>{filter.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>;
 }
 
 function Metric({ label, value, icon: Icon, tone }: { label: string; value: string; icon: LucideIcon; tone: "blue" | "emerald" | "amber" | "violet" }) {
@@ -87,14 +100,21 @@ function OperationsSummary({ operations, periodLabel }: { operations: NonNullabl
 export function RoleDashboard({ roleKey, userName, canFinancial, filter, projects, totals, insights }: { roleKey: string; userName?: string | null; canFinancial: boolean; filter: Filter; projects: Project[]; totals: Record<string, string>; insights?: Insights }) {
   const engineer = roleKey === "technical_office_engineer" || roleKey === "site_supervisor_engineer";
   const accountName = roleKey === "admin" ? "مدير النظام" : roleKey === "executive_director" ? "المدير التنفيذي" : roleKey === "accountant" ? "المحاسب" : engineer ? "مهندس المشروع" : "مستخدم المنظومة";
-  const title = roleKey === "executive_director" ? "صباح العمل، الصورة أمامك" : roleKey === "accountant" ? "المتابعة المالية اليومية" : engineer ? "متابعة مشروعاتي" : "ملخص الشركة";
-  const subtitle = engineer ? "تعرض هذه اللوحة المشروعات المسكن عليها حسابك فقط." : roleKey === "accountant" ? "تحصيلات، التزامات، وتكلفة المشروعات في مكان واحد." : "ملخص تنفيذي يساعدك على معرفة ما يحتاج قرارك اليوم.";
   const metrics: [string, string, LucideIcon, "blue" | "emerald" | "amber" | "violet"][] = canFinancial ? [["قيمة العقود في الفترة", totals.contractValue, Building2, "blue"], ["الوارد المحصل", totals.incoming, BanknoteArrowUp, "emerald"], ["تكلفة الأعمال", totals.cost, BanknoteArrowDown, "amber"], ["صافي السيولة", totals.liquidity, Landmark, "violet"]] : [["المشروعات المكلف بها", String(projects.length), Building2, "blue"], ["مستخلصات تحت الإجراء", "—", FileSpreadsheet, "amber"], ["حالة المتابعة", "جاهز", ChartNoAxesCombined, "emerald"], ["الوارد والماليات", "غير مسموح", Landmark, "violet"]];
+  const [today, setToday] = useState("");
+  useEffect(() => { setToday(new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", year: "numeric" }).format(new Date())); }, []);
   const pieData = insights?.costComposition.filter((item) => item.value > 0) ?? [];
   const cashPieData = insights?.petty.composition.filter((item) => item.value > 0) ?? [];
   return <div className="space-y-6">
-    <section className="flex items-center gap-3 py-1"><span className="text-base" aria-hidden="true">👋</span><div><p className="text-sm font-black text-slate-950">مرحبًا بك، {userName || accountName}</p><p className="mt-0.5 text-xs text-slate-500">إليك نظرة عامة على أداء الشركة والمؤشرات الحيوية اليوم.</p></div></section>
-    <section className="py-2"><p className="mb-2 text-xs font-bold text-blue-700">الرئيسية / لوحة التحكم</p><h1 className="text-2xl font-black text-slate-950 sm:text-3xl">{title}</h1><p className="mt-2 max-w-2xl text-sm text-slate-500">{subtitle}</p></section>
+    <section className="py-1">
+      <h1 className="text-2xl font-black text-slate-950 sm:text-3xl">لوحة المتابعة التشغيلية</h1>
+      <p className="mt-1 text-sm text-slate-500">نظرة شاملة على أداء المشاريع والعمليات</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 font-bold text-slate-700 shadow-sm"><UserRound className="size-3.5 text-blue-700" />{userName || accountName}</span>
+        <DashboardProjectPicker filter={filter} />
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 font-bold text-slate-700 shadow-sm"><CalendarDays className="size-3.5 text-blue-700" />{today}</span>
+      </div>
+    </section>
     <DashboardFilters filter={filter} />
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label, value, Icon, tone]) => <Metric key={label} label={label} value={value} icon={Icon} tone={tone} />)}</section>
     {canFinancial && insights && <DecisionStrip insights={insights} />}
