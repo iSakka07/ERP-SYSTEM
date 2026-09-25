@@ -2,93 +2,1082 @@
 
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Banknote, BadgeMinus, FileText, Gift, Trash2, UserRound, WalletCards } from "lucide-react";
+import {
+  Banknote,
+  BadgeMinus,
+  FileText,
+  Gift,
+  Trash2,
+  UserRound,
+  WalletCards,
+} from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { ERPSelect } from "@/components/erp-select";
 import { UploadBox } from "@/components/upload-box";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
-import { confirmSimilarFinancialOperation, financialHeaders, financialResult } from "@/lib/financial-submit";
-import { pdfColumns, pdfMoney, previewDataPdf, usePdfDataExport } from "@/components/pdf-data-export";
+import {
+  confirmSimilarFinancialOperation,
+  financialHeaders,
+  financialResult,
+} from "@/lib/financial-submit";
+import {
+  pdfColumns,
+  pdfMoney,
+  previewDataPdf,
+  usePdfDataExport,
+} from "@/components/pdf-data-export";
 
-type Employee = { id: string; employeeCode: string; name: string; jobTitle: string; monthlySalaryCents: number };
+type Employee = {
+  id: string;
+  employeeCode: string;
+  name: string;
+  jobTitle: string;
+  monthlySalaryCents: number;
+};
 type Project = { id: string; name: string };
-type Allocation = { id: string; employee: Employee; project: Project | null; startDate: string | Date; endDate: string | Date | null };
-type Run = { id: string; month: string; status: string; totalCents: number; lines: { employee: Employee; netCents: number; allocationJson: string }[]; attachments?: { id: string; name: string }[] };
-type Advance = { id: string; employee: Employee; remainingCents: number; repaymentMode: string; installmentCents: number | null; source: string };
-type Adjustment = { id: string; employee: Employee; month: string; amountCents: number; name: string; reason: string };
+type Allocation = {
+  id: string;
+  employee: Employee;
+  project: Project | null;
+  startDate: string | Date;
+  endDate: string | Date | null;
+};
+type Run = {
+  id: string;
+  month: string;
+  status: string;
+  totalCents: number;
+  lines: { employee: Employee; netCents: number; allocationJson: string }[];
+  attachments?: { id: string; name: string }[];
+};
+type Advance = {
+  id: string;
+  employee: Employee;
+  remainingCents: number;
+  repaymentMode: string;
+  installmentCents: number | null;
+  source: string;
+};
+type Adjustment = {
+  id: string;
+  employee: Employee;
+  month: string;
+  amountCents: number;
+  name: string;
+  reason: string;
+};
 
-function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block text-xs font-bold text-slate-700"><span>{label}</span><div className="mt-2">{children}</div></label>; }
-function MonthInput({ name = "month", value, onChange }: { name?: string; value?: string; onChange?: (value: string) => void }) { return <input name={name} type="month" required value={value} onChange={(event) => onChange?.(event.target.value)} className={expenseInput} />; }
-function Select({ name, options, optional = false, value, onChange }: { name: string; options: { id: string; name: string }[]; optional?: boolean; value?: string; onChange?: (value: string) => void }) { return <ERPSelect name={name} required={!optional} value={value} onValueChange={onChange} className={expenseInput}><option value="">{optional ? "عام الشركة" : "اختر"}</option>{options.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</ERPSelect>; }
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block text-xs font-bold text-slate-700">
+      <span>{label}</span>
+      <div className="mt-2">{children}</div>
+    </label>
+  );
+}
+function MonthInput({
+  name = "month",
+  value,
+  onChange,
+}: {
+  name?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+}) {
+  return (
+    <input
+      name={name}
+      type="month"
+      required
+      value={value}
+      onChange={(event) => onChange?.(event.target.value)}
+      className={expenseInput}
+    />
+  );
+}
+function Select({
+  name,
+  options,
+  optional = false,
+  value,
+  onChange,
+}: {
+  name: string;
+  options: { id: string; name: string }[];
+  optional?: boolean;
+  value?: string;
+  onChange?: (value: string) => void;
+}) {
+  return (
+    <ERPSelect
+      name={name}
+      required={!optional}
+      value={value}
+      onValueChange={onChange}
+      className={expenseInput}
+    >
+      <option value="">{optional ? "عام الشركة" : "اختر"}</option>
+      {options.map((item) => (
+        <option key={item.id} value={item.id}>
+          {item.name}
+        </option>
+      ))}
+    </ERPSelect>
+  );
+}
 
-export function SalariesCenter({ employees, projects, allocations, runs, advances, bonuses, deductions, paymentDay, canManage }: { employees: Employee[]; projects: Project[]; allocations: Allocation[]; runs: Run[]; advances: Advance[]; bonuses: Adjustment[]; deductions: Adjustment[]; paymentDay: number | null; canManage: boolean }) {
+export function SalariesCenter({
+  employees,
+  projects,
+  allocations,
+  runs,
+  advances,
+  bonuses,
+  deductions,
+  paymentDay,
+  canManage,
+}: {
+  employees: Employee[];
+  projects: Project[];
+  allocations: Allocation[];
+  runs: Run[];
+  advances: Advance[];
+  bonuses: Adjustment[];
+  deductions: Adjustment[];
+  paymentDay: number | null;
+  canManage: boolean;
+}) {
   const router = useRouter();
   const [tab, setTab] = useState<"employees" | "payroll">("employees");
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
   const [advanceEmployee, setAdvanceEmployee] = useState<Employee | null>(null);
-  const [adjustment, setAdjustment] = useState<{ employee: Employee; type: "bonus" | "deduction" } | null>(null);
-  const currentAllocations = useMemo(() => new Map(employees.map((employee) => {
-    const employeeAllocations = allocations.filter((item) => item.employee.id === employee.id).sort((a, b) => +new Date(b.startDate) - +new Date(a.startDate));
-    return [employee.id, employeeAllocations.find((item) => !item.endDate) ?? employeeAllocations[0]];
-  })), [employees, allocations]);
+  const [adjustment, setAdjustment] = useState<{
+    employee: Employee;
+    type: "bonus" | "deduction";
+  } | null>(null);
+  const currentAllocations = useMemo(
+    () =>
+      new Map(
+        employees.map((employee) => {
+          const employeeAllocations = allocations
+            .filter((item) => item.employee.id === employee.id)
+            .sort((a, b) => +new Date(b.startDate) - +new Date(a.startDate));
+          return [
+            employee.id,
+            employeeAllocations.find((item) => !item.endDate) ??
+              employeeAllocations[0],
+          ];
+        }),
+      ),
+    [employees, allocations],
+  );
   const monthlyBonuses = bonuses.filter((item) => item.month === month);
   const monthlyDeductions = deductions.filter((item) => item.month === month);
   const currentAdvances = advances.filter((item) => item.remainingCents > 0);
   usePdfDataExport(() => {
     if (tab === "payroll") {
-      void previewDataPdf({ title: "كشوف المرتبات", kpis: [{ label: "الكشوف المعتمدة", value: String(runs.filter((run) => run.status === "APPROVED").length), tone: "blue" }, { label: "الكشوف المصروفة", value: String(runs.filter((run) => run.status === "PAID").length), tone: "emerald" }, { label: "إجمالي آخر كشف", value: pdfMoney(runs[0]?.totalCents ?? 0), tone: "violet" }], tables: [{ columns: pdfColumns(["الشهر", 2], ["إجمالي الكشف", 2], ["الحالة", 2], ["مصدر الصرف", 2]), rows: runs.map((run) => [run.month, pdfMoney(run.totalCents), run.status === "PAID" ? "مصروف" : "معتمد", "المدير التنفيذي"]) }] });
+      void previewDataPdf({
+        title: "كشوف المرتبات",
+        kpis: [
+          {
+            label: "الكشوف المعتمدة",
+            value: String(
+              runs.filter((run) => run.status === "APPROVED").length,
+            ),
+            tone: "blue",
+          },
+          {
+            label: "الكشوف المصروفة",
+            value: String(runs.filter((run) => run.status === "PAID").length),
+            tone: "emerald",
+          },
+          {
+            label: "إجمالي آخر كشف",
+            value: pdfMoney(runs[0]?.totalCents ?? 0),
+            tone: "violet",
+          },
+        ],
+        tables: [
+          {
+            columns: pdfColumns(
+              ["الشهر", 2],
+              ["إجمالي الكشف", 2],
+              ["الحالة", 2],
+              ["مصدر الصرف", 2],
+            ),
+            rows: runs.map((run) => [
+              run.month,
+              pdfMoney(run.totalCents),
+              run.status === "PAID" ? "مصروف" : "معتمد",
+              "المدير التنفيذي",
+            ]),
+          },
+        ],
+      });
       return;
     }
-    void previewDataPdf({ title: "المرتبات وتكلفة الموظفين", filters: `الشهر: ${month}`, tables: [{ columns: pdfColumns(["الموظف", 3], ["التسكين", 2], ["الراتب الشهري", 2], ["المشروع", 2], ["السلف", 2], ["المكافآت", 2], ["الخصومات", 2], ["الحالة", 1]), rows: employees.map((employee) => { const allocation = currentAllocations.get(employee.id); return [`${employee.name} · ${employee.employeeCode}`, allocation?.project ? "مشروع" : "عام الشركة", pdfMoney(employee.monthlySalaryCents), allocation?.project?.name || "عام الشركة", pdfMoney(currentAdvances.filter((item) => item.employee.id === employee.id).reduce((sum, item) => sum + item.remainingCents, 0)), pdfMoney(monthlyBonuses.filter((item) => item.employee.id === employee.id).reduce((sum, item) => sum + item.amountCents, 0)), pdfMoney(monthlyDeductions.filter((item) => item.employee.id === employee.id).reduce((sum, item) => sum + item.amountCents, 0)), "نشط"]; }) }] });
+    void previewDataPdf({
+      title: "المرتبات وتكلفة الموظفين",
+      filters: `الشهر: ${month}`,
+      tables: [
+        {
+          columns: pdfColumns(
+            ["الموظف", 3],
+            ["التسكين", 2],
+            ["الراتب الشهري", 2],
+            ["المشروع", 2],
+            ["السلف", 2],
+            ["المكافآت", 2],
+            ["الخصومات", 2],
+            ["الحالة", 1],
+          ),
+          rows: employees.map((employee) => {
+            const allocation = currentAllocations.get(employee.id);
+            return [
+              `${employee.name} · ${employee.employeeCode}`,
+              allocation?.project ? "مشروع" : "عام الشركة",
+              pdfMoney(employee.monthlySalaryCents),
+              allocation?.project?.name || "عام الشركة",
+              pdfMoney(
+                currentAdvances
+                  .filter((item) => item.employee.id === employee.id)
+                  .reduce((sum, item) => sum + item.remainingCents, 0),
+              ),
+              pdfMoney(
+                monthlyBonuses
+                  .filter((item) => item.employee.id === employee.id)
+                  .reduce((sum, item) => sum + item.amountCents, 0),
+              ),
+              pdfMoney(
+                monthlyDeductions
+                  .filter((item) => item.employee.id === employee.id)
+                  .reduce((sum, item) => sum + item.amountCents, 0),
+              ),
+              "نشط",
+            ];
+          }),
+        },
+      ],
+    });
   });
 
   async function send(form: HTMLFormElement, action: string, files = false) {
-    setBusy(action); setMessage("");
-    const values = Object.fromEntries(new FormData(form)); const body = new FormData(); body.set("action", action); body.set("payload", JSON.stringify(values));
-    if (files) for (const file of Array.from((form.querySelector('input[type="file"]') as HTMLInputElement | null)?.files ?? [])) body.append("files", file);
-    const financial = ["advance", "bonus", "deduction", "create-payroll", "payroll-pay"].includes(action), scope = `salary-${action}-${String(values.employeeId || values.id || values.month || "new")}`;
+    setBusy(action);
+    setMessage("");
+    const values = Object.fromEntries(new FormData(form));
+    const body = new FormData();
+    body.set("action", action);
+    body.set("payload", JSON.stringify(values));
+    if (files)
+      for (const file of Array.from(
+        (form.querySelector('input[type="file"]') as HTMLInputElement | null)
+          ?.files ?? [],
+      ))
+        body.append("files", file);
+    const financial = [
+        "advance",
+        "bonus",
+        "deduction",
+        "create-payroll",
+        "payroll-pay",
+      ].includes(action),
+      scope = `salary-${action}-${String(values.employeeId || values.id || values.month || "new")}`;
     try {
       let replayed = false;
-      const submitRequest = async (): Promise<void> => { try { const response = await fetch("/api/salaries", { method: "POST", body, ...(financial ? { headers: financialHeaders(scope) } : {}) }); if (financial) { replayed = (await financialResult(response, scope)).replayed; return; } const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر حفظ العملية."); } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("توجد عملية رواتب مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return submitRequest(); } throw reason; } };
+      const submitRequest = async (): Promise<void> => {
+        try {
+          const response = await fetch("/api/salaries", {
+            method: "POST",
+            body,
+            ...(financial ? { headers: financialHeaders(scope) } : {}),
+          });
+          if (financial) {
+            replayed = (await financialResult(response, scope)).replayed;
+            return;
+          }
+          const result = await response.json();
+          if (!response.ok)
+            throw new Error(result.error || "تعذر حفظ العملية.");
+        } catch (reason) {
+          const similar = (
+            reason as {
+              similarFinancialOperation?: { confirmationToken: string };
+            }
+          ).similarFinancialOperation;
+          if (
+            similar &&
+            window.confirm(
+              "توجد عملية رواتب مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟",
+            )
+          ) {
+            confirmSimilarFinancialOperation(scope, similar.confirmationToken);
+            return submitRequest();
+          }
+          throw reason;
+        }
+      };
       await submitRequest();
-      setMessage(replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم حفظ العملية بنجاح."); form.reset(); setAdvanceEmployee(null); setAdjustment(null); router.refresh();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر حفظ العملية."); }
-    finally { setBusy(""); }
+      setMessage(
+        replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم حفظ العملية بنجاح.",
+      );
+      form.reset();
+      setAdvanceEmployee(null);
+      setAdjustment(null);
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "تعذر حفظ العملية.");
+    } finally {
+      setBusy("");
+    }
   }
-  async function submit(event: FormEvent<HTMLFormElement>, action: string, files = false) { event.preventDefault(); await send(event.currentTarget, action, files); }
+  async function submit(
+    event: FormEvent<HTMLFormElement>,
+    action: string,
+    files = false,
+  ) {
+    event.preventDefault();
+    await send(event.currentTarget, action, files);
+  }
   async function removeEmployee(employee: Employee) {
-    if (!window.confirm(`مسح «${employee.name}» من قوائم المرتبات؟ سيظل تاريخه المالي محفوظًا.`)) return;
-    const form = new FormData(); form.set("action", "employee-delete"); form.set("payload", JSON.stringify({ employeeId: employee.id })); setBusy(`delete-${employee.id}`);
-    const response = await fetch("/api/salaries", { method: "POST", body: form }); const result = await response.json(); setBusy(""); setMessage(response.ok ? "تم مسح الموظف من القوائم مع حفظ تاريخه المالي." : result.error || "تعذر المسح."); if (response.ok) router.refresh();
+    if (
+      !window.confirm(
+        `مسح «${employee.name}» من قوائم المرتبات؟ سيظل تاريخه المالي محفوظًا.`,
+      )
+    )
+      return;
+    const form = new FormData();
+    form.set("action", "employee-delete");
+    form.set("payload", JSON.stringify({ employeeId: employee.id }));
+    setBusy(`delete-${employee.id}`);
+    const response = await fetch("/api/salaries", {
+      method: "POST",
+      body: form,
+    });
+    const result = await response.json();
+    setBusy("");
+    setMessage(
+      response.ok
+        ? "تم مسح الموظف من القوائم مع حفظ تاريخه المالي."
+        : result.error || "تعذر المسح.",
+    );
+    if (response.ok) router.refresh();
   }
-  async function pay(id: string) { const form = new FormData(); form.set("action", "payroll-pay"); form.set("payload", JSON.stringify({ id })); const scope = `salary-payroll-pay-${id}`; setBusy(`pay-${id}`); try { const result = await financialResult(await fetch("/api/salaries", { method: "POST", body: form, headers: financialHeaders(scope) }), scope); setMessage(result.replayed ? "الصرف مسجل بالفعل ولم يتكرر." : "تم تسجيل صرف المدير التنفيذي."); router.refresh(); } catch (reason) { setMessage(reason instanceof Error ? reason.message : "تعذر تسجيل الصرف."); } finally { setBusy(""); } }
+  async function pay(id: string) {
+    const form = new FormData();
+    form.set("action", "payroll-pay");
+    form.set("payload", JSON.stringify({ id }));
+    const scope = `salary-payroll-pay-${id}`;
+    setBusy(`pay-${id}`);
+    try {
+      const result = await financialResult(
+        await fetch("/api/salaries", {
+          method: "POST",
+          body: form,
+          headers: financialHeaders(scope),
+        }),
+        scope,
+      );
+      setMessage(
+        result.replayed
+          ? "الصرف مسجل بالفعل ولم يتكرر."
+          : "تم تسجيل صرف المدير التنفيذي.",
+      );
+      router.refresh();
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error ? reason.message : "تعذر تسجيل الصرف.",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
 
-  return <div className="space-y-5">
-    <section className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold text-blue-700">إدارة الموظفين والرواتب</p><h1 className="mt-1 text-2xl font-black text-slate-950">المرتبات والسلف وتكلفة المشروعات</h1><p className="mt-2 text-sm text-slate-500">الرواتب ثابتة؛ المحاسب يعتمد الكشف والمدير التنفيذي يسجّل صرفه.</p></div></section>
-    <nav className="flex w-full gap-2 rounded-xl border bg-white p-1" aria-label="أقسام المرتبات"><button className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-black ${tab === "employees" ? "bg-blue-700 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"}`} onClick={() => setTab("employees")}>الموظفون والتسكين</button><button className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-black ${tab === "payroll" ? "bg-blue-700 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"}`} onClick={() => setTab("payroll")}>كشوف المرتبات</button></nav>
-    {message && <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800">{message}</p>}
+  return (
+    <div className="space-y-5">
+      <section className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold text-blue-700">
+            إدارة الموظفين والرواتب
+          </p>
+          <h1 className="mt-1 text-2xl font-black text-slate-950">
+            المرتبات والسلف وتكلفة المشروعات
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            الرواتب ثابتة؛ المحاسب يعتمد الكشف والمدير التنفيذي يسجّل صرفه.
+          </p>
+        </div>
+      </section>
+      <nav
+        className="flex w-full gap-2 rounded-xl border bg-white p-1"
+        aria-label="أقسام المرتبات"
+      >
+        <button
+          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-black ${tab === "employees" ? "bg-blue-700 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"}`}
+          onClick={() => setTab("employees")}
+        >
+          الموظفون والتسكين
+        </button>
+        <button
+          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-black ${tab === "payroll" ? "bg-blue-700 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"}`}
+          onClick={() => setTab("payroll")}
+        >
+          كشوف المرتبات
+        </button>
+      </nav>
+      {message && (
+        <p
+          role="status"
+          className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800"
+        >
+          {message}
+        </p>
+      )}
 
-    {tab === "employees" ? <EmployeesTab employees={employees} projects={projects} currentAllocations={currentAllocations} advances={currentAdvances} bonuses={monthlyBonuses} deductions={monthlyDeductions} month={month} setMonth={setMonth} canManage={canManage} busy={busy} onSubmit={submit} onAdvance={setAdvanceEmployee} onAdjustment={setAdjustment} onDelete={removeEmployee} /> : <><>{canManage && <section className="inline-flex max-w-full rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"><form onSubmit={(event) => submit(event, "payroll-settings")} className="flex flex-wrap items-center gap-2"><div className="ml-1"><h2 className="text-xs font-black text-slate-800">تنبيه صرف المرتبات</h2><p className="mt-0.5 text-[11px] text-slate-500">يوم الصرف الشهري{paymentDay ? `: ${paymentDay}` : ""}</p></div><label className="flex items-center gap-2 text-xs font-bold text-slate-700"><span>يوم الصرف</span><input name="paymentDay" type="number" min="1" max="28" required defaultValue={paymentDay ?? undefined} className={`${expenseInput} h-8 w-16 py-1 text-center`} /></label><button disabled={busy === "payroll-settings"} className="h-8 rounded-lg border border-blue-200 px-3 text-xs font-bold text-blue-700 hover:bg-blue-50">حفظ</button></form></section>}</><PayrollTab runs={runs} projects={projects} canManage={canManage} busy={busy} onSubmit={submit} onPay={pay} /></>}
-    {advanceEmployee && <AdvanceDialog employee={advanceEmployee} busy={busy} onClose={() => setAdvanceEmployee(null)} onSubmit={submit} />}
-    {adjustment && <AdjustmentDialog employee={adjustment.employee} type={adjustment.type} busy={busy} onClose={() => setAdjustment(null)} onSubmit={submit} />}
-  </div>;
+      {tab === "employees" ? (
+        <EmployeesTab
+          employees={employees}
+          projects={projects}
+          currentAllocations={currentAllocations}
+          advances={currentAdvances}
+          bonuses={monthlyBonuses}
+          deductions={monthlyDeductions}
+          month={month}
+          setMonth={setMonth}
+          canManage={canManage}
+          busy={busy}
+          onSubmit={submit}
+          onAdvance={setAdvanceEmployee}
+          onAdjustment={setAdjustment}
+          onDelete={removeEmployee}
+        />
+      ) : (
+        <>
+          <>
+            {canManage && (
+              <section className="inline-flex max-w-full rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                <form
+                  onSubmit={(event) => submit(event, "payroll-settings")}
+                  className="flex flex-wrap items-center gap-2"
+                >
+                  <div className="ml-1">
+                    <h2 className="text-xs font-black text-slate-800">
+                      تنبيه صرف المرتبات
+                    </h2>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      يوم الصرف الشهري{paymentDay ? `: ${paymentDay}` : ""}
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                    <span>يوم الصرف</span>
+                    <input
+                      name="paymentDay"
+                      type="number"
+                      min="1"
+                      max="28"
+                      required
+                      defaultValue={paymentDay ?? undefined}
+                      className={`${expenseInput} h-8 w-16 py-1 text-center`}
+                    />
+                  </label>
+                  <button
+                    disabled={busy === "payroll-settings"}
+                    className="h-8 rounded-lg border border-blue-200 px-3 text-xs font-bold text-blue-700 hover:bg-blue-50"
+                  >
+                    حفظ
+                  </button>
+                </form>
+              </section>
+            )}
+          </>
+          <PayrollTab
+            runs={runs}
+            projects={projects}
+            canManage={canManage}
+            busy={busy}
+            onSubmit={submit}
+            onPay={pay}
+          />
+        </>
+      )}
+      {advanceEmployee && (
+        <AdvanceDialog
+          employee={advanceEmployee}
+          busy={busy}
+          onClose={() => setAdvanceEmployee(null)}
+          onSubmit={submit}
+        />
+      )}
+      {adjustment && (
+        <AdjustmentDialog
+          employee={adjustment.employee}
+          type={adjustment.type}
+          busy={busy}
+          onClose={() => setAdjustment(null)}
+          onSubmit={submit}
+        />
+      )}
+    </div>
+  );
 }
 
-function EmployeesTab({ employees, projects, currentAllocations, advances, bonuses, deductions, month, setMonth, canManage, busy, onSubmit, onAdvance, onAdjustment, onDelete }: { employees: Employee[]; projects: Project[]; currentAllocations: Map<string, Allocation | undefined>; advances: Advance[]; bonuses: Adjustment[]; deductions: Adjustment[]; month: string; setMonth: (value: string) => void; canManage: boolean; busy: string; onSubmit: (event: FormEvent<HTMLFormElement>, action: string, files?: boolean) => Promise<void>; onAdvance: (employee: Employee) => void; onAdjustment: (adjustment: { employee: Employee; type: "bonus" | "deduction" }) => void; onDelete: (employee: Employee) => Promise<void> }) {
-  return <div className="space-y-5">
-    {canManage && <section className="rounded-2xl border bg-white p-5 shadow-sm"><h2 className="text-base font-black">الراتب والتسكين</h2><p className="mt-1 text-xs text-slate-500">اختيار تسكين جديد يقفل السابق تلقائيًا من تاريخ اليوم.</p><form onSubmit={(event) => onSubmit(event, "employee-config")} className="mt-4 grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto]"><Field label="الموظف *"><Select name="employeeId" options={employees} /></Field><Field label="المشروع / عام الشركة"><Select name="projectId" options={projects} optional /></Field><Field label="الراتب الشهري *"><CurrencyInput name="monthlySalaryCents" required min="0.01" /></Field><button disabled={busy === "employee-config"} className="mt-7 h-10 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white disabled:opacity-50">حفظ</button></form></section>}
-    <section className="erp-table-shell"><div className="flex flex-wrap items-end justify-between gap-3 border-b bg-white p-4"><div><h2 className="text-base font-black">الموظفون</h2><p className="mt-1 text-xs text-slate-500">السلف والمكافآت والخصومات المعروضة تخص الشهر المختار.</p></div><Field label="فلتر الشهر"><MonthInput value={month} onChange={setMonth} /></Field></div><div className="erp-table-scroll"><table className="erp-data-table erp-responsive-table min-w-[1150px]"><thead><tr>{["الموظف", "التسكين", "الراتب الشهري", "المشروع", "السلف", "المكافآت", "الخصومات", "الحالة", "الإجراءات"].map((head) => <th key={head}>{head}</th>)}</tr></thead><tbody>{employees.map((employee) => { const allocation = currentAllocations.get(employee.id); const employeeAdvances = advances.filter((item) => item.employee.id === employee.id).reduce((sum, item) => sum + item.remainingCents, 0); const employeeBonuses = bonuses.filter((item) => item.employee.id === employee.id).reduce((sum, item) => sum + item.amountCents, 0); const employeeDeductions = deductions.filter((item) => item.employee.id === employee.id).reduce((sum, item) => sum + item.amountCents, 0); return <tr key={employee.id}><td data-label="الموظف" className="font-bold">{employee.name}<p className="mt-1 text-[11px] text-slate-400">{employee.employeeCode} · {employee.jobTitle}</p></td><td data-label="التسكين">{allocation?.project ? "مشروع" : "عام الشركة"}</td><td data-label="الراتب الشهري" className="text-center"><MoneyValue>{money(employee.monthlySalaryCents)} ج.م</MoneyValue></td><td data-label="المشروع">{allocation?.project?.name ?? "عام الشركة"}</td><td data-label="السلف" className="text-center"><MoneyValue>{money(employeeAdvances)} ج.م</MoneyValue></td><td data-label="المكافآت" className="text-center"><MoneyValue>{money(employeeBonuses)} ج.م</MoneyValue></td><td data-label="الخصومات" className="text-center"><MoneyValue>{money(employeeDeductions)} ج.م</MoneyValue></td><td data-label="الحالة"><span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">نشط</span></td><td data-label="الإجراءات"><div className="flex justify-end gap-2">{canManage && <IconAction label="إضافة سلفة" icon={WalletCards} onClick={() => onAdvance(employee)} />}{canManage && <IconAction label="إضافة مكافأة" icon={Gift} tone="success" onClick={() => onAdjustment({ employee, type: "bonus" })} />}{canManage && <IconAction label="إضافة خصم" icon={BadgeMinus} tone="danger" onClick={() => onAdjustment({ employee, type: "deduction" })} />}{canManage && <IconAction label="مسح الموظف" icon={Trash2} tone="danger" disabled={busy === `delete-${employee.id}`} onClick={() => onDelete(employee)} />}</div></td></tr>; })}{!employees.length && <tr><td colSpan={9} className="p-10 text-center text-slate-400">لا يوجد موظفون نشطون.</td></tr>}</tbody></table></div></section>
-  </div>;
+function EmployeesTab({
+  employees,
+  projects,
+  currentAllocations,
+  advances,
+  bonuses,
+  deductions,
+  month,
+  setMonth,
+  canManage,
+  busy,
+  onSubmit,
+  onAdvance,
+  onAdjustment,
+  onDelete,
+}: {
+  employees: Employee[];
+  projects: Project[];
+  currentAllocations: Map<string, Allocation | undefined>;
+  advances: Advance[];
+  bonuses: Adjustment[];
+  deductions: Adjustment[];
+  month: string;
+  setMonth: (value: string) => void;
+  canManage: boolean;
+  busy: string;
+  onSubmit: (
+    event: FormEvent<HTMLFormElement>,
+    action: string,
+    files?: boolean,
+  ) => Promise<void>;
+  onAdvance: (employee: Employee) => void;
+  onAdjustment: (adjustment: {
+    employee: Employee;
+    type: "bonus" | "deduction";
+  }) => void;
+  onDelete: (employee: Employee) => Promise<void>;
+}) {
+  return (
+    <div className="space-y-5">
+      {canManage && (
+        <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <h2 className="text-base font-black">الراتب والتسكين</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            اختيار تسكين جديد يقفل السابق تلقائيًا من تاريخ اليوم.
+          </p>
+          <form
+            onSubmit={(event) => onSubmit(event, "employee-config")}
+            className="mt-4 grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto]"
+          >
+            <Field label="الموظف *">
+              <Select name="employeeId" options={employees} />
+            </Field>
+            <Field label="المشروع / عام الشركة">
+              <Select name="projectId" options={projects} optional />
+            </Field>
+            <Field label="الراتب الشهري *">
+              <CurrencyInput name="monthlySalaryCents" required min="0.01" />
+            </Field>
+            <button
+              disabled={busy === "employee-config"}
+              className="mt-7 h-10 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white disabled:opacity-50"
+            >
+              حفظ
+            </button>
+          </form>
+        </section>
+      )}
+      <section className="erp-table-shell">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b bg-white p-4">
+          <div>
+            <h2 className="text-base font-black">الموظفون</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              السلف والمكافآت والخصومات المعروضة تخص الشهر المختار.
+            </p>
+          </div>
+          <Field label="فلتر الشهر">
+            <MonthInput value={month} onChange={setMonth} />
+          </Field>
+        </div>
+        <div className="erp-table-scroll">
+          <table className="erp-data-table erp-responsive-table min-w-[1150px]">
+            <thead>
+              <tr>
+                {[
+                  "الموظف",
+                  "التسكين",
+                  "الراتب الشهري",
+                  "المشروع",
+                  "السلف",
+                  "المكافآت",
+                  "الخصومات",
+                  "الحالة",
+                  "الإجراءات",
+                ].map((head) => (
+                  <th key={head}>{head}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((employee) => {
+                const allocation = currentAllocations.get(employee.id);
+                const employeeAdvances = advances
+                  .filter((item) => item.employee.id === employee.id)
+                  .reduce((sum, item) => sum + item.remainingCents, 0);
+                const employeeBonuses = bonuses
+                  .filter((item) => item.employee.id === employee.id)
+                  .reduce((sum, item) => sum + item.amountCents, 0);
+                const employeeDeductions = deductions
+                  .filter((item) => item.employee.id === employee.id)
+                  .reduce((sum, item) => sum + item.amountCents, 0);
+                return (
+                  <tr key={employee.id}>
+                    <td data-label="الموظف" className="font-bold">
+                      {employee.name}
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {employee.employeeCode} · {employee.jobTitle}
+                      </p>
+                    </td>
+                    <td data-label="التسكين">
+                      {allocation?.project ? "مشروع" : "عام الشركة"}
+                    </td>
+                    <td data-label="الراتب الشهري" className="text-center">
+                      <MoneyValue>
+                        {money(employee.monthlySalaryCents)} ج.م
+                      </MoneyValue>
+                    </td>
+                    <td data-label="المشروع">
+                      {allocation?.project?.name ?? "عام الشركة"}
+                    </td>
+                    <td data-label="السلف" className="text-center">
+                      <MoneyValue>{money(employeeAdvances)} ج.م</MoneyValue>
+                    </td>
+                    <td data-label="المكافآت" className="text-center">
+                      <MoneyValue>{money(employeeBonuses)} ج.م</MoneyValue>
+                    </td>
+                    <td data-label="الخصومات" className="text-center">
+                      <MoneyValue>{money(employeeDeductions)} ج.م</MoneyValue>
+                    </td>
+                    <td data-label="الحالة">
+                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
+                        نشط
+                      </span>
+                    </td>
+                    <td data-label="الإجراءات">
+                      <div className="flex justify-end gap-2">
+                        {canManage && (
+                          <IconAction
+                            label="إضافة سلفة"
+                            icon={WalletCards}
+                            onClick={() => onAdvance(employee)}
+                          />
+                        )}
+                        {canManage && (
+                          <IconAction
+                            label="إضافة مكافأة"
+                            icon={Gift}
+                            tone="success"
+                            onClick={() =>
+                              onAdjustment({ employee, type: "bonus" })
+                            }
+                          />
+                        )}
+                        {canManage && (
+                          <IconAction
+                            label="إضافة خصم"
+                            icon={BadgeMinus}
+                            tone="danger"
+                            onClick={() =>
+                              onAdjustment({ employee, type: "deduction" })
+                            }
+                          />
+                        )}
+                        {canManage && (
+                          <IconAction
+                            label="مسح الموظف"
+                            icon={Trash2}
+                            tone="danger"
+                            disabled={busy === `delete-${employee.id}`}
+                            onClick={() => onDelete(employee)}
+                          />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!employees.length && (
+                <tr>
+                  <td colSpan={9} className="p-10 text-center text-slate-400">
+                    لا يوجد موظفون نشطون.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
 }
 
-function AdvanceDialog({ employee, busy, onClose, onSubmit }: { employee: Employee; busy: string; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, action: string, files?: boolean) => Promise<void> }) { return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true" aria-labelledby="advance-title"><form onSubmit={(event) => onSubmit(event, "advance", true)} className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="advance-title" className="text-lg font-black">إضافة سلفة</h2><p className="mt-1 text-sm text-slate-500">{employee.name} · {employee.employeeCode}</p></div><button type="button" className={expenseButton} onClick={onClose}>إغلاق</button></div><input type="hidden" name="employeeId" value={employee.id} /><div className="mt-5 grid gap-3 sm:grid-cols-2"><Field label="قيمة السلفة *"><CurrencyInput name="amount" required min="0.01" /></Field><Field label="تاريخ الصرف *"><input name="issuedAt" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className={expenseInput} /></Field><Field label="طريقة الاسترداد"><ERPSelect name="repaymentMode" className={expenseInput}><option value="NEXT_PAYROLL">المرتب القادم</option><option value="INSTALLMENTS">أقساط</option></ERPSelect></Field><Field label="قيمة القسط عند التقسيط"><CurrencyInput name="installment" min="0.01" /></Field><Field label="مصدر الصرف"><ERPSelect name="source" className={expenseInput}><option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option><option value="PETTY_CASH">Petty Cash</option></ERPSelect></Field><Field label="ملاحظات"><input name="note" maxLength={2000} className={expenseInput} /></Field></div><div className="mt-4"><UploadBox name="files" label="إثبات السلفة" required multiple={false} /></div><div className="mt-5 flex gap-2"><button disabled={busy === "advance"} className={`${expenseButton} !border-blue-700 !bg-blue-700 !text-white hover:!bg-blue-800`}>{busy === "advance" ? "جارٍ الحفظ…" : "حفظ السلفة"}</button><button type="button" className={expenseButton} onClick={onClose}>إلغاء</button></div></form></div>; }
-
-function AdjustmentDialog({ employee, type, busy, onClose, onSubmit }: { employee: Employee; type: "bonus" | "deduction"; busy: string; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, action: string) => Promise<void> }) {
-  const isBonus = type === "bonus"; const title = isBonus ? "إضافة مكافأة" : "إضافة خصم";
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true" aria-labelledby="adjustment-title"><form onSubmit={(event) => onSubmit(event, type)} className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="adjustment-title" className="text-lg font-black">{title}</h2><p className="mt-1 text-sm text-slate-500">{employee.name} · {employee.employeeCode}</p></div><button type="button" className={expenseButton} onClick={onClose}>إغلاق</button></div><input type="hidden" name="employeeId" value={employee.id} /><div className="mt-5 grid gap-3 sm:grid-cols-2"><Field label="الشهر *"><MonthInput /></Field><Field label="القيمة *"><CurrencyInput name="amount" required min="0.01" /></Field><Field label="الاسم *"><input name="name" required className={expenseInput} placeholder={isBonus ? "مثال: مكافأة إنجاز" : "مثال: خصم غياب"} /></Field><Field label="السبب *"><input name="reason" required className={expenseInput} /></Field></div><p className="mt-3 text-[11px] text-slate-500">المرفق اختياري لهذه العملية.</p><div className="mt-5 flex gap-2"><button disabled={busy === type} className={`${expenseButton} ${isBonus ? "!border-emerald-600 !bg-emerald-600" : "!border-amber-600 !bg-amber-600"} !text-white`}>{busy === type ? "جارٍ الحفظ…" : title}</button><button type="button" className={expenseButton} onClick={onClose}>إلغاء</button></div></form></div>;
+function AdvanceDialog({
+  employee,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  employee: Employee;
+  busy: string;
+  onClose: () => void;
+  onSubmit: (
+    event: FormEvent<HTMLFormElement>,
+    action: string,
+    files?: boolean,
+  ) => Promise<void>;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="advance-title"
+    >
+      <form
+        onSubmit={(event) => onSubmit(event, "advance", true)}
+        className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="advance-title" className="text-lg font-black">
+              إضافة سلفة
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {employee.name} · {employee.employeeCode}
+            </p>
+          </div>
+          <button type="button" className={expenseButton} onClick={onClose}>
+            إغلاق
+          </button>
+        </div>
+        <input type="hidden" name="employeeId" value={employee.id} />
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <Field label="قيمة السلفة *">
+            <CurrencyInput name="amount" required min="0.01" />
+          </Field>
+          <Field label="تاريخ الصرف *">
+            <input
+              name="issuedAt"
+              type="date"
+              required
+              defaultValue={new Date().toISOString().slice(0, 10)}
+              className={expenseInput}
+            />
+          </Field>
+          <Field label="طريقة الاسترداد">
+            <ERPSelect name="repaymentMode" className={expenseInput}>
+              <option value="NEXT_PAYROLL">المرتب القادم</option>
+              <option value="INSTALLMENTS">أقساط</option>
+            </ERPSelect>
+          </Field>
+          <Field label="قيمة القسط عند التقسيط">
+            <CurrencyInput name="installment" min="0.01" />
+          </Field>
+          <Field label="مصدر الصرف">
+            <ERPSelect name="source" className={expenseInput}>
+              <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
+              <option value="PETTY_CASH">صندوق النثريات</option>
+            </ERPSelect>
+          </Field>
+          <Field label="ملاحظات">
+            <input name="note" maxLength={2000} className={expenseInput} />
+          </Field>
+        </div>
+        <div className="mt-4">
+          <UploadBox
+            name="files"
+            label="إثبات السلفة"
+            required
+            multiple={false}
+          />
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button
+            disabled={busy === "advance"}
+            className={`${expenseButton} !border-blue-700 !bg-blue-700 !text-white hover:!bg-blue-800`}
+          >
+            {busy === "advance" ? "جارٍ الحفظ…" : "حفظ السلفة"}
+          </button>
+          <button type="button" className={expenseButton} onClick={onClose}>
+            إلغاء
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
-function PayrollTab({ runs, projects, canManage, busy, onSubmit, onPay }: { runs: Run[]; projects: Project[]; canManage: boolean; busy: string; onSubmit: (event: FormEvent<HTMLFormElement>, action: string, files?: boolean) => Promise<void>; onPay: (id: string) => Promise<void> }) { const approvedCost = runs.filter((run) => ["APPROVED", "PAID"].includes(run.status)).flatMap((run) => run.lines.flatMap((line) => { try { return JSON.parse(line.allocationJson) as { projectId: string | null; cents: number }[]; } catch { return []; } })).reduce<Record<string, number>>((all, row) => ({ ...all, [row.projectId ?? "general"]: (all[row.projectId ?? "general"] ?? 0) + row.cents }), {}); return <div className="space-y-5"><section className="grid gap-3 md:grid-cols-3"><KpiCard label="الكشوف المعتمدة" value={String(runs.filter((run) => run.status === "APPROVED").length)} icon={FileText} tone="blue" /><KpiCard label="الكشوف المصروفة" value={String(runs.filter((run) => run.status === "PAID").length)} icon={Banknote} tone="emerald" /><KpiCard label="إجمالي آخر كشف" value={`${money(runs[0]?.totalCents ?? 0)} ج.م`} icon={UserRound} tone="violet" /></section>{canManage && <section className="rounded-2xl border bg-white p-5 shadow-sm"><h2 className="text-base font-black">إنشاء واعتماد كشف شهر</h2><form onSubmit={(event) => onSubmit(event, "create-payroll", true)} className="mt-4 grid gap-3 md:grid-cols-[220px_1fr_auto]"><Field label="الشهر *"><MonthInput /></Field><UploadBox name="files" label="مرفق كشف المرتبات" required multiple={false} /><button disabled={busy === "create-payroll"} className="mt-7 h-10 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white disabled:opacity-50">إنشاء واعتماد</button></form></section>}<section className="erp-table-shell"><div className="border-b bg-white p-4"><h2 className="text-base font-black">كشوف المرتبات</h2></div><div className="erp-table-scroll"><table className="erp-data-table erp-responsive-table min-w-[760px]"><thead><tr>{["الشهر", "إجمالي الكشف", "الحالة", "مصدر الصرف", "الإجراءات"].map((head) => <th key={head}>{head}</th>)}</tr></thead><tbody>{runs.map((run) => <tr key={run.id}><td data-label="الشهر">{run.month}</td><td data-label="إجمالي الكشف" className="text-center"><MoneyValue>{money(run.totalCents)} ج.م</MoneyValue></td><td data-label="الحالة"><span className={`rounded-full px-2 py-1 text-xs font-bold ${run.status === "PAID" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>{run.status === "PAID" ? "مصروف" : "معتمد"}</span></td><td data-label="مصدر الصرف">المدير التنفيذي</td><td data-label="الإجراءات">{canManage && run.status === "APPROVED" ? <button disabled={busy === `pay-${run.id}`} onClick={() => onPay(run.id)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">تسجيل الصرف</button> : "—"}</td></tr>)}{!runs.length && <tr><td colSpan={5} className="p-10 text-center text-slate-400">لا توجد كشوف بعد.</td></tr>}</tbody></table></div></section><section className="rounded-2xl border bg-white p-5"><h2 className="text-base font-black">تكلفة المرتبات المعتمدة حسب المشروع</h2><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(approvedCost).map(([projectId, cents]) => <article key={projectId} tabIndex={0} title="قيمة تكلفة الرواتب في الكشوف المعتمدة أو المصروفة" className="rounded-xl border p-4"><p className="text-xs text-slate-500">{projectId === "general" ? "عام الشركة" : projects.find((project) => project.id === projectId)?.name ?? "مشروع محذوف"}</p><MoneyValue className="mt-2">{money(cents)} ج.م</MoneyValue></article>)}{!Object.keys(approvedCost).length && <p className="text-sm text-slate-500">ستظهر تكلفة الكشوف المعتمدة هنا.</p>}</div></section></div>; }
+function AdjustmentDialog({
+  employee,
+  type,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  employee: Employee;
+  type: "bonus" | "deduction";
+  busy: string;
+  onClose: () => void;
+  onSubmit: (
+    event: FormEvent<HTMLFormElement>,
+    action: string,
+  ) => Promise<void>;
+}) {
+  const isBonus = type === "bonus";
+  const title = isBonus ? "إضافة مكافأة" : "إضافة خصم";
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="adjustment-title"
+    >
+      <form
+        onSubmit={(event) => onSubmit(event, type)}
+        className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="adjustment-title" className="text-lg font-black">
+              {title}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {employee.name} · {employee.employeeCode}
+            </p>
+          </div>
+          <button type="button" className={expenseButton} onClick={onClose}>
+            إغلاق
+          </button>
+        </div>
+        <input type="hidden" name="employeeId" value={employee.id} />
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <Field label="الشهر *">
+            <MonthInput />
+          </Field>
+          <Field label="القيمة *">
+            <CurrencyInput name="amount" required min="0.01" />
+          </Field>
+          <Field label="الاسم *">
+            <input
+              name="name"
+              required
+              className={expenseInput}
+              placeholder={isBonus ? "مثال: مكافأة إنجاز" : "مثال: خصم غياب"}
+            />
+          </Field>
+          <Field label="السبب *">
+            <input name="reason" required className={expenseInput} />
+          </Field>
+        </div>
+        <p className="mt-3 text-[11px] text-slate-500">
+          المرفق اختياري لهذه العملية.
+        </p>
+        <div className="mt-5 flex gap-2">
+          <button
+            disabled={busy === type}
+            className={`${expenseButton} ${isBonus ? "!border-emerald-600 !bg-emerald-600" : "!border-amber-600 !bg-amber-600"} !text-white`}
+          >
+            {busy === type ? "جارٍ الحفظ…" : title}
+          </button>
+          <button type="button" className={expenseButton} onClick={onClose}>
+            إلغاء
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function PayrollTab({
+  runs,
+  projects,
+  canManage,
+  busy,
+  onSubmit,
+  onPay,
+}: {
+  runs: Run[];
+  projects: Project[];
+  canManage: boolean;
+  busy: string;
+  onSubmit: (
+    event: FormEvent<HTMLFormElement>,
+    action: string,
+    files?: boolean,
+  ) => Promise<void>;
+  onPay: (id: string) => Promise<void>;
+}) {
+  const approvedCost = runs
+    .filter((run) => ["APPROVED", "PAID"].includes(run.status))
+    .flatMap((run) =>
+      run.lines.flatMap((line) => {
+        try {
+          return JSON.parse(line.allocationJson) as {
+            projectId: string | null;
+            cents: number;
+          }[];
+        } catch {
+          return [];
+        }
+      }),
+    )
+    .reduce<Record<string, number>>(
+      (all, row) => ({
+        ...all,
+        [row.projectId ?? "general"]:
+          (all[row.projectId ?? "general"] ?? 0) + row.cents,
+      }),
+      {},
+    );
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-3 md:grid-cols-3">
+        <KpiCard
+          label="الكشوف المعتمدة"
+          value={String(runs.filter((run) => run.status === "APPROVED").length)}
+          icon={FileText}
+          tone="blue"
+        />
+        <KpiCard
+          label="الكشوف المصروفة"
+          value={String(runs.filter((run) => run.status === "PAID").length)}
+          icon={Banknote}
+          tone="emerald"
+        />
+        <KpiCard
+          label="إجمالي آخر كشف"
+          value={`${money(runs[0]?.totalCents ?? 0)} ج.م`}
+          icon={UserRound}
+          tone="violet"
+        />
+      </section>
+      {canManage && (
+        <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <h2 className="text-base font-black">إنشاء واعتماد كشف شهر</h2>
+          <form
+            onSubmit={(event) => onSubmit(event, "create-payroll", true)}
+            className="mt-4 grid gap-3 md:grid-cols-[220px_1fr_auto]"
+          >
+            <Field label="الشهر *">
+              <MonthInput />
+            </Field>
+            <UploadBox
+              name="files"
+              label="مرفق كشف المرتبات"
+              required
+              multiple={false}
+            />
+            <button
+              disabled={busy === "create-payroll"}
+              className="mt-7 h-10 rounded-lg bg-blue-700 px-5 text-sm font-bold text-white disabled:opacity-50"
+            >
+              إنشاء واعتماد
+            </button>
+          </form>
+        </section>
+      )}
+      <section className="erp-table-shell">
+        <div className="border-b bg-white p-4">
+          <h2 className="text-base font-black">كشوف المرتبات</h2>
+        </div>
+        <div className="erp-table-scroll">
+          <table className="erp-data-table erp-responsive-table min-w-[760px]">
+            <thead>
+              <tr>
+                {[
+                  "الشهر",
+                  "إجمالي الكشف",
+                  "الحالة",
+                  "مصدر الصرف",
+                  "الإجراءات",
+                ].map((head) => (
+                  <th key={head}>{head}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((run) => (
+                <tr key={run.id}>
+                  <td data-label="الشهر">{run.month}</td>
+                  <td data-label="إجمالي الكشف" className="text-center">
+                    <MoneyValue>{money(run.totalCents)} ج.م</MoneyValue>
+                  </td>
+                  <td data-label="الحالة">
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs font-bold ${run.status === "PAID" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}
+                    >
+                      {run.status === "PAID" ? "مصروف" : "معتمد"}
+                    </span>
+                  </td>
+                  <td data-label="مصدر الصرف">المدير التنفيذي</td>
+                  <td data-label="الإجراءات">
+                    {canManage && run.status === "APPROVED" ? (
+                      <button
+                        disabled={busy === `pay-${run.id}`}
+                        onClick={() => onPay(run.id)}
+                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        تسجيل الصرف
+                      </button>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!runs.length && (
+                <tr>
+                  <td colSpan={5} className="p-10 text-center text-slate-400">
+                    لا توجد كشوف بعد.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="rounded-2xl border bg-white p-5">
+        <h2 className="text-base font-black">
+          تكلفة المرتبات المعتمدة حسب المشروع
+        </h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {Object.entries(approvedCost).map(([projectId, cents]) => (
+            <article
+              key={projectId}
+              tabIndex={0}
+              title="قيمة تكلفة الرواتب في الكشوف المعتمدة أو المصروفة"
+              className="rounded-xl border p-4"
+            >
+              <p className="text-xs text-slate-500">
+                {projectId === "general"
+                  ? "عام الشركة"
+                  : (projects.find((project) => project.id === projectId)
+                      ?.name ?? "مشروع محذوف")}
+              </p>
+              <MoneyValue className="mt-2">{money(cents)} ج.م</MoneyValue>
+            </article>
+          ))}
+          {!Object.keys(approvedCost).length && (
+            <p className="text-sm text-slate-500">
+              ستظهر تكلفة الكشوف المعتمدة هنا.
+            </p>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}

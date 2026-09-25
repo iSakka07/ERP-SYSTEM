@@ -5,8 +5,6 @@ import type { Prisma } from "@prisma/client";
 type Tx = Prisma.TransactionClient;
 type PostingLine = { accountKey: string; debitCents?: number; creditCents?: number; projectId?: string | null; counterpartyType?: string; counterpartyId?: string; description?: string };
 
-const monthOf = (date: Date) => date.toISOString().slice(0, 7);
-
 export async function accountingIsLive(tx: Tx, date: Date) {
   const setting = await tx.systemMetadata.findUnique({ where: { key: "accounting.goLiveDate" } });
   // أثناء بناء النظام يعمل الترحيل الطبيعي فورًا. عند اعتماد تاريخ تشغيل رسمي
@@ -18,8 +16,6 @@ export async function postJournal(tx: Tx, input: { sourceType: string; sourceId:
   if (!(await accountingIsLive(tx, input.entryDate))) return null;
   const existing = await tx.journalEntry.findFirst({ where: { sourceType: input.sourceType, sourceId: input.sourceId } });
   if (existing) return existing;
-  const period = await tx.accountingPeriod.upsert({ where: { month: monthOf(input.entryDate) }, update: {}, create: { month: monthOf(input.entryDate) } });
-  if (period.status !== "OPEN") throw new Error("الفترة المحاسبية لهذا المستند مقفلة.");
   const debit = input.lines.reduce((sum, line) => sum + (line.debitCents || 0), 0);
   const credit = input.lines.reduce((sum, line) => sum + (line.creditCents || 0), 0);
   if (!Number.isSafeInteger(debit) || debit < 1 || debit !== credit) throw new Error("القيد المحاسبي غير متوازن.");

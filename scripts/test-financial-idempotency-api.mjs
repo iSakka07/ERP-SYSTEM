@@ -34,26 +34,12 @@ async function sendForeignOrigin(jar) {
   return response.status;
 }
 
-async function setPeriod(jar, status) {
-  const response = await fetch(`${base}/api/accounting`, {
-    method: "POST",
-    headers: { Cookie: cookie(jar), Origin: base, "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "period", month: "2098-12", status, reason: "اختبار آلي لإقفال الفترة" }),
-  });
-  return { status: response.status, ...(await response.json()) };
-}
-
 try {
   const role = await db.role.findUniqueOrThrow({ where: { key: "admin" } });
   user = await db.user.create({ data: { name: tag, email: `${tag}@test.invalid`.toLowerCase(), passwordHash: await hash(password, 10), roleId: role.id } });
   const jar = await login(user.email);
   assert.equal(await sendForeignOrigin(jar), 403, "foreign Origin cannot create a financial movement");
   const payload = { type: "OWNER_FUNDING", amount: 123.45, date: "2026-09-19", description: tag, reference: tag };
-  assert.equal((await setPeriod(jar, "CLOSED")).status, 200, "accountant can close an accounting period");
-  assert.equal((await send(jar, randomUUID(), { ...payload, date: "2098-12-19", description: `${tag}-closed`, reference: `${tag}-closed` })).status, 400, "closed period blocks financial posting");
-  assert.equal((await setPeriod(jar, "OPEN")).status, 200, "accountant can reopen a closed period with a reason");
-  const afterReopen = await send(jar, randomUUID(), { ...payload, date: "2098-12-19", description: `${tag}-reopened`, reference: `${tag}-reopened` });
-  assert.equal(afterReopen.status, 201, "reopened period accepts financial posting"); createdIds.push(afterReopen.id);
   const key = randomUUID();
   const first = await send(jar, key, payload); assert.equal(first.status, 201); createdIds.push(first.id);
   const replay = await send(jar, key, payload); assert.equal(replay.status, 201); assert.equal(replay.id, first.id); assert.equal(replay.replayed, true); assert.equal(replay.replayHeader, "true");
@@ -91,7 +77,6 @@ try {
       await tx.bankTransaction.deleteMany({ where: { id: { in: createdIds } } });
       await tx.auditLog.deleteMany({ where: { OR: [{ actorId: user.id }, { target: { in: operationIds } }] } });
       await tx.financialOperationRequest.deleteMany({ where: { actorId: user.id } });
-      await tx.accountingPeriod.deleteMany({ where: { month: "2098-12" } });
       await tx.user.delete({ where: { id: user.id } });
     });
   }

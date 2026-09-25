@@ -15,7 +15,7 @@ const permissions = [
   ["purchases.view", "عرض المشتريات", "purchases"], ["purchases.manage", "إدارة المشتريات", "purchases"],
   ["salaries.view", "عرض المرتبات", "salaries"], ["salaries.manage", "إدارة المرتبات", "salaries"],
   ["treasury.view", "عرض الخزنة", "treasury"], ["treasury.manage", "إدارة الخزنة", "treasury"],
-  ["pettycash.view", "عرض Petty Cash", "pettycash"], ["pettycash.manage", "إدارة Petty Cash", "pettycash"],
+  ["pettycash.view", "عرض صندوق النثريات", "pettycash"], ["pettycash.manage", "إدارة صندوق النثريات", "pettycash"],
   ["warehouse.view", "عرض المخزن", "warehouse"], ["warehouse.manage", "إدارة حركات المخزن", "warehouse"],
   ["project_cost_control.view", "عرض موقف تكلفة المشروع", "project_cost_control"],
   ["accounting.view", "عرض المحاسبة", "accounting"], ["accounting.manage", "إدارة القيود والحسابات", "accounting"],

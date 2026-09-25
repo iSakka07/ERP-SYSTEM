@@ -47,7 +47,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           roleKey: user.role.key,
           roleName: user.role.name,
           permissions: user.role.key === "admin" ? user.role.permissions.map(({ permission }) => permission.key) : applyPermissionOverrides(user.role.permissions.map(({ permission }) => permission.key), user.permissionOverrides),
-          sessionVersion: user.updatedAt.toISOString(),
+          sessionVersion: String(user.sessionVersion),
         };
       },
     }),
@@ -61,12 +61,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.permissions = user.permissions;
         token.sessionVersion = user.sessionVersion;
       }
-      // Password changes and disabled accounts revoke existing encrypted sessions.
+      // Password changes, role changes, and disabled accounts revoke existing encrypted sessions.
       const current = await prisma.user.findUnique({
         where: { id: String(token.userId ?? "") },
-        include: { role: { include: { permissions: { include: { permission: true } } } }, permissionOverrides: { include: { permission: true } } },
+        select: {
+          name: true,
+          email: true,
+          active: true,
+          sessionVersion: true,
+          role: { include: { permissions: { include: { permission: true } } } },
+          permissionOverrides: { include: { permission: true } },
+        },
       });
-      if (!current?.active || !current.role || token.sessionVersion !== current.updatedAt.toISOString()) return null;
+      if (!current?.active || !current.role || token.sessionVersion !== String(current.sessionVersion)) return null;
+      token.name = current.name;
+      token.email = current.email;
       token.roleKey = current.role.key;
       token.roleName = current.role.name;
       token.permissions = current.role.key === "admin" ? current.role.permissions.map(p => p.permission.key) : applyPermissionOverrides(current.role.permissions.map(p => p.permission.key), current.permissionOverrides);
@@ -74,6 +83,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     session({ session, token }) {
       session.user.id = String(token.userId ?? "");
+      session.user.name = token.name;
+      session.user.email = token.email ?? "";
       session.user.roleKey = String(token.roleKey ?? "");
       session.user.roleName = String(token.roleName ?? "");
       session.user.permissions = Array.isArray(token.permissions) ? token.permissions.map(String) : [];

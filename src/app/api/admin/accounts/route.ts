@@ -80,14 +80,14 @@ export async function PATCH(request: Request) {
   if (data.type === "user-role") {
     if (data.userId === session.user.id) return NextResponse.json({ error: "SELF_ROLE_CHANGE" }, { status: 400 });
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: data.userId }, data: { roleId: data.roleId } });
+      await tx.user.update({ where: { id: data.userId }, data: { roleId: data.roleId, sessionVersion: { increment: 1 } } });
       await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.role.update", target: data.userId, details: JSON.stringify({ roleId: data.roleId }) } });
     });
   }
   if (data.type === "user-active") {
     if (data.userId === session.user.id) return NextResponse.json({ error: "SELF_DEACTIVATE" }, { status: 400 });
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: data.userId }, data: { active: data.active } });
+      await tx.user.update({ where: { id: data.userId }, data: { active: data.active, sessionVersion: { increment: 1 } } });
       await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.status.update", target: data.userId, details: JSON.stringify({ active: data.active }) } });
     });
   }
@@ -105,7 +105,7 @@ export async function PATCH(request: Request) {
         tx.permission.findUniqueOrThrow({ where: { key: "incoming.view" } }),
         tx.permission.findUniqueOrThrow({ where: { key: "project_cost_control.view" } }),
       ]);
-      await tx.user.update({ where: { id: data.userId }, data: { employeeId: data.employeeId || null } });
+      await tx.user.update({ where: { id: data.userId }, data: { employeeId: data.employeeId || null, sessionVersion: { increment: 1 } } });
       await tx.userPermissionOverride.upsert({ where: { userId_permissionId: { userId: data.userId, permissionId: incoming.id } }, update: { enabled: data.incomingVisible }, create: { userId: data.userId, permissionId: incoming.id, enabled: data.incomingVisible } });
       await tx.userPermissionOverride.upsert({ where: { userId_permissionId: { userId: data.userId, permissionId: financial.id } }, update: { enabled: data.financialVisible }, create: { userId: data.userId, permissionId: financial.id, enabled: data.financialVisible } });
       await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.profile.update", target: data.userId, details: JSON.stringify({ employeeId: data.employeeId || null, incomingVisible: data.incomingVisible, financialVisible: data.financialVisible }) } });
