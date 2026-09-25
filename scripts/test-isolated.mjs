@@ -13,7 +13,7 @@ const testUrl = `http://127.0.0.1:${port}`;
 const adminPassword = "IsolatedDemo@123456";
 const env = { ...process.env, DATABASE_URL: databaseUrl, AUTH_SECRET: "isolated-test-secret-with-at-least-32-characters", AUTH_URL: testUrl, ERP_ISOLATED_TEST: "true", BOOTSTRAP_ADMIN_EMAIL: "admin@erp.local", BOOTSTRAP_ADMIN_PASSWORD: adminPassword, DEMO_USER_PASSWORD: adminPassword, ERP_TEST_ADMIN_PASSWORD: adminPassword, BOOTSTRAP_ADMIN_NAME: "مدير النظام", ERP_TEST_URL: testUrl };
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const apiTests = ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:warehouse-receipts-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:project-cost-control-api"];
+const apiTests = ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:warehouse-receipts-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:accounting-period-api", "test:project-cost-control-api"];
 const selectedTest = process.env.ERP_TEST_ONLY;
 if (selectedTest && !apiTests.includes(selectedTest)) throw new Error(`اختبار العزل غير معروف: ${selectedTest}`);
 const windowsPnpm = process.platform === "win32" ? (() => {

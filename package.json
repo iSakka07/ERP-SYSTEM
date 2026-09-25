@@ -34,6 +34,7 @@
     "test:project-cost-control-api": "node scripts/test-project-cost-control-api.mjs",
     "test:login-rate-limit": "node scripts/test-login-rate-limit.mjs",
     "test:financial-idempotency-api": "node scripts/test-financial-idempotency-api.mjs",
+    "test:accounting-period-api": "node scripts/test-accounting-period-api.mjs",
     "test:isolated-api": "node scripts/test-isolated.mjs",
     "test:expenses-api": "node scripts/test-expenses-api.mjs",
     "test:expense-corrections-api": "node scripts/test-expense-corrections-api.mjs",
