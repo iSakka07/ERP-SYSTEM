@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CompanyFooter } from "@/components/company-footer";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowDownLeft, ArrowLeft, ArrowUpRight, BanknoteArrowDown, BanknoteArrowUp, BellRing, Building2, Boxes, CalendarDays, ChartNoAxesCombined, ChevronLeft, CircleAlert, FileSpreadsheet, Landmark, TrendingDown, TrendingUp, UserRound, Vault } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
