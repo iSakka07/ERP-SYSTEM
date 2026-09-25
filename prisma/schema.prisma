@@ -892,6 +892,17 @@ model AccountingAccount {
   @@index([parentId])
 }
 
+model AccountingPeriod {
+  id           String   @id @default(cuid())
+  month        String   @unique
+  status       String   @default("OPEN")
+  closedAt     DateTime?
+  closedById   String?
+  reopenReason String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model JournalEntry {
   id              String        @id @default(cuid())
   number          String        @unique

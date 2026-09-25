@@ -4,16 +4,21 @@ import { prisma } from "@/lib/prisma";
 export const money = (cents: number) => (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export async function accountingSnapshot() {
-  const [accounts, entries, goLive, projects] = await Promise.all([
+  const periods = prisma.accountingPeriod.findMany({ orderBy: { month: "desc" }, take: 24, select: { month: true, status: true, closedAt: true, reopenReason: true } }).catch((error: unknown) => {
+    if ((error as { code?: string }).code === "P2021" && process.env.NODE_ENV !== "production") return [];
+    throw error;
+  });
+  const [accounts, entries, goLive, projects, periodRows] = await Promise.all([
     prisma.accountingAccount.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     prisma.journalEntry.findMany({ include: { lines: { include: { account: true } } }, orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }] }),
     prisma.systemMetadata.findUnique({ where: { key: "accounting.goLiveDate" } }),
     prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    periods,
   ]);
   const balances = new Map(accounts.map((account) => [account.id, { debit: 0, credit: 0 }]));
   const actorIds = [...new Set(entries.map((entry) => entry.actorId))];
   const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } }) : [];
   const actorMap = new Map(actors.map((actor) => [actor.id, `${actor.name} — ${actor.email}`]));
   for (const entry of entries) for (const line of entry.lines) { const balance = balances.get(line.accountId); if (balance) { balance.debit += line.debitCents; balance.credit += line.creditCents; } }
-  return { accounts, entries: entries.map((entry) => ({ ...entry, actor: actorMap.get(entry.actorId) || "حساب غير متاح" })), projects, goLiveDate: goLive?.value || null, trialBalance: accounts.map((account) => ({ account, ...(balances.get(account.id) || { debit: 0, credit: 0 }) })).filter((row) => row.debit || row.credit) };
+  return { accounts, entries: entries.map((entry) => ({ ...entry, actor: actorMap.get(entry.actorId) || "حساب غير متاح" })), projects, periods: periodRows, goLiveDate: goLive?.value || null, trialBalance: accounts.map((account) => ({ account, ...(balances.get(account.id) || { debit: 0, credit: 0 }) })).filter((row) => row.debit || row.credit) };
 }

@@ -12,8 +12,20 @@ export async function accountingIsLive(tx: Tx, date: Date) {
   return !setting?.value || date >= new Date(`${setting.value}T00:00:00.000Z`);
 }
 
+async function assertAccountingPeriodOpen(tx: Tx, date: Date) {
+  const month = date.toISOString().slice(0, 7);
+  let period;
+  try { period = await tx.accountingPeriod.findUnique({ where: { month } }); }
+  catch (error) {
+    if ((error as { code?: string }).code === "P2021" && process.env.NODE_ENV !== "production") return;
+    throw error;
+  }
+  if (period?.status === "CLOSED") throw new Error(`الفترة المحاسبية ${month} مقفلة. أعد فتحها بسبب موثق قبل إنشاء أو عكس أي قيد.`);
+}
+
 export async function postJournal(tx: Tx, input: { sourceType: string; sourceId: string; entryDate: Date; description: string; actorId: string; projectId?: string | null; lines: PostingLine[] }) {
   if (!(await accountingIsLive(tx, input.entryDate))) return null;
+  await assertAccountingPeriodOpen(tx, input.entryDate);
   const existing = await tx.journalEntry.findFirst({ where: { sourceType: input.sourceType, sourceId: input.sourceId } });
   if (existing) return existing;
   const debit = input.lines.reduce((sum, line) => sum + (line.debitCents || 0), 0);

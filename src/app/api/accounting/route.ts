@@ -7,6 +7,8 @@ import { isTrustedMutationOrigin } from "@/lib/request-security";
 
 const payload = z.discriminatedUnion("action", [
   z.object({ action: z.literal("goLive"), goLiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  z.object({ action: z.literal("closePeriod"), month: z.string().regex(/^\d{4}-\d{2}$/) }),
+  z.object({ action: z.literal("reopenPeriod"), month: z.string().regex(/^\d{4}-\d{2}$/), reason: z.string().trim().min(3).max(500) }),
 ]);
 
 export async function POST(request: Request) {
@@ -17,6 +19,18 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "راجع بيانات المحاسبة المطلوبة." }, { status: 400 });
   try {
     await prisma.$transaction(async (tx) => {
+      if (parsed.data.action === "closePeriod") {
+        const period = await tx.accountingPeriod.upsert({ where: { month: parsed.data.month }, update: { status: "CLOSED", closedAt: new Date(), closedById: user.id, reopenReason: null }, create: { month: parsed.data.month, status: "CLOSED", closedAt: new Date(), closedById: user.id } });
+        await tx.auditLog.create({ data: { actorId: user.id, action: "accounting.period.close", target: period.id, details: JSON.stringify({ month: parsed.data.month }) } });
+        return;
+      }
+      if (parsed.data.action === "reopenPeriod") {
+        const period = await tx.accountingPeriod.findUnique({ where: { month: parsed.data.month } });
+        if (!period || period.status !== "CLOSED") throw new Error("هذه الفترة ليست مقفلة.");
+        await tx.accountingPeriod.update({ where: { id: period.id }, data: { status: "OPEN", reopenReason: parsed.data.reason } });
+        await tx.auditLog.create({ data: { actorId: user.id, action: "accounting.period.reopen", target: period.id, details: JSON.stringify({ month: parsed.data.month, reason: parsed.data.reason }) } });
+        return;
+      }
       if (Number.isNaN(Date.parse(`${parsed.data.goLiveDate}T00:00:00.000Z`))) throw new Error("تاريخ بدء المحاسبة غير صحيح.");
       const current = await tx.systemMetadata.findUnique({ where: { key: "accounting.goLiveDate" } });
       const entries = await tx.journalEntry.count();
