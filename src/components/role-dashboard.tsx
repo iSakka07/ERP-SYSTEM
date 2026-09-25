@@ -101,8 +101,7 @@ export function RoleDashboard({ roleKey, userName, canFinancial, filter, project
   const engineer = roleKey === "technical_office_engineer" || roleKey === "site_supervisor_engineer";
   const accountName = roleKey === "admin" ? "مدير النظام" : roleKey === "executive_director" ? "المدير التنفيذي" : roleKey === "accountant" ? "المحاسب" : engineer ? "مهندس المشروع" : "مستخدم المنظومة";
   const metrics: [string, string, LucideIcon, "blue" | "emerald" | "amber" | "violet"][] = canFinancial ? [["قيمة العقود في الفترة", totals.contractValue, Building2, "blue"], ["الوارد المحصل", totals.incoming, BanknoteArrowUp, "emerald"], ["تكلفة الأعمال", totals.cost, BanknoteArrowDown, "amber"], ["صافي السيولة", totals.liquidity, Landmark, "violet"]] : [["المشروعات المكلف بها", String(projects.length), Building2, "blue"], ["مستخلصات تحت الإجراء", "—", FileSpreadsheet, "amber"], ["حالة المتابعة", "جاهز", ChartNoAxesCombined, "emerald"], ["الوارد والماليات", "غير مسموح", Landmark, "violet"]];
-  const [today, setToday] = useState("");
-  useEffect(() => { setToday(new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", year: "numeric" }).format(new Date())); }, []);
+  const today = useSyncExternalStore(() => () => {}, () => new Intl.DateTimeFormat("ar-EG", { day: "numeric", month: "long", year: "numeric" }).format(new Date()), () => "");
   const pieData = insights?.costComposition.filter((item) => item.value > 0) ?? [];
   const cashPieData = insights?.petty.composition.filter((item) => item.value > 0) ?? [];
   return <div className="space-y-6">
