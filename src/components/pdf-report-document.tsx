@@ -54,7 +54,10 @@ const styles = StyleSheet.create({
     fontFamily: "ASGCCairo",
     color: palette.ink,
     fontSize: 8.5,
-    paddingTop: 166,
+    // The branded heading is repeated on every page. KPI cards are ordinary
+    // flow content below, so they stay on the first page instead of being
+    // repeated with the fixed heading.
+    paddingTop: 106,
     paddingBottom: 54,
     paddingHorizontal: 26,
   },
@@ -103,6 +106,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   kpiRow: { flexDirection: "row-reverse", gap: 5, marginTop: 7 },
+  kpiSection: { marginTop: 12, marginBottom: 20 },
   kpi: {
     flexGrow: 1,
     flexBasis: 0,
@@ -322,7 +326,9 @@ export function PdfReportDocument({
           {filters ? (
             <Text style={styles.filter}>الفلاتر المطبقة: {safe(filters)}</Text>
           ) : null}
-          {kpis.length ? (
+        </View>
+        {kpis.length ? (
+          <View wrap={false} style={styles.kpiSection}>
             <View style={styles.kpiRow}>
               {kpis.slice(0, 5).map((kpi, index) => (
                 <View
@@ -339,10 +345,10 @@ export function PdfReportDocument({
                 </View>
               ))}
             </View>
-          ) : null}
-        </View>
+          </View>
+        ) : null}
         {tables.map((table, index) => (
-          <View key={index} style={{ marginTop: index ? 16 : 14 }}>
+          <View key={index} style={{ marginTop: index ? 18 : 4 }}>
             <ReportTable table={table} />
           </View>
         ))}

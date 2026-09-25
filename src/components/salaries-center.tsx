@@ -740,6 +740,7 @@ function AdvanceDialog({
     files?: boolean,
   ) => Promise<void>;
 }) {
+  const [repaymentMode, setRepaymentMode] = useState("NEXT_PAYROLL");
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4"
@@ -779,13 +780,14 @@ function AdvanceDialog({
             />
           </Field>
           <Field label="طريقة الاسترداد">
-            <ERPSelect name="repaymentMode" className={expenseInput}>
+            <ERPSelect name="repaymentMode" value={repaymentMode} onValueChange={setRepaymentMode} className={expenseInput}>
               <option value="NEXT_PAYROLL">المرتب القادم</option>
               <option value="INSTALLMENTS">أقساط</option>
             </ERPSelect>
           </Field>
           <Field label="قيمة القسط عند التقسيط">
-            <CurrencyInput name="installment" min="0.01" />
+            <CurrencyInput name="installment" min="0.01" required={repaymentMode === "INSTALLMENTS"} disabled={repaymentMode !== "INSTALLMENTS"} aria-describedby="installment-help" />
+            {repaymentMode === "NEXT_PAYROLL" && <p id="installment-help" className="mt-1 text-[10px] text-slate-500">مقفلة لأن كامل السلفة سيُخصم من المرتب القادم.</p>}
           </Field>
           <Field label="مصدر الصرف">
             <ERPSelect name="source" className={expenseInput}>

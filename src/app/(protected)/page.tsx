@@ -6,6 +6,7 @@ import { money } from "@/lib/incoming";
 import { isProjectCost, balanceForAccount, expenseTypes } from "@/lib/petty-cash";
 import { RoleDashboard } from "@/components/role-dashboard";
 import { AttentionList } from "@/components/attention-list";
+import { getAttentionAlerts } from "@/lib/attention-alerts";
 
 type Search = Record<string, string | string[] | undefined>;
 const day = 86_400_000;
@@ -45,6 +46,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   const profile = await accessProfile(session.user.id);
   if (!profile) redirect("/login");
   const search = await searchParams;
+  const evaluationDate = new Date();
   const period = periodFrom(search);
   const canFinancial = profile.permissions.includes("project_cost_control.view");
   const canStock = profile.permissions.includes("warehouse.view");
@@ -58,17 +60,16 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   const projectWhere = projectId ? { projectId } : profile.isProjectScoped ? { projectId: { in: profile.projectIds } } : {};
   const warehouses = canStock ? await prisma.warehouse.findMany({ where: { active: true, OR: [{ type: { not: "PROJECT" } }, ...(profile.isProjectScoped ? [{ projectId: { in: profile.projectIds } }] : [{}])] } }) : [];
   const warehouseIds = warehouses.map((warehouse) => warehouse.id);
-  const [contracts, accounts, invoices, petty, pettyAccounts, allPettyMovements, payrollRuns, payrollSetting, inventoryItems, stockMovements] = await Promise.all([
+  const [contracts, accounts, invoices, petty, pettyAccounts, allPettyMovements, payrollRuns, inventoryItems, stockMovements] = await Promise.all([
     (canFinancial || profile.permissions.includes("incoming.view")) ? prisma.incomingContract.findMany({ where: projectWhere, include: { memos: true, statements: { orderBy: { sequence: "asc" }, include: { materials: true } } } }) : Promise.resolve([]),
     (canFinancial || profile.permissions.includes("expenses.view")) ? prisma.subcontractAccount.findMany({ where: projectWhere, include: { company: true, statements: { include: { payments: true } } } }) : Promise.resolve([]),
-    canFinancial || canPurchases || canStock ? prisma.purchaseInvoice.findMany({ where: { status: "POSTED", ...projectWhere }, include: { items: true, stockMovements: { where: { status: "POSTED", type: "RECEIPT" }, include: { lines: true } } } }) : Promise.resolve([]),
+    canFinancial || canPurchases || canStock ? prisma.purchaseInvoice.findMany({ where: { status: "POSTED", ...projectWhere }, include: { supplier: { select: { name: true } }, items: true, stockMovements: { where: { status: "POSTED", type: "RECEIPT" }, include: { lines: true } } } }) : Promise.resolve([]),
     canPetty ? prisma.pettyCashTransaction.findMany({ where: { status: "POSTED", ...(projectId ? { projectId } : {}) }, include: { category: true, project: { select: { name: true } }, recordedBy: { select: { name: true } }, attachments: { select: { id: true } } }, orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }] }) : Promise.resolve([]),
     canPetty ? prisma.pettyCashAccount.findMany({ where: { active: true }, include: { employee: { select: { name: true } } }, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
     canPetty ? prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { status: true, type: true, number: true, transactionDate: true, createdAt: true, amountCents: true, sourceAccountId: true, destinationAccountId: true } }) : Promise.resolve([]),
     profile.permissions.includes("salaries.view") ? prisma.payrollRun.findMany({ orderBy: { month: "desc" }, take: 2 }) : Promise.resolve([]),
-    profile.permissions.includes("salaries.view") ? prisma.systemMetadata.findUnique({ where: { key: "salary-payment-day" } }) : Promise.resolve(null),
-    canStock ? prisma.inventoryItem.findMany({ where: { active: true }, select: { id: true, name: true, minimumQuantity: true } }) : Promise.resolve([]),
-    canStock && warehouseIds.length ? prisma.stockMovement.findMany({ where: { status: "POSTED", OR: [{ fromWarehouseId: { in: warehouseIds } }, { toWarehouseId: { in: warehouseIds } }] }, include: { lines: true }, orderBy: { movementDate: "desc" } }) : Promise.resolve([]),
+    canStock ? prisma.inventoryItem.findMany({ where: { active: true }, select: { id: true, name: true, unit: true, minimumQuantity: true } }) : Promise.resolve([]),
+    canStock && warehouseIds.length ? prisma.stockMovement.findMany({ where: { status: "POSTED", OR: [{ fromWarehouseId: { in: warehouseIds } }, { toWarehouseId: { in: warehouseIds } }] }, include: { lines: true }, orderBy: [{ movementDate: "desc" }, { createdAt: "desc" }, { id: "desc" }] }) : Promise.resolve([]),
  ]);
 
   const reportContracts = canFinancial ? contracts : [];
@@ -109,28 +110,28 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   for (const account of reportAccounts) for (const statement of account.statements) { const bucket = monthMap.get(key(statement.statementDate)); if (bucket && ["EXECUTIVE", "ACCOUNTING"].includes(statement.stage)) bucket.cost += Math.max(0, statement.grossCents - statement.previousGrossCents); }
   for (const invoice of reportInvoices) { const bucket = monthMap.get(key(invoice.invoiceDate)); if (bucket) bucket.cost += invoice.totalCents; }
   for (const transaction of reportPetty) { const bucket = monthMap.get(key(transaction.transactionDate)); if (bucket && isProjectCost(transaction.type)) bucket.cost += transaction.amountCents; }
+  const flowByProject = selectedProjects.map((project) => {
+    const projectMonths = months.map((month) => ({ ...month, incoming: 0, cost: 0 }));
+    const projectMonthMap = new Map(projectMonths.map((month) => [month.key, month]));
+    for (const contract of reportContracts.filter((item) => item.projectId === project.id)) for (const bucket of projectMonths) { const [year, month] = bucket.key.split("-").map(Number); bucket.incoming += paidIncomingInRange({ statements: contract.statements }, new Date(Date.UTC(year, month - 1, 1)), new Date(Date.UTC(year, month, 0, 23, 59, 59, 999))); }
+    for (const account of reportAccounts.filter((item) => item.projectId === project.id)) for (const statement of account.statements) { const bucket = projectMonthMap.get(key(statement.statementDate)); if (bucket && ["EXECUTIVE", "ACCOUNTING"].includes(statement.stage)) bucket.cost += Math.max(0, statement.grossCents - statement.previousGrossCents); }
+    for (const invoice of reportInvoices.filter((item) => item.projectId === project.id)) { const bucket = projectMonthMap.get(key(invoice.invoiceDate)); if (bucket) bucket.cost += invoice.totalCents; }
+    for (const transaction of reportPetty.filter((item) => item.projectId === project.id && isProjectCost(item.type))) { const bucket = projectMonthMap.get(key(transaction.transactionDate)); if (bucket) bucket.cost += transaction.amountCents; }
+    return { projectId: project.id, months: projectMonths };
+  });
   const mainBalance = mainAccount ? balanceForAccount(reportAllPettyMovements, mainAccount.id) : 0;
   const pettyPeriod = reportPetty.filter((transaction) => inRange(transaction.transactionDate, period.from, period.to));
   const previousPetty = reportPetty.filter((transaction) => inRange(transaction.transactionDate, previous.from, previous.to));
   const pettyIn = pettyPeriod.filter((transaction) => transaction.destinationAccountId === mainAccount?.id).reduce((sum, transaction) => sum + transaction.amountCents, 0);
   const pettyOut = pettyPeriod.filter((transaction) => transaction.sourceAccountId === mainAccount?.id).reduce((sum, transaction) => sum + transaction.amountCents, 0);
   const pettyPreviousOut = previousPetty.filter((transaction) => transaction.sourceAccountId === mainAccount?.id).reduce((sum, transaction) => sum + transaction.amountCents, 0);
+  const custodyOutside = reportPettyAccounts.filter((account) => account.type === "CUSTODY").map((account) => {
+    const movements = reportAllPettyMovements.filter((movement) => movement.destinationAccountId === account.id || movement.sourceAccountId === account.id).sort((a, b) => a.transactionDate.getTime() - b.transactionDate.getTime() || a.createdAt.getTime() - b.createdAt.getTime());
+    let balance = 0; let outstandingSince: Date | null = null;
+    for (const movement of movements) { const wasEmpty = balance <= 0; if (movement.destinationAccountId === account.id) balance += movement.amountCents; if (movement.sourceAccountId === account.id) balance -= movement.amountCents; if (wasEmpty && balance > 0) outstandingSince = movement.transactionDate; if (balance <= 0) outstandingSince = null; }
+    return { id: account.id, name: account.name, holder: account.employee?.name || "موظف", balance, since: outstandingSince?.toISOString() || null, days: outstandingSince ? Math.max(0, Math.floor((evaluationDate.getTime() - outstandingSince.getTime()) / day)) : 0 };
+  }).filter((custody) => custody.balance > 0 && custody.since).sort((a, b) => new Date(a.since!).getTime() - new Date(b.since!).getTime()).slice(0, 3);
  const cashComposition = pettyPeriod.filter((transaction) => expenseTypes.has(transaction.type)).reduce<Record<string, number>>((all, transaction) => { const label = transaction.category?.name || "غير مصنف"; all[label] = (all[label] || 0) + transaction.amountCents; return all; }, {});
-  const now = new Date();
-  const overdueCustodyAlerts = pettyAccounts.flatMap((custody) => {
-    if (custody.type !== "CUSTODY") return [];
-    const movements = allPettyMovements.filter((movement) => movement.destinationAccountId === custody.id || movement.sourceAccountId === custody.id).sort((a, b) => a.transactionDate.getTime() - b.transactionDate.getTime() || a.createdAt.getTime() - b.createdAt.getTime());
-    let running = 0; let outstandingSince: Date | null = null;
-    for (const movement of movements) {
-      const wasEmpty = running <= 0;
-      if (movement.destinationAccountId === custody.id) running += movement.amountCents;
-      if (movement.sourceAccountId === custody.id) running -= movement.amountCents;
-      if (wasEmpty && running > 0) outstandingSince = movement.transactionDate;
-      if (running <= 0) outstandingSince = null;
-    }
-    const balance = balanceForAccount(allPettyMovements, custody.id);
-    return outstandingSince && balance > 0 && outstandingSince.getTime() < now.getTime() - day ? [{ type: "petty", severity: "متأخر", title: "عهدة لم تعد للخزنة — " + custody.name, detail: (custody.employee?.name || "موظف") + " · المتبقي " + money(balance) + " ج.م", href: "/petty-cash" }] : [];
-  });
   const scopedWarehouseIds = new Set(warehouses.map((warehouse) => warehouse.id));
   const scopedStockMovements = stockMovements.filter((movement) => scopedWarehouseIds.has(movement.fromWarehouseId || "") || scopedWarehouseIds.has(movement.toWarehouseId || ""));
   const balanceMap = new Map<string, { itemId: string; warehouseId: string; quantity: number; valueCents: number }>();
@@ -139,22 +140,37 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   const stockBalances = [...balanceMap.values()];
   const stockValue = stockBalances.filter((row) => scopedWarehouseIds.has(row.warehouseId)).reduce((sum, row) => sum + row.valueCents, 0);
   const quantityByItem = stockBalances.filter((row) => scopedWarehouseIds.has(row.warehouseId)).reduce<Record<string, number>>((all, row) => { all[row.itemId] = (all[row.itemId] || 0) + row.quantity; return all; }, {});
+  const itemMap = new Map(inventoryItems.map((item) => [item.id, item]));
+  const recentItemIds = [...new Set(scopedStockMovements.flatMap((movement) => movement.lines.map((line) => line.itemId)))];
+  const recentStock = canStock ? recentItemIds.filter((id) => itemMap.has(id) && (quantityByItem[id] || 0) > 0.000001).slice(0, 5).map((id) => ({
+    id, name: itemMap.get(id)!.name, unit: itemMap.get(id)!.unit, quantity: quantityByItem[id],
+  })) : [];
   const lowStockCount = inventoryItems.filter((item) => item.minimumQuantity > 0 && (quantityByItem[item.id] || 0) <= item.minimumQuantity).length;
   const stockInvoices = invoices.filter((invoice) => ["WAREHOUSE", "DIRECT_PROJECT"].includes(invoice.stockMode));
   const receivedByPurchaseItem = new Map<string, number>();
   for (const invoice of stockInvoices) for (const movement of invoice.stockMovements) for (const line of movement.lines) if (line.sourcePurchaseItemId) receivedByPurchaseItem.set(line.sourcePurchaseItemId, (receivedByPurchaseItem.get(line.sourcePurchaseItemId) || 0) + line.quantity);
   const pendingInvoices = stockInvoices.filter((invoice) => invoice.items.some((item) => item.quantity - (receivedByPurchaseItem.get(item.id) || 0) > 0.000001));
-  const alerts = [
-    ...overdueCustodyAlerts,
-    ...(profile.permissions.includes("incoming.view") ? contracts.flatMap((contract) => contract.statements.filter((statement) => statement.stage !== "PAID" && statement.submittedAt.getTime() < now.getTime() - 14 * day).map((statement) => ({ type: "incoming", severity: "متأخر", title: "تحصيل عقد وارد متأخر — جاري " + statement.sequence, detail: contract.name + " · مر عليه أكثر من 14 يومًا دون صرف", href: "/incoming" }))) : []),
-    ...(profile.permissions.includes("expenses.view") ? accounts.flatMap((account) => account.statements.filter((statement) => statement.stage === "ACCOUNTING" && statement.statementDate.getTime() < now.getTime() - 14 * day && statement.payments.filter((payment) => payment.status !== "REVERSED").reduce((sum, payment) => sum + payment.amountCents, 0) < statement.netCents).map((statement) => ({ type: "subcontract", severity: "متأخر", title: "مستخلص مقاول ينتظر الصرف — جاري " + statement.sequence, detail: account.name + " · " + account.company.name, href: "/expenses" }))) : []),
-    ...(canStock ? pendingInvoices.map((invoice) => ({ type: "purchases", severity: "قيد الاستلام", title: `فاتورة مشتريات لم يكتمل استلامها — ${invoice.name || invoice.number}`, detail: `${invoice.items.filter((item) => item.quantity - (receivedByPurchaseItem.get(item.id) || 0) > 0.000001).length} بند بحاجة لاستلام`, href: "/warehouse?tab=receipts" })) : []),
-    ...inventoryItems.filter((item) => item.minimumQuantity > 0 && (quantityByItem[item.id] || 0) <= item.minimumQuantity).map((item) => ({ type: "warehouse", severity: "مخزون منخفض", title: "صنف وصل حد إعادة الطلب", detail: `${item.name} · الرصيد ${quantityByItem[item.id] || 0}`, href: "/warehouse" })),
-  ];
-  const payrollDay = Number(payrollSetting?.value || 0);
-  if (payrollDay > 0 && payrollRuns[0]?.status === "APPROVED") { const due = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), Math.min(28, payrollDay))); const remaining = Math.ceil((due.getTime() - now.getTime()) / day); if (remaining <= 7) alerts.push({ type: "payroll", severity: remaining < 0 ? "متأخر" : "قريب", title: "صرف المرتبات", detail: remaining < 0 ? "موعد الصرف المحدد تجاوز تاريخ اليوم." : "موعد الصرف المحدد بعد " + remaining + " يوم.", href: "/salaries" }); }
+  const alerts = await getAttentionAlerts(profile, projectId || undefined);
   const attention = typeof search.attention === "string" && search.attention === "all";
-  if (attention) return <AttentionList alerts={alerts} />;
+  if (attention) {
+    const requestedAuditPage = typeof search.auditPage === "string" ? Number(search.auditPage) : 1;
+    const auditPage = Number.isSafeInteger(requestedAuditPage) && requestedAuditPage > 0 ? requestedAuditPage : 1;
+    const auditPageSize = 10;
+    const [activities, activityTotal] = profile.user.role?.key === "admin" ? await Promise.all([prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, skip: (auditPage - 1) * auditPageSize, take: auditPageSize, select: { id: true, actorId: true, action: true, createdAt: true } }), prisma.auditLog.count()]) : [[], 0];
+    const actorIds = [...new Set(activities.map((activity) => activity.actorId))];
+    const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } }) : [];
+    const actorNames = new Map(actors.map((actor) => [actor.id, actor.name]));
+    const auditPages = Math.max(1, Math.ceil(activityTotal / auditPageSize));
+    const auditParams = new URLSearchParams(); if (projectId) auditParams.set("project", projectId);
+    const auditHref = (page: number) => { const params = new URLSearchParams(auditParams); params.set("auditPage", String(page)); return `/attention?${params.toString()}`; };
+    return <AttentionList alerts={alerts} activities={activities.map((activity) => ({ id: activity.id, actor: actorNames.get(activity.actorId) || "حساب غير متاح", action: activity.action, createdAt: activity.createdAt.toISOString() }))} activityPagination={activityTotal ? { page: Math.min(auditPage, auditPages), total: activityTotal, previousHref: auditPage > 1 ? auditHref(auditPage - 1) : null, nextHref: auditPage < auditPages ? auditHref(auditPage + 1) : null } : undefined} />;
+  }
   const purchasesInPeriod = invoices.filter((invoice) => inRange(invoice.invoiceDate, period.from, period.to));
-  return <RoleDashboard roleKey={profile.user.role!.key} userName={profile.user.name} canFinancial={canFinancial} filter={{ projectId, from: dateOnly(period.from), to: dateOnly(period.to), projects: allProjects.map((project) => ({ id: project.id, name: project.name })) }} projects={rows.map((row) => ({ ...row, contractValue: money(row.contractValue), incoming: money(row.incoming), cost: money(row.cost), paid: money(row.paid), margin: money(row.incoming - row.cost), risk: canFinancial ? (row.incoming - row.cost < 0 ? "يتطلب متابعة" : "ضمن المتاح") : "متابعة حسب الصلاحية" }))} totals={{ contractValue: money(totals.contractValue), incoming: money(totals.incoming), cost: money(totals.cost), paid: money(totals.paid), liquidity: money(totals.incoming - totals.paid) }} insights={{ months, costComposition: [{ name: "أعمال المقاولين", value: totals.subcontract, color: "#2563eb" }, { name: "المشتريات", value: totals.purchases, color: "#f59e0b" }, { name: "النثريات", value: totals.petty, color: "#10b981" }], projectCount: selectedProjects.length, periodLabel: `${dateOnly(period.from)} إلى ${dateOnly(period.to)}`, comparison: { incoming: [totals.incoming, priorTotals.incoming], cost: [totals.cost, priorTotals.cost], liquidity: [totals.incoming - totals.paid, priorTotals.incoming - priorTotals.paid] }, alerts, operations: { stock: canStock ? stockValue : 0, low: canStock ? lowStockCount : 0, pending: canStock ? pendingInvoices.length : 0, purchases: canPurchases ? purchasesInPeriod.reduce((sum, invoice) => sum + invoice.totalCents, 0) : 0, count: canPurchases ? purchasesInPeriod.length : 0, canStock, canPurchases }, petty: { balance: mainBalance, in: pettyIn, out: pettyOut, previousOut: pettyPreviousOut, composition: Object.entries(cashComposition).map(([name, value], index) => ({ name, value, color: ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#64748b"][index % 5] })), recent: pettyPeriod.slice(0, 5).map((transaction) => ({ id: transaction.id, date: dateOnly(transaction.transactionDate), type: transaction.type, description: transaction.description, amount: transaction.amountCents, incoming: transaction.destinationAccountId === mainAccount?.id, project: transaction.project?.name || "عام الشركة" })) } }} />;
+  const partiallyPaidPurchases = purchasesInPeriod.filter((invoice) => invoice.paidCents > 0 && invoice.paidCents < invoice.totalCents);
+  const partialPurchasesOutstanding = partiallyPaidPurchases.reduce((sum, invoice) => sum + Math.max(0, invoice.totalCents - invoice.paidCents), 0);
+  const recentPurchases = canPurchases ? [...purchasesInPeriod].sort((a, b) => b.invoiceDate.getTime() - a.invoiceDate.getTime() || b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id)).slice(0, 5).map((invoice) => ({
+    id: invoice.id, name: invoice.name || "فاتورة مشتريات", supplier: invoice.supplier?.name || "بدون مورد",
+    date: dateOnly(invoice.invoiceDate), total: invoice.totalCents,
+  })) : [];
+  return <RoleDashboard roleKey={profile.user.role!.key} userName={profile.user.name} canFinancial={canFinancial} filter={{ projectId, from: dateOnly(period.from), to: dateOnly(period.to), projects: allProjects.map((project) => ({ id: project.id, name: project.name })) }} projects={rows.map((row) => ({ ...row, contractValue: money(row.contractValue), incoming: money(row.incoming), cost: money(row.cost), paid: money(row.paid), margin: money(row.incoming - row.cost), risk: canFinancial ? (row.incoming - row.cost < 0 ? "يتطلب متابعة" : "ضمن المتاح") : "متابعة حسب الصلاحية" }))} totals={{ contractValue: money(totals.contractValue), incoming: money(totals.incoming), cost: money(totals.cost), paid: money(totals.paid), liquidity: money(totals.incoming - totals.paid) }} insights={{ months, flowByProject, costComposition: [{ name: "أعمال المقاولين", value: totals.subcontract, color: "#2563eb" }, { name: "المشتريات", value: totals.purchases, color: "#f59e0b" }, { name: "النثريات", value: totals.petty, color: "#10b981" }], projectCount: selectedProjects.length, periodLabel: `${dateOnly(period.from)} إلى ${dateOnly(period.to)}`, comparison: { incoming: [totals.incoming, priorTotals.incoming], cost: [totals.cost, priorTotals.cost], liquidity: [totals.incoming - totals.paid, priorTotals.incoming - priorTotals.paid] }, alerts, operations: { stock: canStock ? stockValue : 0, low: canStock ? lowStockCount : 0, pending: canStock ? pendingInvoices.length : 0, purchases: canPurchases ? purchasesInPeriod.reduce((sum, invoice) => sum + invoice.totalCents, 0) : 0, count: canPurchases ? purchasesInPeriod.length : 0, partialPaymentCount: canPurchases ? partiallyPaidPurchases.length : 0, partialPaymentOutstanding: canPurchases ? partialPurchasesOutstanding : 0, canStock, canPurchases, recentStock, recentPurchases }, petty: { balance: mainBalance, in: pettyIn, out: pettyOut, previousOut: pettyPreviousOut, custodyOutside, composition: Object.entries(cashComposition).map(([name, value], index) => ({ name, value, color: ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#64748b"][index % 5] })), recent: pettyPeriod.slice(0, 5).map((transaction) => ({ id: transaction.id, date: dateOnly(transaction.transactionDate), type: transaction.type, description: transaction.description, amount: transaction.amountCents, incoming: transaction.destinationAccountId === mainAccount?.id, project: transaction.project?.name || "عام الشركة" })) } }} />;
 }

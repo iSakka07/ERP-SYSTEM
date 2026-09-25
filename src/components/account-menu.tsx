@@ -1,9 +1,9 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- User images are served from the authenticated profile endpoint. */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, LoaderCircle, LogOut, UserRound, X } from "lucide-react";
+import { Camera, ChevronDown, LoaderCircle, LogOut, UserRound, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 type AccountMenuProps = { name: string; email: string; hasAvatar: boolean };
@@ -11,6 +11,7 @@ type AccountMenuProps = { name: string; email: string; hasAvatar: boolean };
 export function AccountMenu({ name, email, hasAvatar }: AccountMenuProps) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(name);
@@ -21,6 +22,20 @@ export function AccountMenu({ name, email, hasAvatar }: AccountMenuProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const initials = displayName.trim().charAt(0) || "م";
+
+  useEffect(() => {
+    if (!open) return;
+    function dismiss(event: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    }
+    function escape(event: KeyboardEvent) { if (event.key === "Escape") setOpen(false); }
+    document.addEventListener("mousedown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
 
   function closeEditor() {
     setEditing(false); setError(""); setDraftName(displayName); setAvatarFile(null);
@@ -48,9 +63,10 @@ export function AccountMenu({ name, email, hasAvatar }: AccountMenuProps) {
     finally { setBusy(false); }
   }
   const avatar = previewUrl || avatarUrl;
-  return <div className="relative">
-    <button type="button" onClick={() => setOpen((value) => !value)} className="grid size-9 place-items-center overflow-hidden rounded-full bg-blue-600 text-xs font-extrabold ring-2 ring-white/15 transition hover:ring-blue-300" aria-label="فتح قائمة الحساب" aria-expanded={open}>
-      {avatar ? <img src={avatar} alt="الصورة الشخصية" className="size-full object-cover" /> : initials}
+  return <div ref={rootRef} className="relative">
+    <button type="button" onClick={() => setOpen((value) => !value)} className="inline-flex h-10 items-center gap-1 rounded-full px-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400" aria-label="فتح قائمة الحساب" aria-expanded={open} aria-haspopup="menu">
+      <span className="grid size-9 place-items-center overflow-hidden rounded-full bg-blue-600 text-xs font-extrabold text-white">{avatar ? <img src={avatar} alt="الصورة الشخصية" className="size-full object-cover" /> : initials}</span>
+      <ChevronDown className={`size-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} aria-hidden="true" />
     </button>
     {open && <div className="absolute left-0 top-12 z-50 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 text-right text-slate-900 shadow-xl" role="menu">
       <div className="flex items-center gap-3 border-b border-slate-100 px-3 py-3"><span className="grid size-10 place-items-center overflow-hidden rounded-full bg-blue-600 font-black text-white">{avatarUrl ? <img src={avatarUrl} alt="الصورة الشخصية" className="size-full object-cover" /> : initials}</span><div className="min-w-0 flex-1"><b className="block truncate text-sm">{displayName}</b><small className="block truncate text-xs text-slate-500">{email}</small></div></div>

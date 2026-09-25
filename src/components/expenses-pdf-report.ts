@@ -46,3 +46,24 @@ export function singleExpensesReport(account: ExpenseAccount): DataPdfReport {
     ],
   };
 }
+
+export function contractorStatementInvoiceReport(account: ExpenseAccount, statement: ExpenseAccount["statements"][number], visibleDeductionIndexes: number[]): DataPdfReport {
+  const deductions = statement.deductions.filter((_, index) => visibleDeductionIndexes.includes(index));
+  const deductionTotal = deductions.reduce((sum, deduction) => sum + deduction.amountCents, 0);
+  return {
+    title: `مستخلص مقاول باطن - جاري ${statement.sequence}`,
+    filters: `المقاول: ${account.company.name} · المشروع: ${account.project.name} · تاريخ المستخلص: ${statement.statementDate.slice(0, 10)}`,
+    kpis: [
+      { label: "إجمالي الأعمال", value: pdfMoney(statement.grossCents), tone: "blue" },
+      { label: "أعمال الجاري", value: pdfMoney(statement.grossCents - statement.previousGrossCents), tone: "emerald" },
+      { label: "الخصومات المعروضة", value: pdfMoney(deductionTotal), tone: "amber" },
+      { label: "صافي المستحق", value: pdfMoney(statement.netCents), tone: "violet" },
+    ],
+    tables: [
+      { title: "بيانات المستخلص", columns: pdfColumns(["البيان", 2], ["القيمة", 5]), rows: [["المقاولة", account.name], ["نطاق الأعمال", account.scope], ["المقاول", account.company.name], ["المشروع", account.project.name], ["رقم الجاري", String(statement.sequence)], ["حالة المستخلص", stageName(statement.stage)]] },
+      { title: "بنود الأعمال", columns: pdfColumns(["البند", 3], ["الوحدة", 1], ["السابق", 1], ["الجاري", 1], ["التراكمي", 1], ["سعر الوحدة", 2], ["الاستحقاق", 1], ["الإجمالي", 2]), rows: statement.items.map((item) => [item.name, item.unit, String(item.previousQuantity), String(item.currentQuantity), String(expenseCumulativeQuantity(item)), pdfMoney(item.unitPriceCents), `${item.entitlementPercent}%`, pdfMoney(item.totalCents)]) },
+      ...(deductions.length ? [{ title: "الخصومات والتأمينات المختارة", columns: pdfColumns(["البند", 3], ["النسبة / النوع", 2], ["القيمة", 2]), rows: deductions.map((deduction) => [deduction.name, deduction.kind === "PERCENT" ? `${deduction.value}%` : "مبلغ ثابت", pdfMoney(deduction.amountCents)]), footer: ["إجمالي الخصومات", "", pdfMoney(deductionTotal)] }] : []),
+      { title: "ملخص المستحق", columns: pdfColumns(["البيان", 3], ["القيمة", 2]), rows: [["إجمالي الأعمال", pdfMoney(statement.grossCents)], ["أعمال السابق", pdfMoney(statement.previousGrossCents)], ["أعمال الجاري", pdfMoney(statement.grossCents - statement.previousGrossCents)], ["إجمالي الخصومات المعروضة", pdfMoney(deductionTotal)], ["صافي المستحق المسجل", pdfMoney(statement.netCents)]] },
+    ],
+  };
+}

@@ -10,6 +10,7 @@ import {
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { WorkWithdrawalsCenter } from "./work-withdrawals-center";
+import { ContractorStatementPrint } from "./contractor-statement-print";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
 import {
   Plus,
@@ -607,7 +608,7 @@ export function ExpensesCenter({
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 rounded-xl border bg-white p-4">
-            <h3 className="mb-3 text-sm font-bold">ملخص المستخلص التراكمي</h3>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-bold">ملخص المستخلص التراكمي</h3><ContractorStatementPrint account={account} statement={st} /></div>
             {[
               ["إجمالي الأعمال", st.grossCents],
               ["أعمال السابق", st.previousGrossCents],
