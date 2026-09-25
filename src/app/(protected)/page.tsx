@@ -10,6 +10,44 @@ import { getAttentionAlerts } from "@/lib/attention-alerts";
 
 type Search = Record<string, string | string[] | undefined>;
 const day = 86_400_000;
+const auditModuleLinks: Record<string, { href: string; label: string }> = {
+  incoming: { href: "/incoming", label: "العقود والوارد" },
+  expenses: { href: "/expenses", label: "مستخلصات المقاولين" },
+  purchases: { href: "/purchases", label: "المشتريات" },
+  warehouse: { href: "/warehouse", label: "المخزن" },
+  inventory: { href: "/warehouse?tab=items", label: "الأصناف والمخزن" },
+  pettycash: { href: "/petty-cash", label: "الخزنة" },
+  salary: { href: "/salaries", label: "المرتبات" },
+  bank: { href: "/bank", label: "البنك" },
+  masterdata: { href: "/management", label: "الإدارة والمشروعات" },
+  account: { href: "/management", label: "إدارة الحسابات" },
+  role: { href: "/management", label: "الصلاحيات" },
+  profile: { href: "/profile", label: "الملف الشخصي" },
+  accounting: { href: "/accounting", label: "المحاسبة" },
+  financial: { href: "/accounting", label: "العمليات المالية" },
+};
+const auditLink = (action: string) => auditModuleLinks[action.split(".")[0]] || { href: "/attention", label: "سجل الإجراءات" };
+function auditSummary(details: string | null) {
+  if (!details) return "لا توجد تفاصيل إضافية مسجلة لهذا الإجراء.";
+  try {
+    const parsed = JSON.parse(details) as Record<string, unknown>;
+    const input = parsed.input && typeof parsed.input === "object" && !Array.isArray(parsed.input) ? parsed.input as Record<string, unknown> : {};
+    const values = { ...parsed, ...input };
+    const labels: Record<string, string> = { name: "الاسم", number: "الرقم", stage: "المرحلة", status: "الحالة", type: "النوع", reason: "السبب", reference: "المرجع", paymentSource: "مصدر السداد", attachmentCount: "مرفقات", changedName: "تم تعديل الاسم", changedAvatar: "تم تعديل الصورة", safeDelete: "حذف آمن", active: "الحالة", incomingVisible: "إتاحة الوارد", financialVisible: "إتاحة الماليات" };
+    const pieces = Object.entries(labels).flatMap(([key, label]) => {
+      const value = values[key];
+      if (value === undefined || value === null || value === "" || key === "type" && value === "") return [];
+      if (typeof value === "boolean") return value ? [`${label}: نعم`] : [];
+      if (typeof value === "string" || typeof value === "number") return [`${label}: ${String(value).slice(0, 90)}`];
+      return [];
+    });
+    if (typeof values.amountCents === "number") pieces.push(`القيمة: ${money(values.amountCents)}`);
+    if (typeof values.totalCents === "number") pieces.push(`الإجمالي: ${money(values.totalCents)}`);
+    return pieces.slice(0, 3).join(" · ") || "تم تسجيل التغيير على السجل المرتبط بهذا الإجراء.";
+  } catch {
+    return "تم تسجيل التغيير على السجل المرتبط بهذا الإجراء.";
+  }
+}
 const dateOnly = (value: Date) => value.toISOString().slice(0, 10);
 const inRange = (value: Date | null | undefined, from: Date, to: Date) => !!value && value >= from && value <= to;
 const clampDate = (value: string | undefined, fallback: Date) => value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00.000Z`) : fallback;
@@ -156,14 +194,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
     const requestedAuditPage = typeof search.auditPage === "string" ? Number(search.auditPage) : 1;
     const auditPage = Number.isSafeInteger(requestedAuditPage) && requestedAuditPage > 0 ? requestedAuditPage : 1;
     const auditPageSize = 10;
-    const [activities, activityTotal] = profile.user.role?.key === "admin" ? await Promise.all([prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, skip: (auditPage - 1) * auditPageSize, take: auditPageSize, select: { id: true, actorId: true, action: true, createdAt: true } }), prisma.auditLog.count()]) : [[], 0];
+    const [activities, activityTotal] = profile.user.role?.key === "admin" ? await Promise.all([prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, skip: (auditPage - 1) * auditPageSize, take: auditPageSize, select: { id: true, actorId: true, action: true, target: true, details: true, createdAt: true } }), prisma.auditLog.count()]) : [[], 0];
     const actorIds = [...new Set(activities.map((activity) => activity.actorId))];
     const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } }) : [];
     const actorNames = new Map(actors.map((actor) => [actor.id, actor.name]));
     const auditPages = Math.max(1, Math.ceil(activityTotal / auditPageSize));
     const auditParams = new URLSearchParams(); if (projectId) auditParams.set("project", projectId);
     const auditHref = (page: number) => { const params = new URLSearchParams(auditParams); params.set("auditPage", String(page)); return `/attention?${params.toString()}`; };
-    return <AttentionList alerts={alerts} activities={activities.map((activity) => ({ id: activity.id, actor: actorNames.get(activity.actorId) || "حساب غير متاح", action: activity.action, createdAt: activity.createdAt.toISOString() }))} activityPagination={activityTotal ? { page: Math.min(auditPage, auditPages), total: activityTotal, previousHref: auditPage > 1 ? auditHref(auditPage - 1) : null, nextHref: auditPage < auditPages ? auditHref(auditPage + 1) : null } : undefined} />;
+    return <AttentionList alerts={alerts} activities={activities.map((activity) => {
+      const destination = auditLink(activity.action);
+      return { id: activity.id, actor: actorNames.get(activity.actorId) || "حساب غير متاح", action: activity.action, target: activity.target, summary: auditSummary(activity.details), href: destination.href, hrefLabel: `فتح ${destination.label}`, createdAt: activity.createdAt.toISOString() };
+    })} activityPagination={activityTotal ? { page: Math.min(auditPage, auditPages), total: activityTotal, previousHref: auditPage > 1 ? auditHref(auditPage - 1) : null, nextHref: auditPage < auditPages ? auditHref(auditPage + 1) : null } : undefined} />;
   }
   const purchasesInPeriod = invoices.filter((invoice) => inRange(invoice.invoiceDate, period.from, period.to));
   const partiallyPaidPurchases = purchasesInPeriod.filter((invoice) => invoice.paidCents > 0 && invoice.paidCents < invoice.totalCents);
