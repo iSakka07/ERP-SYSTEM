@@ -104,34 +104,37 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
         </div>
       </header>
       {open && <button className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-[1px] lg:hidden" aria-label="إغلاق القائمة" onClick={() => setOpen(false)} />}
-      <aside className={`fixed inset-y-0 right-0 z-50 flex w-[270px] flex-col border-l border-white/10 bg-[#10192d] text-white shadow-2xl transition-transform duration-300 ease-out lg:translate-x-0 lg:shadow-none ${open ? "translate-x-0" : "translate-x-full"}`}>
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-4">
-          <Link href="/" className="flex items-center gap-3" onClick={() => setOpen(false)}>
-            <span className="grid size-9 place-items-center overflow-hidden rounded-lg bg-white p-1.5 shadow-lg shadow-blue-950/30"><Image src={companyBrand.logoPath} alt="ASGC" width={40} height={40} className="size-full object-contain" priority /></span>
-            <div><p className="text-[13px] font-extrabold tracking-wide">{companyBrand.arabicName}</p><p className="text-[10px] font-medium text-slate-400">ASGC ERP</p></div>
+      <aside className={`fixed inset-y-0 right-0 z-50 flex w-[270px] flex-col border-l border-slate-200/80 bg-white text-slate-900 shadow-xl transition-transform duration-300 ease-out lg:translate-x-0 lg:shadow-none ${open ? "translate-x-0" : "translate-x-full"}`}>
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 px-4">
+          <Link href="/" className="flex items-center gap-2.5" onClick={() => setOpen(false)}>
+            <span className="grid size-8 place-items-center overflow-hidden rounded-lg border border-slate-200/70 bg-slate-50 p-1 shadow-xs"><Image src={companyBrand.logoPath} alt="ASGC" width={32} height={32} className="size-full object-contain" priority /></span>
+            <div><p className="text-[13px] font-extrabold tracking-wide text-slate-900">{companyBrand.arabicName}</p><p className="text-[10px] font-semibold text-slate-400">ASGC ERP</p></div>
           </Link>
-          <button type="button" onClick={() => setOpen(false)} className="grid size-8 place-items-center rounded-md text-slate-400 hover:bg-white/10 lg:hidden" aria-label="إغلاق القائمة"><X className="size-4" /></button>
+          <button type="button" onClick={() => setOpen(false)} className="grid size-8 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 lg:hidden" aria-label="إغلاق القائمة"><X className="size-4" /></button>
         </div>
-        <div className="mx-3 mt-3 flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] p-2.5"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-blue-600 text-xs font-black text-white">{initial}</span><span className="min-w-0 flex-1"><b className="block truncate text-xs font-bold text-white">{user.name || "مستخدم النظام"}</b><small className="mt-0.5 inline-flex rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-bold text-blue-200">{user.roleName}</small></span></div>
         <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3">
-          <p className="mb-1.5 px-3 text-[10px] font-bold tracking-wide text-slate-500">التنقل الرئيسي</p>
-          {canAccessNav(homeNavItem) && <Link href="/" onClick={() => setOpen(false)} className={`flex h-9 items-center gap-3 rounded-lg border-r-2 px-3 text-[13px] font-semibold transition ${pathname === "/" ? "border-blue-400 bg-blue-500/15 text-blue-100" : "border-transparent text-slate-300 hover:bg-white/7 hover:text-white"}`}><LayoutDashboard className="size-4" /><span className="flex-1">الرئيسية</span></Link>}
+          <p className="mb-1.5 px-3 text-[10px] font-bold tracking-wide text-slate-400">التنقل الرئيسي</p>
+          {canAccessNav(homeNavItem) && <Link href="/" onClick={() => setOpen(false)} className={`flex h-9 items-center gap-3 rounded-lg border-r-2 px-3 text-[13px] font-medium transition ${pathname === "/" ? "border-blue-600 bg-blue-50/80 text-blue-700 font-bold" : "border-transparent text-slate-600 hover:bg-slate-100/70 hover:text-slate-900"}`}><LayoutDashboard className="size-4" /><span className="flex-1">الرئيسية</span></Link>}
           {navGroups.map((group) => {
             const items = group.items.filter(canAccessNav);
             if (!items.length) return null;
             const hasActiveItem = items.some((item) => pathname.startsWith(item.href));
             const collapsed = collapsedGroups[group.title] ?? !hasActiveItem;
             return <section key={group.title} className="space-y-0.5 pb-1.5 last:pb-0">
-              <button type="button" onClick={() => setCollapsedGroups((current) => ({ ...current, [group.title]: !collapsed }))} className="flex h-7 w-full items-center justify-between rounded-lg px-3 text-[10px] font-bold tracking-wide text-slate-500 transition hover:bg-white/5 hover:text-slate-200" aria-expanded={!collapsed}><span>{group.title}</span><ChevronDown className={`size-3.5 transition-transform ${collapsed ? "-rotate-90" : ""}`} /></button>
+              <button type="button" onClick={() => setCollapsedGroups((current) => ({ ...current, [group.title]: !collapsed }))} className="flex h-7 w-full items-center justify-between rounded-lg px-3 text-[10px] font-bold tracking-wide text-slate-400 transition hover:bg-slate-100/60 hover:text-slate-700" aria-expanded={!collapsed}><span>{group.title}</span><ChevronDown className={`size-3.5 transition-transform ${collapsed ? "-rotate-90" : ""}`} /></button>
               {!collapsed && items.map((item) => {
                 const Icon = item.icon;
                 const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-                return <Link key={item.label} href={item.href} onClick={() => setOpen(false)} className={`flex h-9 items-center gap-3 rounded-lg border-r-2 px-3 text-[13px] font-medium transition ${active ? "border-blue-400 bg-blue-500/15 text-blue-100" : "border-transparent text-slate-300 hover:bg-white/7 hover:text-white"}`}><Icon className="size-4" /><span className="flex-1">{item.label}</span></Link>;
+                return <Link key={item.label} href={item.href} onClick={() => setOpen(false)} className={`flex h-9 items-center gap-3 rounded-lg border-r-2 px-3 text-[13px] font-medium transition ${active ? "border-blue-600 bg-blue-50/80 text-blue-700 font-bold" : "border-transparent text-slate-600 hover:bg-slate-100/70 hover:text-slate-900"}`}><Icon className="size-4" /><span className="flex-1">{item.label}</span></Link>;
               })}
             </section>;
           })}
         </nav>
-        <div className="mx-3 mb-3 shrink-0">
+        <div className="shrink-0 border-t border-slate-200/80 p-3">
+          <div className="flex items-center gap-2.5 px-2 py-1.5 mb-1.5">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-blue-600 text-xs font-black text-white">{initial}</span>
+            <div className="min-w-0 flex-1"><b className="block truncate text-xs font-bold text-slate-900">{user.name || "مستخدم النظام"}</b><small className="block truncate text-[10px] text-slate-400">{user.roleName}</small></div>
+          </div>
           <LogoutButton />
         </div>
       </aside>
