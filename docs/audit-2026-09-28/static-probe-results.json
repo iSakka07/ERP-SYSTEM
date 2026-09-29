@@ -1,0 +1,20 @@
+[
+  {
+    "id": "PG-01",
+    "preflightExit": 0,
+    "runtime": "rejected",
+    "reason": "إعدادات الإنتاج غير مكتملة: DATABASE_URL مطلوب."
+  },
+  {
+    "id": "OPS-02-WAL",
+    "sourceRows": 1,
+    "copyIntegrity": "ok",
+    "copyReadError": "no such table: audit_probe"
+  },
+  {
+    "id": "PG-schema",
+    "providerOnlyDifference": true,
+    "modelCount": 56,
+    "moneyFloatFields": 46
+  }
+]

@@ -1,0 +1,21 @@
+TEST=incoming
+PASS: latest paid cumulative, pending excluded, materials not duplicated, rollback, memos and empty contract.
+EXIT=0
+TEST=expenses
+Expenses calculations, cumulative snapshots, deductions, advances and invalid inputs passed.
+Prospective prices, historic values, later quantities and entitlement progression passed.
+Documented corrections, original price versions, zero measurement, forward carry, executive-only debt and settlement passed.
+EXIT=0
+TEST=petty-cash
+Petty Cash business logic tests passed.
+EXIT=0
+TEST=salaries
+Salary payroll business logic tests passed.
+EXIT=0
+TEST=project-cost-control
+Project Cost Control business logic tests passed.
+Project Cost Control business logic tests passed.
+EXIT=0
+TEST=login-rate-limit
+Login rate limiting passed: account and IP thresholds, success reset and time-window expiry.
+EXIT=0

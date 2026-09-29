@@ -20,6 +20,7 @@ import {
 } from "@/lib/expenses";
 import { postSubcontractApproval, postSubcontractPayment, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 
 const text = z.string().trim().min(1).max(300);
 const date = z
@@ -123,17 +124,7 @@ const relations = {
 const deleteSchema = z.object({ id: text });
 
 function validOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-  try {
-    const source = new URL(origin).host;
-    const configuredHost = process.env.AUTH_URL
-      ? new URL(process.env.AUTH_URL).host
-      : null;
-    return source === request.headers.get("host") || source === configuredHost;
-  } catch {
-    return false;
-  }
+  return isTrustedMutationOrigin(request);
 }
 
 export async function POST(request: Request) {

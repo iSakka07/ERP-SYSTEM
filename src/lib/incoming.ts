@@ -1,3 +1,5 @@
+import { centsNumber, type CentsValue } from "./money.ts";
+
 export const incomingStages = [
   ["COMPANY", "شركة"],
   ["BATTALION", "كتيبة"],
@@ -11,45 +13,45 @@ export const incomingStages = [
 ] as const;
 export const grossNotice =
   "أدخل إجمالي المستخلص التراكمي قبل خصم الخامات. تُضاف الخامات في مربع منفصل، والنظام يحسب الصافي تلقائيًا. لا تخصم الخامات يدويًا من قيمة المستخلص.";
-export const money = (cents: number) =>
-  `${new Intl.NumberFormat("en-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100)} ج.م`;
+export const money = (cents: CentsValue) =>
+  `${new Intl.NumberFormat("en-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(centsNumber(cents) / 100)} ج.م`;
 export const statementLabel = (s: { kind: string; sequence: number }) =>
   s.kind === "FINAL" ? `ختامي (${s.sequence})` : `جاري ${s.sequence}`;
 export function financials(c: {
-  originalCents: number;
-  memos: { kind: string; amountCents: number }[];
+  originalCents: CentsValue;
+  memos: { kind: string; amountCents: CentsValue }[];
   statements: {
     sequence: number;
-    grossCents: number;
+    grossCents: CentsValue;
     stage: string;
-    materials: { totalCents: number }[];
+    materials: { totalCents: CentsValue }[];
   }[];
 }) {
   const value =
-    c.originalCents +
+    centsNumber(c.originalCents) +
     c.memos.reduce(
       (sum, m) =>
-        sum + (m.kind === "INCREASE" ? m.amountCents : -m.amountCents),
+        sum + (m.kind === "INCREASE" ? centsNumber(m.amountCents) : -centsNumber(m.amountCents)),
       0,
     );
   const ordered = [...c.statements].sort((a, b) => a.sequence - b.sequence);
   const lastPaid = ordered.filter((s) => s.stage === "PAID").at(-1);
   const latest = ordered.at(-1);
   const latestUnpaid = ordered.filter((s) => s.stage !== "PAID").at(-1);
-  const gross = lastPaid?.grossCents ?? 0;
-  const latestGross = latest?.grossCents ?? 0;
+  const gross = lastPaid ? centsNumber(lastPaid.grossCents) : 0;
+  const latestGross = latest ? centsNumber(latest.grossCents) : 0;
   const latestUnpaidMaterials = latestUnpaid?.materials.reduce(
-    (sum, material) => sum + material.totalCents,
+    (sum, material) => sum + centsNumber(material.totalCents),
     0,
   ) ?? 0;
   const materials = ordered.reduce(
-    (sum, s) => sum + s.materials.reduce((n, m) => n + m.totalCents, 0),
+    (sum, s) => sum + s.materials.reduce((n, m) => n + centsNumber(m.totalCents), 0),
     0,
   );
   const effectiveMaterials = ordered
     .filter((s) => s.sequence <= (lastPaid?.sequence ?? 0))
     .reduce(
-      (sum, s) => sum + s.materials.reduce((n, m) => n + m.totalCents, 0),
+      (sum, s) => sum + s.materials.reduce((n, m) => n + centsNumber(m.totalCents), 0),
       0,
     );
   return {
@@ -60,7 +62,7 @@ export function financials(c: {
     effectiveMaterials,
     entitlement: Math.max(
       0,
-      (latestUnpaid?.grossCents ?? 0) - latestUnpaidMaterials,
+      (latestUnpaid ? centsNumber(latestUnpaid.grossCents) : 0) - latestUnpaidMaterials,
     ),
     net: gross - effectiveMaterials,
     remaining: value - latestGross,

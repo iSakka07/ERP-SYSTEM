@@ -1,0 +1,68 @@
+$ node scripts/migrate.mjs
+Applied migration: 20260915010000_init
+Applied migration: 20260915020000_auth
+Applied migration: 20260915030000_rbac
+Applied migration: 20260915031000_rbac_audit
+Applied migration: 20260915040000_master_data
+Applied migration: 20260915090000_incoming
+Applied migration: 20260915093000_large_contract_values
+Applied migration: 20260915111000_expenses
+Applied migration: 20260915130000_price_versions
+Applied migration: 20260915160000_work_withdrawals
+Applied migration: 20260915170000_quantity_corrections
+Applied migration: 20260915180000_estimate_value
+Applied migration: 20260916080000_purchases
+Applied migration: 20260916090000_petty_cash
+Applied migration: 20260916120000_salaries_foundation
+Applied migration: 20260916130000_payroll
+Applied migration: 20260917100000_salary_adjustment_attachments
+Applied migration: 20260917140000_remove_sectors_taxnumber
+Applied migration: 20260917170000_incoming_contract_safe_delete
+Applied migration: 20260917193000_subcontract_account_safe_delete
+Applied migration: 20260917195000_purchase_invoice_name
+Applied migration: 20260918020000_accounting_foundation
+Applied migration: 20260918023000_purchase_payment_source
+Applied migration: 20260919010000_bank_module
+Applied migration: 20260919150000_financial_idempotency
+Applied migration: 20260919170000_purchase_invoice_reversal
+Applied migration: 20260919180000_subcontract_payment_reversal
+Applied migration: 20260919190000_bank_transaction_reversal
+Applied migration: 20260920090000_reporting_indexes
+Applied migration: 20260920100000_role_dashboards
+Applied migration: 20260923090000_warehouse_module
+Applied migration: 20260924100000_project_warehouses
+Applied migration: 20260924120000_purchase_payments
+Applied migration: 20260925100000_remove_accounting_periods
+Applied migration: 20260925110000_rename_petty_cash_labels
+Applied migration: 20260925120000_user_profile_avatar
+Applied migration: 20260925130000_rename_petty_cash_account
+Applied migration: 20260925140000_restore_accounting_periods
+Database migrations are up to date.
+$ node scripts/seed-demo.mjs
+Demo roles, users and master data are ready.
+$ node scripts/seed-incoming-demo.mjs
+Incoming demo ready: 1m gross, 900k net; Jari 2 pending at Central.
+$ node scripts/seed-expenses-demo.mjs
+Expenses demo ready: Jari1 approved52000, paid30000; Jari2 draft120000.
+$ node scripts/accounting-setup.mjs
+Accounting chart and demo permissions are ready.
+▲ Next.js 16.3.5
+- Local:         http://localhost:3283
+- Network:       http://192.168.1.13:3283
+✓ Ready in 298ms
+✓ Running next.config.ts took 67ms
+{"id":"SEC-01","status":200,"leaksSalary":true,"leaksOtherEmployee":true,"leaksOtherProject":true}
+{"id":"SEC-02","leaksAttachmentName":true,"leaksAuditReason":true,"attachmentDownloadStatus":403}
+{"id":"FIN-01-receipt","status":200,"body":{"id":"cmul8n7y80002ops6rfih1gmj"},"ordered":10,"received":14}
+{"id":"SEC-05","onlyPermission":"warehouse.view","invoiceFinancialData":{"id":"cmul8n7sv000hv87s3sonbkf0","number":"AP-4665e950","name":"Audit invoice 4665e950","status":"POSTED","paidCents":1000,"totalCents":1000}}
+{"id":"FIN-01-issue","status":200,"body":{"id":"cmul8n8gu000cops65ne4n1vy"},"availableBefore":14,"requestedTotal":20}
+{"id":"FIN-02","first":{"status":200,"body":{"id":"cmul8n8uw000oops6u9wpj4qo"}},"second":{"status":200,"body":{"id":"cmul8n91c000zops67nm8h3f2"}},"distinctRecords":true}
+{"id":"SEC-03-FIN-03","status":200,"body":{"id":"cmul8n9l80018ops6idloxje7"},"otherProject":"cmul8n0zq0004v87sbwsnloo3","authorizedProjects":["cmul8n0o90002v87szrte3y4j"],"closedPeriod":true,"journalDelta":0}
+{"id":"SEC-04","status":201,"body":{"item":{"id":"cmul8n9tq001hops60xtno76z","name":"Audit cross origin 4665e950","unit":"unit","category":null,"minimumQuantity":0},"existing":false},"note":"Authenticated handler test; no browser exploit asserted"}
+{"id":"FIN-04","status":200,"body":{"ok":true,"id":"8b002168-7d84-44a5-a200-77eed1426214"},"pettyStatus":"REVERSED","invoicePaidCents":1000,"paymentStatuses":["POSTED"],"purchaseJournalStillPresent":1}
+{"id":"SEC-06","actorRole":"accountant","status":201,"body":{"ok":true,"id":"cmul8najt0012v87stur79zh5"},"payrollStatus":"PAID"}
+{"id":"FIN-05","statementStatus":200,"statementBody":{"ok":true,"id":"cmul8nc2c002bops6z74tkmcb"},"separateCertificateStatus":200,"fundingStatus":201,"expenseStatus":201,"reportCostCents":0,"ownerMaterialsCents":4000,"ledgerExpenseCents":3000}
+{"id":"FIN-06","inlineCertificateCents":2000,"inlinePostingCount":0,"excessMaterialStatus":200,"excessMaterialBody":{"ok":true,"id":"cmul8ncnm003gops6eelbtjzm"},"statementGrossCents":20000,"newMaterialCents":30000}
+{"id":"OPS-health","status":200,"body":{"status":"ok"}}
+AUDIT_SUITE_SUMMARY {"failed":[],"probeExit":0}
+PASS: كل اختبارات API شُغلت على قاعدة وخادم معزولين.

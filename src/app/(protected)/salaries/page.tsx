@@ -18,5 +18,5 @@ export default async function SalariesPage() {
     prisma.systemMetadata.findUnique({ where: { key: "salary-payment-day" } }),
   ]);
   const paymentDay = Number(paymentSetting?.value || 0) || null;
-  return <SalariesCenter employees={employees} projects={projects} allocations={allocations} runs={runs} advances={advances} bonuses={bonuses} deductions={deductions} paymentDay={paymentDay} canManage={can(session.user, "salaries.manage")} />;
+  return <SalariesCenter employees={employees} projects={projects} allocations={allocations} runs={runs} advances={advances} bonuses={bonuses} deductions={deductions} paymentDay={paymentDay} canManage={can(session.user, "salaries.manage")} canPay={can(session.user, "salaries.pay")} />;
 }

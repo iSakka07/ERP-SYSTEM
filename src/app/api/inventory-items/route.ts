@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { incomingUser } from "@/lib/incoming-server";
+import { assertMutation } from "@/lib/request-security";
 
 const itemSchema = z.object({
   name: z.string().trim().min(2).max(200),
@@ -78,6 +79,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const mutationErr = assertMutation(request);
+  if (mutationErr) return mutationErr;
   const user = await permitted("purchases.manage", "warehouse.manage");
   if (!user) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   try {

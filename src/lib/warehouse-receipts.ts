@@ -141,7 +141,7 @@ function fulfilledTotals(invoice: ReceiptRecord["purchaseInvoice"]) {
   return { totalOrdered, totalReceived, state: invoice.status === "REVERSED" ? "فاتورة ملغاة" : hasUnlinkedReceipt ? "تعذر تحديد الاكتمال بدقة" : isComplete ? "استلام كامل" : totalReceived > 0 ? "استلام جزئي" : "لم يُستلم" };
 }
 
-export async function receiptRegister(filters: ReceiptFilters, options: { projectIds?: string[]; all?: boolean } = {}) {
+export async function receiptRegister(filters: ReceiptFilters, options: { projectIds?: string[]; all?: boolean; includeFinancial?: boolean } = {}) {
   const where = receiptWhere(filters, options.projectIds);
   const take = options.all ? 10_000 : filters.pageSize;
   const skip = options.all ? 0 : (filters.page - 1) * filters.pageSize;
@@ -168,7 +168,16 @@ export async function receiptRegister(filters: ReceiptFilters, options: { projec
         id: record.id, number: record.number, movementDate: record.movementDate.toISOString(), createdAt: record.createdAt.toISOString(),
         status: record.status, type: record.purchaseInvoice?.stockMode || "OTHER", itemCount: record.lines.length,
         items: record.lines.map((line) => ({ code: line.item.code, name: line.item.name, unit: line.item.unit, quantity: line.quantity })),
-        invoice: record.purchaseInvoice ? { id: record.purchaseInvoice.id, number: record.purchaseInvoice.number, name: record.purchaseInvoice.name, status: record.purchaseInvoice.status, paidCents: record.purchaseInvoice.paymentTrackingStarted ? record.purchaseInvoice.paidCents : record.purchaseInvoice.totalCents, totalCents: record.purchaseInvoice.totalCents } : null,
+        invoice: record.purchaseInvoice ? {
+          id: record.purchaseInvoice.id,
+          number: record.purchaseInvoice.number,
+          name: record.purchaseInvoice.name,
+          status: record.purchaseInvoice.status,
+          ...(options.includeFinancial !== false ? {
+            paidCents: record.purchaseInvoice.paymentTrackingStarted ? record.purchaseInvoice.paidCents : record.purchaseInvoice.totalCents,
+            totalCents: record.purchaseInvoice.totalCents,
+          } : {}),
+        } : null,
         supplier: record.purchaseInvoice?.supplier ? { id: record.purchaseInvoice.supplier.id, name: record.purchaseInvoice.supplier.name } : null,
         warehouse: record.toWarehouse ? { id: record.toWarehouse.id, name: record.toWarehouse.name } : null,
         project: record.purchaseInvoice?.project ? { id: record.purchaseInvoice.project.id, code: record.purchaseInvoice.project.code, name: record.purchaseInvoice.project.name } : null,

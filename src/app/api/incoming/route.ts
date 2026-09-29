@@ -4,9 +4,10 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { financials, incomingStages } from "@/lib/incoming";
-import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
-import { incomingCollectionCashCents, postIncomingAccrual, postIncomingCollection, postOwnerMaterialCertificate, reversePostedJournal } from "@/lib/accounting-posting";
+import { assertMaterialCertificateTotals, createMaterialCertificate, incomingUser, readIncomingFiles } from "@/lib/incoming-server";
+import { incomingCollectionCashCents, postIncomingAccrual, postIncomingCollection, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 
 const text = z.string().trim().min(1).max(300);
 const amount = z.coerce
@@ -78,13 +79,7 @@ const include = {
 const deleteSchema = z.object({ id: z.string().min(1) });
 
 function validOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-  try {
-    const source = new URL(origin).host;
-    const configuredHost = process.env.AUTH_URL ? new URL(process.env.AUTH_URL).host : null;
-    return source === request.headers.get("host") || source === configuredHost;
-  } catch { return false; }
+  return isTrustedMutationOrigin(request);
 }
 
 export async function POST(request: Request) {
@@ -230,7 +225,8 @@ export async function POST(request: Request) {
             (n, s) => n + s.materials.reduce((a, m) => a + m.totalCents, 0),
             0,
           );
-        if (materialTotal > d.value)
+        const pendingMaterialsCents = d.materials?.reduce((sum, item) => sum + Math.round(item.quantity * item.price), 0) ?? 0;
+        if (materialTotal + pendingMaterialsCents > d.value)
           throw new Error("الخامات التراكمية تتجاوز قيمة المستخلص.");
         if (d.kind === "FINAL" && next)
           throw new Error("الختامي يجب أن يكون آخر مستخلص.");
@@ -267,13 +263,28 @@ export async function POST(request: Request) {
         }
         if (d.materials?.length) {
           if (!d.materialNumber) throw new Error("أدخل رقم شهادة الخامات.");
-          const totalCents = d.materials.reduce((sum, item) => sum + Math.round(item.quantity * item.price), 0);
-          await tx.materialCertificate.create({ data: {
-            number: d.materialNumber,
-            statementId: target,
-            totalCents,
-            items: { create: d.materials.map(item => ({ name: item.name, unit: item.unit, quantity: item.quantity, unitPriceCents: item.price, totalCents: Math.round(item.quantity * item.price) })) },
-          } });
+          const items = d.materials.map((item) => ({
+            name: item.name,
+            unit: item.unit,
+            quantity: item.quantity,
+            unitPriceCents: item.price,
+            totalCents: Math.round(item.quantity * item.price),
+          }));
+          const totalCents = items.reduce((sum, item) => sum + item.totalCents, 0);
+          const contractForMaterials = {
+            projectId: c.projectId,
+            project: c.project,
+            statements: (existing
+              ? c.statements.map((row) => (row.id === target ? { ...row, grossCents: d.value } : row))
+              : [...c.statements, { id: target, sequence, grossCents: d.value, materials: [] }]
+            ).sort((a, b) => a.sequence - b.sequence),
+          };
+          await createMaterialCertificate(
+            tx,
+            { number: d.materialNumber, items, totalCents },
+            { statementId: target, contract: contractForMaterials, statement: { id: target, sequence } },
+            user.id,
+          );
         }
       }
       if (d.action === "material") {
@@ -306,25 +317,7 @@ export async function POST(request: Request) {
         const totalCents = items.reduce((n, i) => n + i.totalCents, 0);
         if (!Number.isSafeInteger(totalCents) || totalCents > 1e12)
           throw new Error("قيمة الخامات أكبر من الحد المسموح.");
-        for (const later of c.statements.filter(
-          (x) => x.sequence >= s.sequence,
-        )) {
-          const cumulative =
-            c.statements
-              .filter((x) => x.sequence <= later.sequence)
-              .reduce(
-                (n, x) =>
-                  n +
-                  x.materials
-                    .filter((m) => m.id !== old?.id)
-                    .reduce((a, m) => a + m.totalCents, 0),
-                0,
-              ) + totalCents;
-          if (cumulative > later.grossCents)
-            throw new Error(
-              "إجمالي الخامات التراكمية يتجاوز المستخلص الحالي أو أحد المستخلصات اللاحقة.",
-            );
-        }
+        await assertMaterialCertificateTotals(c, s, totalCents, old?.id);
         before = old;
         const data = { number: d.number, notes: d.notes || null, totalCents };
         if (old) {
@@ -339,10 +332,12 @@ export async function POST(request: Request) {
           ).id;
         } else {
           requireFiles();
-          const created = await tx.materialCertificate.create({
-            data: { ...data, statementId: s.id, items: { create: items } },
-          });
-          await postOwnerMaterialCertificate(tx, { ...created, statement: { contract: { projectId: c.projectId } } }, c.project.companyId, user.id);
+          const created = await createMaterialCertificate(
+            tx,
+            { ...data, items },
+            { statementId: s.id, contract: c, statement: s },
+            user.id,
+          );
           target = created.id;
         }
       }

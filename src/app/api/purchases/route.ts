@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { assertMutation } from "@/lib/request-security";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import {
   postPurchaseJournal,
@@ -10,6 +11,7 @@ import {
   reversePostedJournal,
 } from "@/lib/accounting-posting";
 import { assertBalances, balanceForAccount } from "@/lib/petty-cash";
+import { centsNumber } from "@/lib/money";
 import {
   completeFinancialOperation,
   guardFinancialOperation,
@@ -89,16 +91,8 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   let operationContext: FinancialOperationContext | null = null;
   try {
-    const origin = request.headers.get("origin");
-    const configuredHost = process.env.AUTH_URL
-      ? new URL(process.env.AUTH_URL).host
-      : null;
-    if (
-      origin &&
-      new URL(origin).host !== request.headers.get("host") &&
-      new URL(origin).host !== configuredHost
-    )
-      return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
+    const mutationErr = assertMutation(request);
+    if (mutationErr) return mutationErr;
     if (Number(request.headers.get("content-length") || 0) > 11 * 1024 * 1024)
       return NextResponse.json(
         { error: "حجم الطلب أكبر من الحد المسموح." },
@@ -211,7 +205,7 @@ export async function POST(request: Request) {
         });
         if (
           invoice.paymentSource === "PETTY_CASH" &&
-          invoice.paidCents > 0 &&
+          centsNumber(invoice.paidCents) > 0 &&
           !pettyMovements.some(
             (movement) => movement.documentNumber === invoice.number,
           )
@@ -310,7 +304,9 @@ export async function POST(request: Request) {
           throw new Error(
             "هذه فاتورة تاريخية غير مفعّل عليها تتبع الدفعات؛ راجع الإدارة المالية قبل تسجيل دفعة إضافية.",
           );
-        const remaining = invoice.totalCents - invoice.paidCents;
+        const invoiceTotalCents = centsNumber(invoice.totalCents);
+        const invoicePaidCents = centsNumber(invoice.paidCents);
+        const remaining = invoiceTotalCents - invoicePaidCents;
         if (amountCents > remaining)
           throw new Error("قيمة الدفعة أكبر من المتبقي على الفاتورة.");
         const updated = await tx.purchaseInvoice.updateMany({
@@ -318,7 +314,7 @@ export async function POST(request: Request) {
             id: invoice.id,
             status: "POSTED",
             paymentTrackingStarted: true,
-            paidCents: { lte: invoice.totalCents - amountCents },
+            paidCents: { lte: invoiceTotalCents - amountCents },
           },
           data: { paidCents: { increment: amountCents } },
         });
@@ -404,7 +400,7 @@ export async function POST(request: Request) {
           body: {
             id: created.id,
             number,
-            paidCents: invoice.paidCents + amountCents,
+            paidCents: invoicePaidCents + amountCents,
           },
           entityType: "purchasePayment",
           entityId: created.id,

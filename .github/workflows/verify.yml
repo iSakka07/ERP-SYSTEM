@@ -14,6 +14,20 @@ jobs:
     name: Build and isolated financial acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: erp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d erp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -26,4 +40,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm build
+      - run: pnpm db:postgres:validate
+      - run: pnpm db:postgres:migrate
+        env:
+          POSTGRES_DATABASE_URL: postgresql://postgres:test@localhost:5432/erp_test?sslmode=disable
+      - run: pnpm test:pg05-money
       - run: pnpm test:isolated-api
+      - run: pnpm test:isolated-api
+        env:
+          ERP_ISOLATED_POSTGRES: "true"
+          POSTGRES_DATABASE_URL: postgresql://postgres:test@localhost:5432/erp_test?sslmode=disable

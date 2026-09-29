@@ -1,3 +1,5 @@
+import { centsNumber, type CentsValue } from "./money.ts";
+
 export const PETTY_TYPES = ["OPENING_BALANCE", "FUNDING", "DIRECT_EXPENSE", "CUSTODY_ISSUE", "CUSTODY_EXPENSE", "CUSTODY_RETURN"] as const;
 export type PettyType = (typeof PETTY_TYPES)[number];
 export const expenseTypes = new Set<string>(["DIRECT_EXPENSE", "CUSTODY_EXPENSE"]);
@@ -9,9 +11,9 @@ export function cents(value: unknown, allowZero = false) {
   if (!Number.isSafeInteger(result) || result < (allowZero ? 0 : 1) || result > 1e12) throw new Error("راجع القيمة المالية.");
   return result;
 }
-export type CashMovement = { status: string; amountCents: number; sourceAccountId: string | null; destinationAccountId: string | null };
+export type CashMovement = { status: string; amountCents: CentsValue; sourceAccountId: string | null; destinationAccountId: string | null };
 export function balanceForAccount(transactions: CashMovement[], accountId: string) {
-  return transactions.filter(t => t.status === "POSTED").reduce((sum,t) => sum + (t.destinationAccountId === accountId ? t.amountCents : 0) - (t.sourceAccountId === accountId ? t.amountCents : 0), 0);
+  return transactions.filter(t => t.status === "POSTED").reduce((sum,t) => sum + (t.destinationAccountId === accountId ? centsNumber(t.amountCents) : 0) - (t.sourceAccountId === accountId ? centsNumber(t.amountCents) : 0), 0);
 }
 export function assertBalances(transactions: CashMovement[]) {
   const ids = new Set(transactions.flatMap(t => [t.sourceAccountId, t.destinationAccountId]).filter((id): id is string => !!id));

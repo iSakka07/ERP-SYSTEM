@@ -1,3 +1,5 @@
+import { centsNumber, type CentsValue } from "./money.ts";
+
 export const expenseStages = [
   ["DRAFT", "مسودة"],
   ["TECHNICAL", "اعتماد المكتب الفني"],
@@ -265,23 +267,23 @@ export type ExpenseSummaryStatement = {
   id?: string;
   sequence: number;
   stage: string;
-  grossCents: number;
-  netCents: number;
-  correctionDebtCents?: number;
-  payments: { amountCents: number; status?: string }[];
+  grossCents: CentsValue;
+  netCents: CentsValue;
+  correctionDebtCents?: CentsValue;
+  payments: { amountCents: CentsValue; status?: string }[];
 };
 export function expenseSummary(statements: ExpenseSummaryStatement[]) {
   const latest = statements
     .filter((s) => ["EXECUTIVE", "ACCOUNTING"].includes(s.stage))
     .sort((a, b) => b.sequence - a.sequence)[0];
   const paidCents = statements.reduce(
-    (s, st) => s + st.payments.filter((p) => p.status !== "REVERSED").reduce((v, p) => v + p.amountCents, 0),
+    (s, st) => s + st.payments.filter((p) => p.status !== "REVERSED").reduce((v, p) => v + centsNumber(p.amountCents), 0),
     0,
   );
-  const grossCents = latest?.grossCents ?? 0,
-    netCents = latest?.netCents ?? 0;
+  const grossCents = latest ? centsNumber(latest.grossCents) : 0,
+    netCents = latest ? centsNumber(latest.netCents) : 0;
   const excess = Math.max(0, paidCents - netCents);
-  const debtCents = Math.min(excess, latest?.correctionDebtCents ?? 0);
+  const debtCents = Math.min(excess, latest?.correctionDebtCents ? centsNumber(latest.correctionDebtCents) : 0);
   return {
     grossCents,
     netCents,
@@ -307,10 +309,10 @@ export function expensePayableCents(
   if (!latest) return 0;
   const paidCents = statements.reduce(
     (sum, statement) =>
-      sum + statement.payments.filter((payment) => payment.status !== "REVERSED").reduce((value, payment) => value + payment.amountCents, 0),
+      sum + statement.payments.filter((payment) => payment.status !== "REVERSED").reduce((value, payment) => value + centsNumber(payment.amountCents), 0),
     0,
   );
-  return Math.max(0, latest.netCents - paidCents);
+  return Math.max(0, centsNumber(latest.netCents) - paidCents);
 }
 export function correctionDebtAfterApproval(
   previous: {

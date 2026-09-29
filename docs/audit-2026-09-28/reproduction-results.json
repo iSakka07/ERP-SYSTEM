@@ -1,0 +1,161 @@
+[
+  {
+    "id": "SEC-01",
+    "status": 200,
+    "leaksSalary": false,
+    "leaksOtherEmployee": false,
+    "leaksOtherProject": false
+  },
+  {
+    "id": "SEC-02",
+    "leaksAttachmentName": false,
+    "leaksAuditReason": false,
+    "attachmentDownloadStatus": 403
+  },
+  {
+    "id": "FIN-01-receipt",
+    "status": 400,
+    "body": {
+      "error": "لا يُسمح بتكرار نفس بند الفاتورة في طلب الاستلام الواحد."
+    },
+    "ordered": 10,
+    "received": 0
+  },
+  {
+    "id": "SEC-05",
+    "onlyPermission": "warehouse.view"
+  },
+  {
+    "id": "FIN-01-issue",
+    "status": 400,
+    "body": {
+      "error": "لا يُسمح بتكرار نفس الصنف في طلب الحركة الواحد."
+    },
+    "availableBefore": 14,
+    "requestedTotal": 20
+  },
+  {
+    "id": "FIN-02",
+    "first": {
+      "status": 200,
+      "body": {
+        "id": "cmulhjfvw000612j7i6vbz14e"
+      }
+    },
+    "second": {
+      "status": 200,
+      "body": {
+        "id": "cmulhjfvw000612j7i6vbz14e",
+        "replayed": true,
+        "message": "العملية مسجلة بالفعل ولم تتكرر."
+      }
+    },
+    "distinctRecords": false
+  },
+  {
+    "id": "SEC-03-FIN-03",
+    "status": 403,
+    "body": {
+      "error": "المخزن خارج نطاق مشاريعك المسموحة."
+    },
+    "otherProject": "cmulhjdd30004u78ft104p74y",
+    "authorizedProjects": [
+      "cmulhjda50002u78fvw8aa000"
+    ],
+    "closedPeriod": true,
+    "journalDelta": 0
+  },
+  {
+    "id": "FIN-03-closed-period",
+    "status": 400,
+    "body": {
+      "error": "الفترة المحاسبية 2026-01 مقفلة. أعد فتحها بسبب موثق قبل إنشاء أو عكس أي قيد."
+    },
+    "countDelta": 0,
+    "journalDelta": 0
+  },
+  {
+    "id": "FIN-03-shortage-posting",
+    "status": 200,
+    "body": {
+      "id": "cmulhjgiu000i12j7n5oo0dga"
+    },
+    "sourceType": "INVENTORY_ADJUSTMENT",
+    "totalDebit": 1000,
+    "totalCredit": 1000,
+    "accounts": [
+      {
+        "key": "INVENTORY_COUNT_SHORTAGE",
+        "debit": 1000,
+        "credit": 0
+      },
+      {
+        "key": "INVENTORY_ASSET",
+        "debit": 0,
+        "credit": 1000
+      }
+    ]
+  },
+  {
+    "id": "SEC-04",
+    "status": 403,
+    "body": {
+      "error": "INVALID_ORIGIN"
+    },
+    "note": "Authenticated handler test; no browser exploit asserted"
+  },
+  {
+    "id": "FIN-04",
+    "status": 400,
+    "body": {
+      "error": "هذه الحركة مرتبطة بنظام فرعي. استخدم عكس العملية من مصدرها."
+    },
+    "pettyStatus": "POSTED",
+    "invoicePaidCents": 1000,
+    "paymentStatuses": [
+      "POSTED"
+    ],
+    "purchaseJournalStillPresent": 1
+  },
+  {
+    "id": "SEC-06",
+    "actorRole": "accountant",
+    "status": 403,
+    "body": {
+      "error": "غير مصرح"
+    },
+    "payrollStatus": "APPROVED"
+  },
+  {
+    "id": "FIN-05",
+    "statementStatus": 200,
+    "statementBody": {
+      "ok": true,
+      "id": "cmulhjhfr001d12j7519nedem"
+    },
+    "separateCertificateStatus": 200,
+    "fundingStatus": 201,
+    "expenseStatus": 201,
+    "reportCostCents": 5000,
+    "ownerMaterialsCents": 4000,
+    "ledgerExpenseCents": 5000
+  },
+  {
+    "id": "FIN-06",
+    "inlineCertificateCents": 2000,
+    "inlinePostingCount": 2,
+    "excessMaterialStatus": 400,
+    "excessMaterialBody": {
+      "error": "الخامات التراكمية تتجاوز قيمة المستخلص."
+    },
+    "statementGrossCents": 20000,
+    "newMaterialCents": 30000
+  },
+  {
+    "id": "OPS-health",
+    "status": 200,
+    "body": {
+      "status": "ok"
+    }
+  }
+]

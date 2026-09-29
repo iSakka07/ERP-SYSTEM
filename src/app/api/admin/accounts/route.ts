@@ -1,4 +1,5 @@
 import { hash } from "bcryptjs";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
@@ -27,13 +28,7 @@ async function adminSession() {
 }
 
 function sameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-  try {
-    return new URL(origin).host === request.headers.get("host");
-  } catch {
-    return false;
-  }
+  return isTrustedMutationOrigin(request);
 }
 
 export async function POST(request: Request) {

@@ -6,6 +6,7 @@ import { assertBalances, balanceForAccount, cents, isProjectCost, validatePettyI
 import { postPettyCashJournal, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
 import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { centsNumber } from "@/lib/money";
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status });
 export async function GET() {
@@ -66,6 +67,9 @@ export async function POST(req: Request) {
         const id = str("id"), reason = str("reason");
         if (!reason || !files.length) throw new Error("سبب الإلغاء ومرفقه مطلوبان.");
         const original = movements.find(t => t.id === id && t.status === "POSTED"); if (!original) throw new Error("الحركة ملغاة بالفعل أو غير موجودة.");
+        const EXTERNAL_TYPES = ["PURCHASE_PAYMENT", "SALARY_ADVANCE", "SALARY_PAYMENT"];
+        if (EXTERNAL_TYPES.includes(original.type))
+          throw new Error("هذه الحركة مرتبطة بنظام فرعي. استخدم عكس العملية من مصدرها.");
         assertBalances(movements.filter(t => t.id !== id));
         // إلغاء حركة الصندوق لا يقتصر على إخفائها من الرصيد: يعكس القيد الأصلي
         // في نفس المعاملة حتى لا تبقى التكلفة أو التمويل ظاهرة في المحاسبة.
@@ -79,13 +83,14 @@ export async function POST(req: Request) {
       if (action === "adjust") {
         if (!files.length) throw new Error("إثبات التسوية مطلوب.");
         const count = await tx.pettyCashCount.findUnique({ where: { id: str("countId") } });
-        if (!count || count.differenceCents === 0) throw new Error("اختر جردًا له فرق.");
+        if (!count || centsNumber(count.differenceCents) === 0) throw new Error("اختر جردًا له فرق.");
         documentNumber = "COUNT:" + count.id;
         if (movements.some(t => t.documentNumber === documentNumber && t.status === "POSTED")) throw new Error("تمت تسوية هذا الجرد.");
-        if (balanceForAccount(movements, count.accountId) !== count.expectedCents) throw new Error("الرصيد تغير؛ سجل جردًا جديدًا قبل التسوية.");
-        type = count.differenceCents > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT";
-        amountCents = Math.abs(count.differenceCents);
-        if (count.differenceCents > 0) destinationAccountId = count.accountId; else sourceAccountId = count.accountId;
+        if (balanceForAccount(movements, count.accountId) !== centsNumber(count.expectedCents)) throw new Error("الرصيد تغير؛ سجل جردًا جديدًا قبل التسوية.");
+        const differenceCents = centsNumber(count.differenceCents);
+        type = differenceCents > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT";
+        amountCents = Math.abs(differenceCents);
+        if (differenceCents > 0) destinationAccountId = count.accountId; else sourceAccountId = count.accountId;
       } else {
         if (action && action !== "transaction") throw new Error("إجراء غير معروف.");
         const expense = isProjectCost(type);

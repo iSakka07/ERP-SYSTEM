@@ -1,3 +1,5 @@
+import { centsNumber, type CentsValue } from "./money.ts";
+
 const selectableBankTypes = {
   OWNER_FUNDING: "تمويل من المالك",
   MANUAL_DEPOSIT: "إيداع / تسوية يدوية",
@@ -23,6 +25,6 @@ export const bankCategories = {
   other: "أخرى",
 } as const;
 
-export function bankBalance(movements: { type: string; amountCents: number; status?: string }[]) {
-  return movements.filter((movement) => movement.status !== "REVERSED").reduce((balance, movement) => balance + (["OWNER_FUNDING", "MANUAL_DEPOSIT", "INCOMING_COLLECTION", "OPENING_BALANCE"].includes(movement.type) ? movement.amountCents : -movement.amountCents), 0);
+export function bankBalance(movements: { type: string; amountCents: CentsValue; status?: string }[]) {
+  return movements.filter((movement) => movement.status !== "REVERSED").reduce((balance, movement) => { const amount = centsNumber(movement.amountCents); return balance + (["OWNER_FUNDING", "MANUAL_DEPOSIT", "INCOMING_COLLECTION", "OPENING_BALANCE"].includes(movement.type) ? amount : -amount); }, 0);
 }

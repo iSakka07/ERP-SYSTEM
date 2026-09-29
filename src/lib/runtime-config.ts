@@ -7,7 +7,8 @@ export function assertSecureRuntimeConfig() {
   // لا يعمل إلا إذا كان ملف SQLite نفسه داخل مجلد الاختبارات المؤقت.
   if (
     process.env.ERP_ISOLATED_TEST === "true" &&
-    /[\\/]tmp[\\/]isolated-test-/.test(process.env.DATABASE_URL || "")
+    (/[\\/]tmp[\\/]isolated-test-/.test(process.env.DATABASE_URL || "") ||
+      process.env.ERP_ISOLATED_POSTGRES === "true")
   )
     return;
   if (checked || process.env.NODE_ENV !== "production") return;
@@ -16,7 +17,10 @@ export function assertSecureRuntimeConfig() {
     throw new Error("إعدادات الإنتاج غير آمنة: اضبط AUTH_SECRET عشوائيًا بطول 32 حرفًا على الأقل.");
   if (process.env.AUTH_URL && !process.env.AUTH_URL.startsWith("https://"))
     throw new Error("إعدادات الإنتاج غير آمنة: يجب أن يبدأ AUTH_URL بـ https://.");
-  if (!process.env.DATABASE_URL?.startsWith("file:"))
-    throw new Error("إعدادات الإنتاج غير مكتملة: DATABASE_URL مطلوب.");
+  const databaseUrl = process.env.DATABASE_URL || "";
+  if (!new RegExp("^postgres(?:ql)?://").test(databaseUrl))
+    throw new Error("إعدادات الإنتاج غير آمنة: DATABASE_URL يجب أن يشير إلى PostgreSQL.");
   checked = true;
 }
+
+

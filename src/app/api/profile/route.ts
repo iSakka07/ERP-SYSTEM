@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 
 const profileSchema = z.object({ name: z.string().trim().min(2).max(80) });
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -11,7 +12,7 @@ function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
   try {
-    return new URL(origin).host === request.headers.get("host");
+    return isTrustedMutationOrigin(request);
   } catch {
     return false;
   }

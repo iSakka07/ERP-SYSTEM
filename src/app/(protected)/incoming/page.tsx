@@ -31,7 +31,8 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
   const requested = await searchParams;
   const requestedProject = requested.project ?? "";
   const manager = await incomingUser("incoming.manage");
-  const [contracts, projects, attachments, movements] = await Promise.all([
+
+  const [contracts, projects] = await Promise.all([
     prisma.incomingContract.findMany({
       where: { active: true, ...(viewer.isProjectScoped ? { projectId: { in: viewer.projectIds } } : {}) },
       include: {
@@ -40,7 +41,18 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
             company: true,
             supervisors: {
               where: { active: true },
-              include: { employee: true },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    name: true,
+                    phone: true,
+                    jobTitle: true,
+                    employeeCode: true,
+                    active: true,
+                  },
+                },
+              },
             },
           },
         },
@@ -57,7 +69,15 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
       include: { company: true },
       orderBy: { name: "asc" },
     }),
+  ]);
+
+  const allowedContractIds = contracts.map((c) => c.id);
+  const allowedStatementIds = contracts.flatMap((c) => c.statements.map((s) => s.id));
+  const allowedEntityIds = Array.from(new Set([...allowedContractIds, ...allowedStatementIds]));
+
+  const [attachments, movements] = await Promise.all([
     prisma.incomingAttachment.findMany({
+      where: { entityId: { in: allowedEntityIds } },
       select: {
         id: true,
         entityType: true,
@@ -68,11 +88,15 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
       orderBy: { createdAt: "desc" },
     }),
     prisma.auditLog.findMany({
-      where: { action: { startsWith: "incoming." } },
+      where: {
+        action: { startsWith: "incoming." },
+        ...(allowedEntityIds.length ? { target: { in: allowedEntityIds } } : { target: "NO_MATCH" }),
+      },
       orderBy: { createdAt: "desc" },
       select: { id: true, target: true, action: true, actorId: true, createdAt: true, details: true },
     }),
   ]);
+
   const actorIds = [...new Set(movements.map((movement) => movement.actorId))];
   const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } }) : [];
   const actorMap = new Map(actors.map((actor) => [actor.id, `${actor.name} — ${actor.email}`]));
@@ -87,8 +111,10 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
       initialOwnerId={requested.owner ?? ""}
       initialStage={requested.stage ?? ""}
       initialQuery={requested.q ?? ""}
-      movements={movements.map(m => ({
-        id: m.id, entityId: m.target || "", date: m.createdAt.toISOString(),
+      movements={movements.map((m) => ({
+        id: m.id,
+        entityId: m.target || "",
+        date: m.createdAt.toISOString(),
         actor: actorMap.get(m.actorId) || "حساب غير متاح",
         ...movementLabel(m.action, m.details || "{}"),
       }))}

@@ -1,7 +1,9 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 
-export const money = (cents: number) => (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+import { centsNumber, type CentsValue } from "@/lib/money";
+
+export const money = (cents: CentsValue) => (centsNumber(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export async function accountingSnapshot() {
   const periods = prisma.accountingPeriod.findMany({ orderBy: { month: "desc" }, take: 24, select: { month: true, status: true, closedAt: true, reopenReason: true } }).catch((error: unknown) => {
@@ -19,6 +21,6 @@ export async function accountingSnapshot() {
   const actorIds = [...new Set(entries.map((entry) => entry.actorId))];
   const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } }) : [];
   const actorMap = new Map(actors.map((actor) => [actor.id, `${actor.name} — ${actor.email}`]));
-  for (const entry of entries) for (const line of entry.lines) { const balance = balances.get(line.accountId); if (balance) { balance.debit += line.debitCents; balance.credit += line.creditCents; } }
+  for (const entry of entries) for (const line of entry.lines) { const balance = balances.get(line.accountId); if (balance) { balance.debit += centsNumber(line.debitCents); balance.credit += centsNumber(line.creditCents); } }
   return { accounts, entries: entries.map((entry) => ({ ...entry, actor: actorMap.get(entry.actorId) || "حساب غير متاح" })), projects, periods: periodRows, goLiveDate: goLive?.value || null, trialBalance: accounts.map((account) => ({ account, ...(balances.get(account.id) || { debit: 0, credit: 0 }) })).filter((row) => row.debit || row.credit) };
 }

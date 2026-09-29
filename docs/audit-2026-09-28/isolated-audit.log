@@ -1,0 +1,257 @@
+$ node scripts/migrate.mjs
+Applied migration: 20260915010000_init
+Applied migration: 20260915020000_auth
+Applied migration: 20260915030000_rbac
+Applied migration: 20260915031000_rbac_audit
+Applied migration: 20260915040000_master_data
+Applied migration: 20260915090000_incoming
+Applied migration: 20260915093000_large_contract_values
+Applied migration: 20260915111000_expenses
+Applied migration: 20260915130000_price_versions
+Applied migration: 20260915160000_work_withdrawals
+Applied migration: 20260915170000_quantity_corrections
+Applied migration: 20260915180000_estimate_value
+Applied migration: 20260916080000_purchases
+Applied migration: 20260916090000_petty_cash
+Applied migration: 20260916120000_salaries_foundation
+Applied migration: 20260916130000_payroll
+Applied migration: 20260917100000_salary_adjustment_attachments
+Applied migration: 20260917140000_remove_sectors_taxnumber
+Applied migration: 20260917170000_incoming_contract_safe_delete
+Applied migration: 20260917193000_subcontract_account_safe_delete
+Applied migration: 20260917195000_purchase_invoice_name
+Applied migration: 20260918020000_accounting_foundation
+Applied migration: 20260918023000_purchase_payment_source
+Applied migration: 20260919010000_bank_module
+Applied migration: 20260919150000_financial_idempotency
+Applied migration: 20260919170000_purchase_invoice_reversal
+Applied migration: 20260919180000_subcontract_payment_reversal
+Applied migration: 20260919190000_bank_transaction_reversal
+Applied migration: 20260920090000_reporting_indexes
+Applied migration: 20260920100000_role_dashboards
+Applied migration: 20260923090000_warehouse_module
+Applied migration: 20260924100000_project_warehouses
+Applied migration: 20260924120000_purchase_payments
+Applied migration: 20260925100000_remove_accounting_periods
+Applied migration: 20260925110000_rename_petty_cash_labels
+Applied migration: 20260925120000_user_profile_avatar
+Applied migration: 20260925130000_rename_petty_cash_account
+Applied migration: 20260925140000_restore_accounting_periods
+Database migrations are up to date.
+$ node scripts/seed-demo.mjs
+Demo roles, users and master data are ready.
+$ node scripts/seed-incoming-demo.mjs
+Incoming demo ready: 1m gross, 900k net; Jari 2 pending at Central.
+$ node scripts/seed-expenses-demo.mjs
+Expenses demo ready: Jari1 approved52000, paid30000; Jari2 draft120000.
+$ node scripts/accounting-setup.mjs
+Accounting chart and demo permissions are ready.
+$ next build
+▲ Next.js 16.3.5 (Turbopack)
+✓ Running next.config.ts took 63ms
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 13.0s
+  Running TypeScript ...
+  Finished TypeScript in 10.5s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/38) ...
+  Generating static pages using 11 workers (9/38) 
+  Generating static pages using 11 workers (18/38) 
+  Generating static pages using 11 workers (28/38) 
+✓ Generating static pages using 11 workers (38/38) in 602ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /accounting
+├ ƒ /admin/accounts
+├ ƒ /api/accounting
+├ ƒ /api/admin/accounts
+├ ƒ /api/attention
+├ ƒ /api/auth/[...nextauth]
+├ ƒ /api/bank
+├ ƒ /api/bank/attachments/[id]
+├ ƒ /api/expenses
+├ ƒ /api/expenses/attachments/[id]
+├ ƒ /api/health
+├ ƒ /api/incoming
+├ ƒ /api/incoming/attachments/[id]
+├ ƒ /api/inventory-items
+├ ƒ /api/management
+├ ƒ /api/petty-cash
+├ ƒ /api/petty-cash/attachments/[id]
+├ ƒ /api/profile
+├ ƒ /api/project-cost-control
+├ ƒ /api/purchases
+├ ƒ /api/purchases/attachments/[id]
+├ ƒ /api/salaries
+├ ƒ /api/salaries/attachments/[id]
+├ ƒ /api/warehouse
+├ ƒ /api/warehouse/receipts
+├ ƒ /api/warehouse/receipts/[id]
+├ ƒ /attachments
+├ ƒ /attention
+├ ƒ /bank
+├ ƒ /expenses
+├ ƒ /expenses/new
+├ ƒ /incoming
+├ ƒ /incoming/[contractId]/statements/new
+├ ƒ /incoming/new
+├ ○ /login
+├ ƒ /management
+├ ƒ /petty-cash
+├ ƒ /profile
+├ ƒ /project-cost-control
+├ ƒ /purchases
+├ ƒ /purchases/new
+├ ƒ /salaries
+├ ƒ /warehouse
+└ ƒ /warehouse/receipts/[id]
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+▲ Next.js 16.3.5
+- Local:         http://localhost:3218
+- Network:       http://192.168.1.13:3218
+✓ Ready in 298ms
+✓ Running next.config.ts took 68ms
+$ node scripts/test-login-rate-limit.mjs
+Login rate limiting passed: account and IP thresholds, success reset and time-window expiry.
+$ node scripts/test-incoming-api.mjs
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+400 !== 200
+
+    at file:///D:/ERP-SYSTEM-main/ERP-SYSTEM-main/scripts/test-incoming-api.mjs:300:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 400,
+  expected: 200,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.15.0
+[ELIFECYCLE] Command failed with exit code 1.
+AUDIT_SUITE_FAILED test:incoming-api
+$ node scripts/test-expenses-api.mjs
+API passed: approval permissions, atomic accounting payment, cumulative values, safe deletion, prospective prices, withdrawals, evidence, immutable history and restricted UI.
+Only exact temporary test records removed; demonstration, client data and audit retained.
+$ node scripts/test-expense-corrections-api.mjs
+Correction API passed: original-price versions, fresh evidence, immutable history, permissions, ordered executive effect, return/reapproval, debt/advance separation, carry-forward settlement and zero final measurement.
+Only exact temporary correction test records removed; client accounts, passwords, statements and payments preserved; audit retained.
+$ node scripts/test-purchases-api.mjs
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: unpaid portion is posted to supplier payable
++ actual - expected
+
++ undefined
+- 2835000
+
+    at file:///D:/ERP-SYSTEM-main/ERP-SYSTEM-main/scripts/test-purchases-api.mjs:129:10 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: 2835000,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.15.0
+[ELIFECYCLE] Command failed with exit code 1.
+AUDIT_SUITE_FAILED test:purchases-api
+$ node scripts/test-warehouse-receipts-api.mjs
+Inventory receipt register API passed: RBAC, search, combined filters, sorting/paging, CSV permission, partial fulfillment, invoice-level trace, audit visibility, historical statuses and read-only stock integrity.
+$ node scripts/test-petty-cash-api.mjs
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: {"status":200,"ok":true,"id":"0d735370-2395-4d78-9da0-a97489f1c431"}
+
+200 !== 400
+
+    at reject (file:///D:/ERP-SYSTEM-main/ERP-SYSTEM-main/scripts/test-petty-cash-api.mjs:32:97)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file:///D:/ERP-SYSTEM-main/ERP-SYSTEM-main/scripts/test-petty-cash-api.mjs:44:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 200,
+  expected: 400,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.15.0
+[ELIFECYCLE] Command failed with exit code 1.
+AUDIT_SUITE_FAILED test:petty-cash-api
+$ node scripts/test-financial-idempotency-api.mjs
+Financial idempotency API passed: replay, mismatch, similar confirmation, audit, rollback retry and parallel requests.
+$ node scripts/test-accounting-period-api.mjs
+Accounting period API passed: close blocks posting and documented reopen restores access.
+$ node scripts/test-project-cost-control-api.mjs
+file:///D:/ERP-SYSTEM-main/ERP-SYSTEM-main/scripts/test-project-cost-control-api.mjs:25
+  assert.ok((await (await fetch(`${base}/api/auth/session`, { headers: headers(jar) })).json()).user, `login ${email}`);
+                                                                                                ^
+
+TypeError: Cannot read properties of null (reading 'user')
+    at login (file:///D:/ERP-SYSTEM-main/ERP-SYSTEM-main/scripts/test-project-cost-control-api.mjs:25:97)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Promise.all (index 1)
+    at async file:///D:/ERP-SYSTEM-main/ERP-SYSTEM-main/scripts/test-project-cost-control-api.mjs:33:35
+
+Node.js v24.15.0
+[ELIFECYCLE] Command failed with exit code 1.
+AUDIT_SUITE_FAILED test:project-cost-control-api
+{"id":"SEC-01","status":200,"leaksSalary":true,"leaksOtherEmployee":true,"leaksOtherProject":true}
+{"id":"SEC-02","leaksAttachmentName":true,"leaksAuditReason":true,"attachmentDownloadStatus":403}
+{"id":"FIN-01-receipt","status":200,"body":{"id":"cmukguu6n00kk8ia0koe825ae"},"ordered":10,"received":14}
+{"id":"SEC-05","onlyPermission":"warehouse.view","invoiceFinancialData":{"id":"cmukguu23000hb3d24dh88l8m","number":"AP-3e6e568c","name":"Audit invoice 3e6e568c","status":"POSTED","paidCents":1000,"totalCents":1000}}
+{"id":"FIN-01-issue","status":200,"body":{"id":"cmukguuqc00ku8ia086ldw9yg"},"availableBefore":14,"requestedTotal":20}
+{"id":"FIN-02","first":{"status":200,"body":{"id":"cmukguv2n00l68ia08q5ztd8z"}},"second":{"status":200,"body":{"id":"cmukguv9l00lh8ia0kpc791o9"}},"distinctRecords":true}
+{"id":"SEC-03-FIN-03","status":200,"body":{"id":"cmukguvvt00lq8ia0yhqw5r81"},"otherProject":"cmukgushm0004b3d2kou75qcg","authorizedProjects":["cmukgusez0002b3d2g7hzcdy6"],"closedPeriod":true,"journalDelta":0}
+{"id":"SEC-04","status":201,"body":{"item":{"id":"cmukguw2000lz8ia0kaq6xuf1","name":"Audit cross origin 3e6e568c","unit":"unit","category":null,"minimumQuantity":0},"existing":false},"note":"Authenticated handler test; no browser exploit asserted"}
+{"id":"FIN-04","status":200,"body":{"ok":true,"id":"ace112fa-e992-474a-a47d-4266cea60936"},"pettyStatus":"REVERSED","invoicePaidCents":1000,"paymentStatuses":["POSTED"],"purchaseJournalStillPresent":1}
+{"id":"SEC-06","actorRole":"accountant","status":201,"body":{"ok":true,"id":"cmukguwok0012b3d2t98jevak"},"payrollStatus":"PAID"}
+{"id":"FIN-05","statementStatus":200,"statementBody":{"ok":true,"id":"cmukgux3600mt8ia0fua6cop5"},"fundingStatus":201,"expenseStatus":201,"reportCostCents":0,"ownerMaterialsCents":2000,"ledgerExpenseCents":1000}
+{"id":"OPS-health","status":200,"body":{"status":"ok"}}
+AUDIT_SUITE_SUMMARY {"failed":["test:incoming-api","test:purchases-api","test:petty-cash-api","test:project-cost-control-api"],"probeExit":0}
+[auth][error] CredentialsSignin: Read more at https://errors.authjs.dev#credentialssignin
+    at aV (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\.next-test\server\chunks\_1qoz81q._.js:404:41031)
+    at async a1 (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\.next-test\server\chunks\_1qoz81q._.js:404:50629)
+    at async a4 (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\.next-test\server\chunks\_1qoz81q._.js:404:54879)
+    at async rV.do (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\node_modules\.pnpm\next@16.3.5_@babel+core@7.2_9b6cca8052460e3a3e74a6fbb38d20ab\node_modules\next\dist\compiled\next-server\app-route-turbo.runtime.prod.js:5:23405)
+    at async rV.handle (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\node_modules\.pnpm\next@16.3.5_@babel+core@7.2_9b6cca8052460e3a3e74a6fbb38d20ab\node_modules\next\dist\compiled\next-server\app-route-turbo.runtime.prod.js:5:28801)
+    at async Z (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\.next-test\server\chunks\[root-of-the-server]__0jrcgve._.js:1:4683)
+    at async rV.handleResponse (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\node_modules\.pnpm\next@16.3.5_@babel+core@7.2_9b6cca8052460e3a3e74a6fbb38d20ab\node_modules\next\dist\compiled\next-server\app-route-turbo.runtime.prod.js:1:130297)
+    at async J (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\.next-test\server\chunks\[root-of-the-server]__0jrcgve._.js:1:5761)
+    at async Module.C [as handler] (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\.next-test\server\chunks\[root-of-the-server]__0jrcgve._.js:1:7818)
+    at async NextNodeServer.renderToResponseWithComponentsImpl (D:\ERP-SYSTEM-main\ERP-SYSTEM-main\node_modules\.pnpm\next@16.3.5_@babel+core@7.2_9b6cca8052460e3a3e74a6fbb38d20ab\node_modules\next\dist\server\base-server.js:1537:9)
+file:///D:/ERP-SYSTEM-main/ERP-SYSTEM-main/tmp/audit-review/run.mjs:49
+  const auditFailures = []; for (const command of selectedTest ? [selectedTest] : apiTests) { try { run([command]); } catch (error) { auditFailures.push(command); console.log("AUDIT_SUITE_FAILED " + command); } } const probe = spawnSync(process.execPath, ["tmp/audit-review/probe.mjs"], { cwd: root, env, stdio: "inherit" }); console.log("AUDIT_SUITE_SUMMARY " + JSON.stringify({ failed: auditFailures, probeExit: probe.status })); if (auditFailures.length || probe.status !== 0) throw new Error("Audit checks recorded failures; see log.");
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      ^
+
+Error: Audit checks recorded failures; see log.
+    at file:///D:/ERP-SYSTEM-main/ERP-SYSTEM-main/tmp/audit-review/run.mjs:49:487
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+Node.js v24.15.0

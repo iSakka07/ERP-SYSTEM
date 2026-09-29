@@ -126,7 +126,7 @@ try {
   assert.equal(partialPaymentInvoice.paymentTrackingStarted, true);
   assert.equal(partialPaymentInvoice.payments.reduce((sum, payment) => sum + payment.amountCents, 0), 25_000);
   const initialPurchaseJournal = await db.journalEntry.findFirstOrThrow({ where: { sourceType: "PURCHASE", sourceId: partiallyPaid.id }, include: { lines: { include: { account: true } } } });
-  assert.equal(initialPurchaseJournal.lines.find((line) => line.account.key === "SUPPLIER_PAYABLE")?.creditCents, 2_835_000, "unpaid portion is posted to supplier payable");
+  assert.equal(initialPurchaseJournal.lines.find((line) => line.account.systemKey === "SUPPLIER_PAYABLE")?.creditCents, 2_835_000, "unpaid portion is posted to supplier payable");
   const remainingPayable = partialPaymentInvoice.totalCents - partialPaymentInvoice.paidCents;
   assert.equal((await post({ action: "payment", id: partiallyPaid.id, amount: (remainingPayable + 1) / 100, paymentDate: "2026-09-24", paymentSource: "EXECUTIVE_DIRECTOR" }, admin, proof)).status, 400, "supplier cannot be overpaid");
   const finalPayment = await post({ action: "payment", id: partiallyPaid.id, amount: remainingPayable / 100, paymentDate: "2026-09-24", paymentSource: "EXECUTIVE_DIRECTOR", notes: "دفعة اختبار أخيرة" }, admin, proof);

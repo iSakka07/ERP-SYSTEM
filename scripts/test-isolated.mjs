@@ -8,12 +8,16 @@ const tempRoot = resolve(root, "tmp");
 await mkdir(tempRoot, { recursive: true });
 const temp = await mkdtemp(resolve(tempRoot, "isolated-test-"));
 const port = String(3200 + Math.floor(Math.random() * 400));
-const databaseUrl = `file:${resolve(temp, "test.db").replaceAll("\\", "/")}`;
+const postgres = process.env.ERP_ISOLATED_POSTGRES === "true";
+const databaseUrl = postgres
+  ? process.env.POSTGRES_DATABASE_URL
+  : `file:${resolve(temp, "test.db").replaceAll("\\", "/")}`;
+if (!databaseUrl) throw new Error("اختبار PostgreSQL المعزول يحتاج POSTGRES_DATABASE_URL.");
 const testUrl = `http://127.0.0.1:${port}`;
 const adminPassword = "IsolatedDemo@123456";
-const env = { ...process.env, DATABASE_URL: databaseUrl, AUTH_SECRET: "isolated-test-secret-with-at-least-32-characters", AUTH_URL: testUrl, ERP_ISOLATED_TEST: "true", BOOTSTRAP_ADMIN_EMAIL: "admin@erp.local", BOOTSTRAP_ADMIN_PASSWORD: adminPassword, DEMO_USER_PASSWORD: adminPassword, ERP_TEST_ADMIN_PASSWORD: adminPassword, BOOTSTRAP_ADMIN_NAME: "مدير النظام", ERP_TEST_URL: testUrl };
+const env = { ...process.env, DATABASE_URL: databaseUrl, AUTH_SECRET: "isolated-test-secret-with-at-least-32-characters", AUTH_URL: testUrl, ERP_ISOLATED_TEST: "true", ERP_ISOLATED_POSTGRES: postgres ? "true" : undefined, BOOTSTRAP_ADMIN_EMAIL: "admin@erp.local", BOOTSTRAP_ADMIN_PASSWORD: adminPassword, DEMO_USER_PASSWORD: adminPassword, ERP_TEST_ADMIN_PASSWORD: adminPassword, BOOTSTRAP_ADMIN_NAME: "مدير النظام", ERP_TEST_URL: testUrl };
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const apiTests = ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:warehouse-receipts-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:accounting-period-api", "test:project-cost-control-api"];
+const apiTests = ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:warehouse-receipts-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:accounting-period-api", "test:project-cost-control-api", "test:security-financial-acceptance"];
 const selectedTest = process.env.ERP_TEST_ONLY;
 if (selectedTest && !apiTests.includes(selectedTest)) throw new Error(`اختبار العزل غير معروف: ${selectedTest}`);
 const windowsPnpm = process.platform === "win32" ? (() => {
@@ -34,7 +38,9 @@ let server;
 try {
   // Prisma Client مُولّد مسبقًا ضمن build؛ عدم توليده هنا يمنع قفل DLL على Windows
   // ولا يغير قاعدة العرض أو ملفات التشغيل.
-  run(["db:migrate"]); run(["db:seed-demo"]); run(["db:demo-incoming"]); run(["db:demo-expenses"]); run(["db:accounting-setup"]); run(["build"]);
+  if (postgres) { run(["db:postgres:generate"]); run(["db:postgres:migrate"]); }
+  else run(["db:migrate"]);
+  run(["db:seed-demo"]); run(["db:demo-incoming"]); run(["db:demo-expenses"]); run(["db:accounting-setup"]); run(["build"]);
   server = windowsPnpm
     ? spawn(windowsPnpm.executable, [windowsPnpm.entry, "exec", "next", "start", "-p", port], { cwd: root, env, stdio: "pipe", shell: false })
     : spawn(pnpm, ["exec", "next", "start", "-p", port], { cwd: root, env, stdio: "pipe", shell: false });
@@ -54,5 +60,5 @@ try {
     else server.kill("SIGTERM");
     await Promise.race([once(server, "exit"), new Promise((resolveWait) => setTimeout(resolveWait, 2_000))]);
   }
-  for (let attempt = 0; attempt < 5; attempt += 1) { try { await rm(temp, { recursive: true, force: true }); break; } catch (error) { if (attempt === 4) throw error; await new Promise((resolveWait) => setTimeout(resolveWait, 500)); } }
+  if (!postgres) for (let attempt = 0; attempt < 5; attempt += 1) { try { await rm(temp, { recursive: true, force: true }); break; } catch (error) { if (attempt === 4) throw error; await new Promise((resolveWait) => setTimeout(resolveWait, 500)); } }
 }

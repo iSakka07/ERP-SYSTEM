@@ -1,6 +1,80 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { accessProfile } from "@/lib/access-control";
+import { postOwnerMaterialCertificate } from "@/lib/accounting-posting";
+
+type Tx = Prisma.TransactionClient;
+
+export type MaterialCertificateContract = {
+  projectId: string;
+  project: { companyId: string };
+  statements: {
+    id: string;
+    sequence: number;
+    grossCents: number;
+    materials: { id: string; totalCents: number }[];
+  }[];
+};
+
+export async function assertMaterialCertificateTotals(
+  contract: MaterialCertificateContract,
+  statement: { id: string; sequence: number },
+  totalCents: number,
+  excludeCertificateId?: string,
+) {
+  for (const later of contract.statements.filter((x) => x.sequence >= statement.sequence)) {
+    const cumulative =
+      contract.statements
+        .filter((x) => x.sequence <= later.sequence)
+        .reduce(
+          (n, x) =>
+            n +
+            x.materials
+              .filter((m) => m.id !== excludeCertificateId)
+              .reduce((a, m) => a + m.totalCents, 0),
+          0,
+        ) + totalCents;
+    if (cumulative > later.grossCents)
+      throw new Error(
+        "إجمالي الخامات التراكمية يتجاوز المستخلص الحالي أو أحد المستخلصات اللاحقة.",
+      );
+  }
+}
+
+export async function createMaterialCertificate(
+  tx: Tx,
+  input: {
+    number: string;
+    notes?: string | null;
+    items: { name: string; unit: string; quantity: number; unitPriceCents: number; totalCents: number }[];
+    totalCents: number;
+  },
+  context: {
+    statementId: string;
+    contract: MaterialCertificateContract;
+    statement: { id: string; sequence: number };
+  },
+  actorId: string,
+) {
+  await assertMaterialCertificateTotals(context.contract, context.statement, input.totalCents);
+  const created = await tx.materialCertificate.create({
+    data: {
+      number: input.number,
+      notes: input.notes || null,
+      totalCents: input.totalCents,
+      statementId: context.statementId,
+      items: { create: input.items },
+    },
+  });
+  await postOwnerMaterialCertificate(
+    tx,
+    { ...created, statement: { contract: { projectId: context.contract.projectId } } },
+    context.contract.project.companyId,
+    actorId,
+  );
+  return created;
+}
 
 export async function incomingUser(permission: string) {
   const session = await auth();

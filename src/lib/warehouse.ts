@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { centsNumber } from "@/lib/money";
 
 function omit<T extends object, K extends keyof T>(value: T, keys: readonly K[]): Omit<T, K> {
   const result = { ...value };
@@ -21,8 +22,9 @@ export function calculateStockBalances(movements: Awaited<ReturnType<typeof ware
     balances.set(key, row);
   };
   for (const movement of movements) for (const line of movement.lines) {
-    if (movement.fromWarehouseId) apply(movement.fromWarehouseId, line.itemId, -line.quantity, -line.totalCents);
-    if (movement.toWarehouseId) apply(movement.toWarehouseId, line.itemId, line.quantity, line.totalCents);
+    const totalCents = centsNumber(line.totalCents);
+    if (movement.fromWarehouseId) apply(movement.fromWarehouseId, line.itemId, -line.quantity, -totalCents);
+    if (movement.toWarehouseId) apply(movement.toWarehouseId, line.itemId, line.quantity, totalCents);
   }
   return [...balances.values()];
 }

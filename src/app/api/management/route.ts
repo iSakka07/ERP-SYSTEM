@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 import { employeeJobPrefixes, nextEmployeeCode } from "@/lib/employee-codes";
 
 const createSchema = z.discriminatedUnion("type", [
@@ -24,9 +25,7 @@ async function manager() {
   return session?.user && can(session.user, "masterdata.manage") ? session : null;
 }
 function sameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-  try { return new URL(origin).host === request.headers.get("host"); } catch { return false; }
+  return isTrustedMutationOrigin(request);
 }
 
 export async function GET(request: Request) {

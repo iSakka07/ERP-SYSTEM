@@ -28,7 +28,8 @@ async function login(email) {
 
 try {
   const limitedRole = await db.role.findUniqueOrThrow({ where: { key: "sales" } });
-  const limited = await db.user.create({ data: { name: tag, email: `${tag}-limited@test.invalid`, passwordHash: await hash("Admin@123456", 10), roleId: limitedRole.id } });
+  const password = process.env.ERP_TEST_ADMIN_PASSWORD || "Admin@123456";
+  const limited = await db.user.create({ data: { name: tag, email: `${tag}-limited@test.invalid`, passwordHash: await hash(password, 10), roleId: limitedRole.id } });
   cleanup.limitedUserId = limited.id;
   const [admin, sales, project] = await Promise.all([
     login("admin@erp.local"),
@@ -51,7 +52,7 @@ try {
   assert.equal(typeof data.revenue.contractsCount, "number");
   assert.equal(typeof data.revenue.materialsCents, "number");
   assert.equal(typeof data.cash.subcontractPaymentsCount, "number");
-  assert.equal(data.cash.supplierPaymentsIncluded, false);
+  assert.equal(data.cash.supplierPaymentsIncluded, true);
   const role = await db.role.findUniqueOrThrow({ where: { key: "site_supervisor_engineer" } });
   const company = await db.company.create({ data: { name: tag, type: "OWNER" } });
   cleanup.companyId = company.id;
@@ -63,7 +64,7 @@ try {
   const employee = await db.employee.create({ data: { name: tag, employeeCode: tag, jobTitle: "مهندس مشرف" } });
   cleanup.employeeId = employee.id;
   await db.projectEngineerAssignment.create({ data: { employeeId: employee.id, projectId: allowedProject.id } });
-  const user = await db.user.create({ data: { name: tag, email: `${tag}@test.invalid`, passwordHash: await hash("Admin@123456", 10), roleId: role.id, employeeId: employee.id } });
+  const user = await db.user.create({ data: { name: tag, email: `${tag}@test.invalid`, passwordHash: await hash(password, 10), roleId: role.id, employeeId: employee.id } });
   cleanup.userId = user.id;
   const engineer = await login(user.email);
   const engineerHome = await (await fetch(`${base}/`, { headers: headers(engineer) })).text();

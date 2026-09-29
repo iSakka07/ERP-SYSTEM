@@ -1,0 +1,3 @@
+$ node scripts/postgresql-path.mjs validate
+Prisma schema loaded from prisma\postgresql\schema.prisma
+The schema at prisma\postgresql\schema.prisma is valid 🚀

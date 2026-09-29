@@ -13,9 +13,14 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "غير مصرح بعرض سجل الاستلام." }, { status: 403, headers: { "Cache-Control": "no-store" } });
 
   try {
+    const canViewFinancials = Boolean(await incomingUser("purchases.view"));
     const params = new URL(request.url).searchParams;
     const filters = parseReceiptFilters(params);
-    const result = await receiptRegister(filters, { projectIds: user.isProjectScoped ? user.projectIds : undefined, all: params.get("format") === "csv" });
+    const result = await receiptRegister(filters, {
+      projectIds: user.isProjectScoped ? user.projectIds : undefined,
+      all: params.get("format") === "csv",
+      includeFinancial: canViewFinancials,
+    });
 
     if (params.get("format") === "csv") {
       if (result.total > 10_000) return NextResponse.json({ error: "نتائج التصدير كبيرة. ضيّق الفلاتر إلى 10,000 استلام أو أقل." }, { status: 422 });

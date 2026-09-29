@@ -137,6 +137,7 @@ export function SalariesCenter({
   deductions,
   paymentDay,
   canManage,
+  canPay,
 }: {
   employees: Employee[];
   projects: Project[];
@@ -147,6 +148,7 @@ export function SalariesCenter({
   deductions: Adjustment[];
   paymentDay: number | null;
   canManage: boolean;
+  canPay: boolean;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<"employees" | "payroll">("employees");
@@ -496,6 +498,7 @@ export function SalariesCenter({
             runs={runs}
             projects={projects}
             canManage={canManage}
+            canPay={canPay}
             busy={busy}
             onSubmit={submit}
             onPay={pay}
@@ -908,6 +911,7 @@ function PayrollTab({
   runs,
   projects,
   canManage,
+  canPay,
   busy,
   onSubmit,
   onPay,
@@ -915,6 +919,7 @@ function PayrollTab({
   runs: Run[];
   projects: Project[];
   canManage: boolean;
+  canPay: boolean;
   busy: string;
   onSubmit: (
     event: FormEvent<HTMLFormElement>,
@@ -1027,7 +1032,7 @@ function PayrollTab({
                   </td>
                   <td data-label="مصدر الصرف">المدير التنفيذي</td>
                   <td data-label="الإجراءات">
-                    {canManage && run.status === "APPROVED" ? (
+                    {canPay && run.status === "APPROVED" ? (
                       <button
                         disabled={busy === `pay-${run.id}`}
                         onClick={() => onPay(run.id)}

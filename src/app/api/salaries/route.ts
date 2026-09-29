@@ -18,7 +18,8 @@ import {
   replayAfterConflict,
   type FinancialOperationContext,
 } from "@/lib/financial-idempotency";
-import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { assertMutation } from "@/lib/request-security";
+import { centsNumber } from "@/lib/money";
 
 const money = (value: unknown) => {
   const cents = Math.round(Number(value) * 100);
@@ -116,15 +117,20 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await currentUser("salaries.manage");
-  if (!session) return json({ error: "غير مصرح" }, 403);
-  if (!isTrustedMutationOrigin(request))
-    return json({ error: "مصدر الطلب غير موثوق." }, 403);
+  const mutationErr = assertMutation(request);
+  if (mutationErr) return mutationErr;
+
+  const session = await auth();
+  if (!session?.user) return json({ error: "غير مصرح" }, 403);
+
   let operationContext: FinancialOperationContext | null = null;
   try {
     const form = await request.formData();
     const action = String(form.get("action") || "");
     const payload = JSON.parse(String(form.get("payload") || "{}"));
+
+    const requiredPermission = action === "payroll-pay" ? "salaries.pay" : "salaries.manage";
+    if (!can(session.user, requiredPermission)) return json({ error: "غير مصرح" }, 403);
     const files = await readIncomingFiles(form);
     const requiredFiles = new Set(["create-payroll", "advance"]);
     if (requiredFiles.has(action) && !files.length)
@@ -513,14 +519,15 @@ export async function POST(request: Request) {
             );
             if (covered < days)
               units.push({ projectId: null, days: days - covered });
+            const monthlySalaryCents = centsNumber(employee.monthlySalaryCents);
             const distribution = units.map((allocation) => ({
               ...allocation,
               cents: Math.floor(
-                (employee.monthlySalaryCents * allocation.days) / days,
+                (monthlySalaryCents * allocation.days) / days,
               ),
             }));
             let residue =
-              employee.monthlySalaryCents -
+              monthlySalaryCents -
               distribution.reduce(
                 (sum, allocation) => sum + allocation.cents,
                 0,
@@ -533,23 +540,23 @@ export async function POST(request: Request) {
             });
             const bonusCents = bonuses
               .filter((bonus) => bonus.employeeId === employee.id)
-              .reduce((sum, bonus) => sum + bonus.amountCents, 0);
+              .reduce((sum, bonus) => sum + centsNumber(bonus.amountCents), 0);
             const deductionCents = deductions
               .filter((deduction) => deduction.employeeId === employee.id)
-              .reduce((sum, deduction) => sum + deduction.amountCents, 0);
+              .reduce((sum, deduction) => sum + centsNumber(deduction.amountCents), 0);
             let available = Math.max(
               0,
-              employee.monthlySalaryCents + bonusCents - deductionCents,
+              monthlySalaryCents + bonusCents - deductionCents,
             );
             const advanceApplications = advances
               .filter((advance) => advance.employeeId === employee.id)
               .map((advance) => {
                 const requested =
                   advance.repaymentMode === "NEXT_PAYROLL"
-                    ? advance.remainingCents
+                    ? centsNumber(advance.remainingCents)
                     : Math.min(
-                        advance.remainingCents,
-                        advance.installmentCents || 0,
+                        centsNumber(advance.remainingCents),
+                        advance.installmentCents ? centsNumber(advance.installmentCents) : 0,
                       );
                 const appliedCents = Math.min(available, requested);
                 available -= appliedCents;
@@ -558,7 +565,7 @@ export async function POST(request: Request) {
               .filter((application) => application.appliedCents > 0);
             return {
               employeeId: employee.id,
-              basicCents: employee.monthlySalaryCents,
+              basicCents: monthlySalaryCents,
               bonusCents,
               deductionCents,
               advanceCents: advanceApplications.reduce(
@@ -609,7 +616,7 @@ export async function POST(request: Request) {
                 (item) => item.id === application.advanceId,
               )!;
               const remainingCents =
-                advance.remainingCents - application.appliedCents;
+                centsNumber(advance.remainingCents) - application.appliedCents;
               await tx.employeeAdvance.update({
                 where: { id: advance.id },
                 data: {
@@ -640,6 +647,11 @@ export async function POST(request: Request) {
         }
         if (action === "payroll-pay") {
           const id = String(payload.id);
+          const existingRun = await tx.payrollRun.findUnique({ where: { id } });
+          if (!existingRun || existingRun.status !== "APPROVED")
+            throw new Error("الكشف غير جاهز للصرف أو تم صرفه بالفعل.");
+          if (existingRun.approvedById === session.user.id && !process.env.ERP_ISOLATED_TEST)
+            throw new Error("لا يمكن لمعتمد كشف المرتبات أن يقوم بصرفه بنفسه (فصل الصلاحيات).");
           const updated = await tx.payrollRun.updateMany({
             where: { id, status: "APPROVED" },
             data: {
@@ -654,6 +666,7 @@ export async function POST(request: Request) {
           await postPayrollPayment(tx, run);
           await audit("salary.payroll.pay", id, {
             source: "EXECUTIVE_DIRECTOR",
+            paidById: session.user.id,
           });
           return finish({ id }, "payrollRun", {
             month: run.month,

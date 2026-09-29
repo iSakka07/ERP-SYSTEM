@@ -13,7 +13,7 @@ const permissions = [
   ["expenses.pay", "استلام الحسابات وتسجيل دفعات المقاولين", "expenses"],
   ["expenses.return", "رد مستخلص للمراجعة", "expenses"],
   ["purchases.view", "عرض المشتريات", "purchases"], ["purchases.manage", "إدارة المشتريات", "purchases"],
-  ["salaries.view", "عرض المرتبات", "salaries"], ["salaries.manage", "إدارة المرتبات", "salaries"],
+  ["salaries.view", "عرض المرتبات", "salaries"], ["salaries.manage", "إدارة وتجهيز المرتبات", "salaries"], ["salaries.pay", "صرف المرتبات المعتمودة", "salaries"],
   ["treasury.view", "عرض الخزنة", "treasury"], ["treasury.manage", "إدارة الخزنة", "treasury"],
   ["pettycash.view", "عرض صندوق النثريات", "pettycash"], ["pettycash.manage", "إدارة صندوق النثريات", "pettycash"],
   ["warehouse.view", "عرض المخزن", "warehouse"], ["warehouse.manage", "إدارة حركات المخزن", "warehouse"],
@@ -27,7 +27,7 @@ const roles = [["admin", "مدير النظام"], ["executive_director", "ال�
 const grants = /** @type {Record<string, string[]>} */ ({
   admin: permissions.map(([key]) => key),
   executive_director: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage"),
-  accountant: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage" && key !== "masterdata.manage" && !key.startsWith("expenses.approve_") && key !== "expenses.return"),
+  accountant: permissions.map(([key]) => key).filter((key) => key !== "accounts.manage" && key !== "masterdata.manage" && !key.startsWith("expenses.approve_") && key !== "expenses.return" && key !== "salaries.pay"),
   technical_office_engineer: ["dashboard.view", "masterdata.view", "expenses.view", "expenses.manage", "expenses.approve_technical", "purchases.view"],
   site_supervisor_engineer: ["dashboard.view", "masterdata.view", "expenses.view", "expenses.approve_site"],
   storekeeper: ["dashboard.view", "purchases.view", "purchases.manage", "masterdata.view", "warehouse.view", "warehouse.manage"],
@@ -41,6 +41,7 @@ try {
   for (const [key, name] of roles) {
     const role = await prisma.role.upsert({ where: { key }, update: { name }, create: { key, name } });
     const allowed = await prisma.permission.findMany({ where: { key: { in: grants[key] } } });
+    await prisma.rolePermission.deleteMany({ where: { roleId: role.id, permissionId: { notIn: allowed.map(({ id }) => id) } } });
     for (const permission of allowed) await prisma.rolePermission.upsert({ where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } }, update: {}, create: { roleId: role.id, permissionId: permission.id } });
   }
 
