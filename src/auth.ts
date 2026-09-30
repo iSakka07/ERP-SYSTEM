@@ -50,6 +50,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             user = await prisma.user.findUnique({ where: { id: created.id }, include: { role: { include: { permissions: { include: { permission: true } } } }, permissionOverrides: { include: { permission: true } } } });
           }
         }
+        if (user && (!user.role || !user.active) && parsed.data.email === bootstrapEmail && bootstrapPassword && parsed.data.password === bootstrapPassword && bootstrapPassword.length >= 12) {
+          let role = await prisma.role.findUnique({ where: { key: "admin" } });
+          if (!role) role = await prisma.role.create({ data: { key: "admin", name: "مدير النظام" } });
+          const passwordHash = await hash(bootstrapPassword, 12);
+          await prisma.user.update({ where: { id: user.id }, data: { roleId: role.id, passwordHash, active: true } });
+          user = await prisma.user.findUnique({ where: { id: user.id }, include: { role: { include: { permissions: { include: { permission: true } } } }, permissionOverrides: { include: { permission: true } } } });
+        }
         if (!user?.active || !user.role) { recordLoginFailure(parsed.data.email, ip); return null; }
         let validPassword = await compare(parsed.data.password, user.passwordHash);
         // Allow a one-time production bootstrap password to repair an existing
