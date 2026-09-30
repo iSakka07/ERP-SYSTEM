@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { incomingUser } from "@/lib/incoming-server";
+import { isTrustedMutationOrigin } from "@/lib/request-security";
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -25,3 +26,4 @@ export async function GET(
     },
   });
 }
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) { const user = await incomingUser("expenses.manage"); if (!user || !isTrustedMutationOrigin(request)) return NextResponse.json({ error: "غير مسموح." }, { status: 403 }); const { id } = await params; const file = await prisma.expenseAttachment.findUnique({ where: { id } }); if (!file) return NextResponse.json({ error: "المرفق غير موجود." }, { status: 404 }); let projectId: string | undefined; if (file.entityType === "account") projectId = (await prisma.subcontractAccount.findUnique({ where: { id: file.entityId }, select: { projectId: true } }))?.projectId; else if (file.entityType === "statement") projectId = (await prisma.subcontractStatement.findUnique({ where: { id: file.entityId }, include: { account: { select: { projectId: true } } } }))?.account.projectId; else if (file.entityType === "payment") projectId = (await prisma.subcontractPayment.findUnique({ where: { id: file.entityId }, include: { statement: { include: { account: { select: { projectId: true } } } } } }))?.statement.account.projectId; if (user.isProjectScoped && (!projectId || !user.projectIds.includes(projectId))) return NextResponse.json({ error: "غير مسموح." }, { status: 403 }); await prisma.$transaction([prisma.auditLog.create({ data: { actorId: user.id, action: "expenses.attachment.delete", target: file.entityId, details: JSON.stringify({ attachmentId: id, label: file.label, name: file.name, size: file.size }) } }), prisma.expenseAttachment.delete({ where: { id } })]); return NextResponse.json({ ok: true }); }

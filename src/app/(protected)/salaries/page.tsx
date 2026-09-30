@@ -13,7 +13,7 @@ export default async function SalariesPage() {
     prisma.employeeSalaryAllocation.findMany({ include: { employee: true, project: true }, orderBy: [{ startDate: "desc" }] }),
     prisma.employeeStatusPeriod.findMany({ select: { employeeId: true, startDate: true, endDate: true } }),
     prisma.employeeSalaryRate.findMany({ select: { employeeId: true, startDate: true, monthlySalaryCents: true } }),
-    prisma.payrollRun.findMany({ include: { lines: { include: { employee: true } }, attachments: { select: { id: true, name: true } } }, orderBy: { month: "desc" } }),
+    prisma.payrollRun.findMany({ include: { lines: { include: { employee: true } }, attachments: { select: { id: true, name: true, label: true } } }, orderBy: { month: "desc" } }),
     prisma.employeeAdvance.findMany({ include: { employee: true, installments: true }, orderBy: { issuedAt: "desc" } }),
     prisma.employeeBonus.findMany({ include: { employee: true }, orderBy: { createdAt: "desc" } }),
     prisma.employeeDeduction.findMany({ include: { employee: true }, orderBy: { createdAt: "desc" } }),

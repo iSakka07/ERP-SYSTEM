@@ -1372,16 +1372,7 @@ function Files({ files, compact = false }: { files: Attachment[]; compact?: bool
   if (compact) return <span className="inline-flex flex-wrap gap-1">{files.map(file => <a key={file.id} className="text-xs font-bold text-blue-700 underline" href={`/api/incoming/attachments/${file.id}`}>{file.label}</a>)}</span>;
   return (
     <span className="inline-flex flex-wrap gap-2">
-      {files.map((f) => (
-        <a
-          key={f.id}
-          className="inline-flex items-center gap-1 text-[10px] font-normal text-blue-700 underline"
-          href={`/api/incoming/attachments/${f.id}`}
-        >
-          <Paperclip className="size-3" />
-          {f.label} ({Math.ceil(f.size / 1024)} KB)
-        </a>
-      ))}
+      {files.map((f) => <span key={f.id} className="inline-flex items-center gap-1"><a className="text-[10px] text-blue-700 underline" href={`/api/incoming/attachments/${f.id}`}>{f.label} ({Math.ceil(f.size / 1024)} KB)</a><button type="button" className="text-[10px] font-bold text-rose-700" onClick={async()=>{if(!window.confirm(`مسح ${f.label}؟`))return;const response=await fetch(`/api/incoming/attachments/${f.id}`,{method:"DELETE"});if(response.ok)window.location.reload();else alert("تعذر مسح المرفق.");}}>مسح</button></span>)}
     </span>
   );
 }
@@ -1389,6 +1380,6 @@ function Files({ files, compact = false }: { files: Attachment[]; compact?: bool
 function AttachmentLinks({ label, files }: { label: string; files: Attachment[] }) {
   if (!files.length) return null;
   return <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-    {files.map((file) => <a key={file.id} className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.label}>{file.label || label}</a>)}
+    {files.map((file) => <span key={file.id} className="inline-flex items-center gap-1"><a className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.label}>{file.label || label}</a><button type="button" className="text-rose-700" onClick={async()=>{if(!window.confirm(`مسح ${file.label}؟`))return;const response=await fetch(`/api/incoming/attachments/${file.id}`,{method:"DELETE"});if(response.ok)window.location.reload();else alert("تعذر مسح المرفق.");}}>مسح</button></span>)}
   </span>;
 }

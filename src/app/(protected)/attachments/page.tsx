@@ -27,12 +27,12 @@ export default async function AttachmentsPage() {
     ]) : Promise.resolve([[], [], [], []]),
   ]);
   const [incomingFiles, expenseFiles, purchaseFiles, pettyFiles, bankFiles, salaryFiles] = await Promise.all([
-    can("incoming.view") ? prisma.incomingAttachment.findMany({ select: { id: true, name: true, size: true, createdAt: true, entityType: true, entityId: true } }) : Promise.resolve([]),
-    can("expenses.view") ? prisma.expenseAttachment.findMany({ select: { id: true, name: true, size: true, createdAt: true, entityType: true, entityId: true } }) : Promise.resolve([]),
-    can("purchases.view") ? prisma.purchaseAttachment.findMany({ select: { id: true, name: true, size: true, createdAt: true, entityType: true, entityId: true } }) : Promise.resolve([]),
-    can("pettycash.view") ? prisma.pettyCashAttachment.findMany({ select: { id: true, name: true, size: true, createdAt: true, transactionId: true } }) : Promise.resolve([]),
-    can("bank.view") ? prisma.bankAttachment.findMany({ select: { id: true, name: true, size: true, createdAt: true, transactionId: true } }) : Promise.resolve([]),
-    can("salaries.view") ? prisma.salaryAttachment.findMany({ select: { id: true, name: true, size: true, createdAt: true, payrollRunId: true, advanceId: true, bonusId: true, deductionId: true } }) : Promise.resolve([]),
+    can("incoming.view") ? prisma.incomingAttachment.findMany({ select: { id: true, label: true, size: true, createdAt: true, entityType: true, entityId: true } }) : Promise.resolve([]),
+    can("expenses.view") ? prisma.expenseAttachment.findMany({ select: { id: true, label: true, size: true, createdAt: true, entityType: true, entityId: true } }) : Promise.resolve([]),
+    can("purchases.view") ? prisma.purchaseAttachment.findMany({ select: { id: true, label: true, size: true, createdAt: true, entityType: true, entityId: true } }) : Promise.resolve([]),
+    can("pettycash.view") ? prisma.pettyCashAttachment.findMany({ select: { id: true, label: true, size: true, createdAt: true, transactionId: true } }) : Promise.resolve([]),
+    can("bank.view") ? prisma.bankAttachment.findMany({ select: { id: true, label: true, size: true, createdAt: true, transactionId: true } }) : Promise.resolve([]),
+    can("salaries.view") ? prisma.salaryAttachment.findMany({ select: { id: true, label: true, size: true, createdAt: true, payrollRunId: true, advanceId: true, bonusId: true, deductionId: true } }) : Promise.resolve([]),
   ]);
   const contractNames = new Map<string,string>(); const incomingIds = new Set<string>();
   for (const contract of contracts) { contractNames.set(contract.id, "عقد: " + contract.name); incomingIds.add(contract.id); for (const statement of contract.statements) { contractNames.set(statement.id, "مستخلص " + statement.sequence + " · " + contract.name); incomingIds.add(statement.id); for (const material of statement.materials) { contractNames.set(material.id, "شهادة خامات · مستخلص " + statement.sequence); incomingIds.add(material.id); } } for (const memo of contract.memos) { contractNames.set(memo.id, "مذكرة عقد · " + contract.name); incomingIds.add(memo.id); } }
@@ -48,12 +48,12 @@ export default async function AttachmentsPage() {
   for (const row of bonuses) salaryNames.set(row.id,"مكافأة " + row.employee.name + " · " + row.name);
   for (const row of deductions) salaryNames.set(row.id,"خصم " + row.employee.name + " · " + row.name);
   const rows: AttachmentRow[] = [
-    ...incomingFiles.filter(file=>incomingIds.has(file.entityId)).map(file=>({ id:file.id,name:file.name,size:file.size,date:day(file.createdAt),module:moduleLabels.incoming,record:contractNames.get(file.entityId)||"ملف وارد",href:"/api/incoming/attachments/"+file.id })),
-    ...expenseFiles.filter(file=>expenseIds.has(file.entityId)).map(file=>({ id:file.id,name:file.name,size:file.size,date:day(file.createdAt),module:moduleLabels.expenses,record:accountNames.get(file.entityId)||"مستخلص مقاول",href:"/api/expenses/attachments/"+file.id })),
-    ...purchaseFiles.filter(file=>purchaseNames.has(file.entityId)).map(file=>({ id:file.id,name:file.name,size:file.size,date:day(file.createdAt),module:moduleLabels.purchases,record:purchaseNames.get(file.entityId)||"فاتورة مشتريات",href:"/api/purchases/attachments/"+file.id })),
-    ...pettyFiles.map(file=>({ id:file.id,name:file.name,size:file.size,date:day(file.createdAt),module:moduleLabels.petty,record:pettyNames.get(file.transactionId)||"حركة خزنة",href:"/api/petty-cash/attachments/"+file.id })),
-    ...bankFiles.map(file=>({ id:file.id,name:file.name,size:file.size,date:day(file.createdAt),module:moduleLabels.bank,record:bankNames.get(file.transactionId)||"حركة بنكية",href:"/api/bank/attachments/"+file.id })),
-    ...salaryFiles.filter(file=>salaryNames.has(file.payrollRunId||file.advanceId||file.bonusId||file.deductionId||"")).map(file=>{const recordId=file.payrollRunId||file.advanceId||file.bonusId||file.deductionId||"";return {id:file.id,name:file.name,size:file.size,date:day(file.createdAt),module:moduleLabels.salaries,record:salaryNames.get(recordId)||"ملف مرتبات",href:"/api/salaries/attachments/"+file.id};}),
+    ...incomingFiles.filter(file=>incomingIds.has(file.entityId)).map(file=>({ id:file.id,name:file.label,size:file.size,date:day(file.createdAt),module:moduleLabels.incoming,record:contractNames.get(file.entityId)||"ملف وارد",href:"/api/incoming/attachments/"+file.id,deleteHref:can("incoming.manage")?"/api/incoming/attachments/"+file.id:undefined })),
+    ...expenseFiles.filter(file=>expenseIds.has(file.entityId)).map(file=>({ id:file.id,name:file.label,size:file.size,date:day(file.createdAt),module:moduleLabels.expenses,record:accountNames.get(file.entityId)||"مستخلص مقاول",href:"/api/expenses/attachments/"+file.id,deleteHref:can("expenses.manage")?"/api/expenses/attachments/"+file.id:undefined })),
+    ...purchaseFiles.filter(file=>purchaseNames.has(file.entityId)).map(file=>({ id:file.id,name:file.label,size:file.size,date:day(file.createdAt),module:moduleLabels.purchases,record:purchaseNames.get(file.entityId)||"فاتورة مشتريات",href:"/api/purchases/attachments/"+file.id,deleteHref:can("purchases.manage")?"/api/purchases/attachments/"+file.id:undefined })),
+    ...pettyFiles.map(file=>({ id:file.id,name:file.label,size:file.size,date:day(file.createdAt),module:moduleLabels.petty,record:pettyNames.get(file.transactionId)||"حركة خزنة",href:"/api/petty-cash/attachments/"+file.id,deleteHref:can("pettycash.manage")?"/api/petty-cash/attachments/"+file.id:undefined })),
+    ...bankFiles.map(file=>({ id:file.id,name:file.label,size:file.size,date:day(file.createdAt),module:moduleLabels.bank,record:bankNames.get(file.transactionId)||"حركة بنكية",href:"/api/bank/attachments/"+file.id,deleteHref:can("bank.manage")?"/api/bank/attachments/"+file.id:undefined })),
+    ...salaryFiles.filter(file=>salaryNames.has(file.payrollRunId||file.advanceId||file.bonusId||file.deductionId||"")).map(file=>{const recordId=file.payrollRunId||file.advanceId||file.bonusId||file.deductionId||"";return {id:file.id,name:file.label,size:file.size,date:day(file.createdAt),module:moduleLabels.salaries,record:salaryNames.get(recordId)||"ملف مرتبات",href:"/api/salaries/attachments/"+file.id,deleteHref:can("salaries.manage")?"/api/salaries/attachments/"+file.id:undefined};}),
   ].sort((a,b)=>b.date.localeCompare(a.date));
   return <AttachmentsDirectory rows={rows} />;
 }

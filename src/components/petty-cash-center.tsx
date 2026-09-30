@@ -6,7 +6,6 @@ import {
   Ban,
   ClipboardList,
   FolderCog,
-  Paperclip,
   Plus,
   ReceiptText,
   WalletCards,
@@ -29,7 +28,7 @@ import {
   usePdfDataExport,
 } from "@/components/pdf-data-export";
 
-type Named = { id: string; name: string };
+type Named = { id: string; name: string; label?: string };
 type Category = Named & { active: boolean; requiresAttachment: boolean };
 type Account = Named & {
   type: string;
@@ -698,20 +697,7 @@ export function PettyCashCenter() {
                             <MoneyValue>{money(balance)} ج.م</MoneyValue>
                           </td>
                           <td data-label="المرفق" className="text-center">
-                            {transaction.attachments.length ? (
-                              <a
-                                title="فتح المرفق"
-                                aria-label="فتح المرفق"
-                                className="inline-flex text-blue-700"
-                                href={`/api/petty-cash/attachments/${transaction.attachments[0].id}`}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                <Paperclip className="size-4" />
-                              </a>
-                            ) : (
-                              "—"
-                            )}
+                            {transaction.attachments.length ? <span className="flex flex-wrap justify-center gap-1">{transaction.attachments.map((file) => <a key={file.id} className="text-xs font-bold text-blue-700 underline" href={`/api/petty-cash/attachments/${file.id}`} target="_blank" rel="noreferrer">{file.label || "مرفق الحركة"}</a>)}</span> : "—"}
                           </td>
                           <td data-label="المسجل">
                             {transaction.recordedBy.name}

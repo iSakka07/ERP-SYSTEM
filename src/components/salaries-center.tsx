@@ -55,7 +55,7 @@ type Run = {
   status: string;
   totalCents: number;
   lines: { employee: Employee; netCents: number; allocationJson: string }[];
-  attachments?: { id: string; name: string }[];
+  attachments?: { id: string; name: string; label: string }[];
 };
 type Advance = {
   id: string;
@@ -645,6 +645,7 @@ function EmployeesTab({
                   "المكافآت",
                   "الخصومات",
                   "الحالة",
+                  "المرفقات",
                   "الإجراءات",
                 ].map((head) => (
                   <th key={head}>{head}</th>
@@ -1169,6 +1170,7 @@ function PayrollTab({
                       </select>
                     ) : "المدير التنفيذي"}
                   </td>
+                  <td data-label="المرفقات">{run.attachments?.length ? <span className="flex flex-wrap gap-1">{run.attachments.map((file) => <a key={file.id} className="text-xs font-bold text-blue-700 underline" href={`/api/salaries/attachments/${file.id}`}>{file.label}</a>)}</span> : "—"}</td>
                   <td data-label="الإجراءات">
                     {canPay && run.status === "APPROVED" ? (
                       <button
@@ -1186,7 +1188,7 @@ function PayrollTab({
               ))}
               {!runs.length && (
                 <tr>
-                  <td colSpan={5} className="p-10 text-center text-slate-400">
+                  <td colSpan={6} className="p-10 text-center text-slate-400">
                     لا توجد كشوف بعد.
                   </td>
                 </tr>

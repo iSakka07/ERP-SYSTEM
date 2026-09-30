@@ -7,7 +7,6 @@ import {
   Boxes,
   FileText,
   List,
-  Paperclip,
   Plus,
   ReceiptText,
   X,
@@ -72,34 +71,7 @@ type Attachment = { id: string; entityId: string; name: string; label: string };
 
 function AttachmentMenu({ files }: { files: Attachment[] }) {
   if (!files.length) return <span className="text-slate-400">—</span>;
-  return (
-    <details className="relative inline-block">
-      <summary
-        className="erp-icon-action relative list-none cursor-pointer"
-        aria-label={`عرض ${files.length} مرفق`}
-        title={`عرض ${files.length} مرفق`}
-      >
-        <Paperclip className="size-4" />
-        {files.length > 1 && (
-          <span className="absolute -left-1 -top-1 grid size-4 place-items-center rounded-full bg-blue-700 text-[9px] font-bold text-white">
-            {files.length}
-          </span>
-        )}
-      </summary>
-      <div className="absolute left-0 z-20 mt-2 w-64 rounded-lg border bg-white p-2 shadow-xl">
-        {files.map((file) => (
-          <a
-            key={file.id}
-            href={`/api/purchases/attachments/${file.id}`}
-            className="flex items-center gap-2 rounded-md px-2 py-2 text-xs text-blue-700 hover:bg-blue-50"
-          >
-            <Paperclip className="size-3 shrink-0" />
-            <span className="truncate">{file.label}</span>
-          </a>
-        ))}
-      </div>
-    </details>
-  );
+  return <span className="flex flex-wrap gap-1">{files.map((file) => <span key={file.id} className="inline-flex items-center gap-1"><a href={`/api/purchases/attachments/${file.id}`} className="text-xs font-bold text-blue-700 underline">{file.label}</a><button type="button" className="text-[10px] font-bold text-rose-700" onClick={async()=>{if(!window.confirm(`مسح ${file.label}؟`))return;const response=await fetch(`/api/purchases/attachments/${file.id}`,{method:"DELETE"});if(response.ok)window.location.reload();else alert("تعذر مسح المرفق.");}}>مسح</button></span>)}</span>;
 }
 
 export function PurchasesCenter({

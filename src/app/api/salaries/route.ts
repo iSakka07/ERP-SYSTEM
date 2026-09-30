@@ -78,7 +78,7 @@ export async function GET() {
     prisma.payrollRun.findMany({
       include: {
         lines: { include: { employee: true } },
-        attachments: { select: { id: true, name: true } },
+        attachments: { select: { id: true, name: true, label: true } },
       },
       orderBy: { month: "desc" },
     }),
@@ -86,7 +86,7 @@ export async function GET() {
       include: {
         employee: true,
         installments: true,
-        attachments: { select: { id: true, name: true } },
+        attachments: { select: { id: true, name: true, label: true } },
       },
       orderBy: { issuedAt: "desc" },
     }),

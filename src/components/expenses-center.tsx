@@ -19,7 +19,6 @@ import {
   ArrowRight,
   Check,
   FileSpreadsheet,
-  Paperclip,
   BriefcaseBusiness,
   WalletCards,
   HandCoins,
@@ -204,45 +203,10 @@ export function ExpensesCenter({
       return compact ? null : (
         <p className="text-xs text-slate-400">لا توجد مرفقات.</p>
       );
-    if (compact)
-      return (
-        <details className="relative">
-          <summary
-            className="erp-icon-action erp-icon-action-default cursor-pointer list-none"
-            aria-label={`عرض ${list.length} مرفق`}
-            title={`عرض ${list.length} مرفق`}
-          >
-            <Paperclip className="size-4" />
-            {list.length > 1 && (
-              <span className="text-[9px] font-black">{list.length}</span>
-            )}
-          </summary>
-          <div className="absolute left-0 z-30 mt-2 w-64 space-y-1 rounded-lg border bg-white p-2 shadow-xl">
-            {list.map((f) => (
-              <a
-                key={f.id}
-                className="flex items-center gap-2 rounded px-2 py-2 text-xs text-blue-700 hover:bg-blue-50"
-                href={`/api/expenses/attachments/${f.id}`}
-              >
-                <Paperclip className="size-3" />
-                <span className="truncate">{f.label}</span>
-              </a>
-            ))}
-          </div>
-        </details>
-      );
+    if (compact) return <span className="flex flex-wrap gap-1">{list.map((f) => <a key={f.id} className="text-xs font-bold text-blue-700 underline" href={`/api/expenses/attachments/${f.id}`}>{f.label}</a>)}</span>;
     return (
       <div className="flex flex-wrap gap-2">
-        {list.map((f) => (
-          <a
-            key={f.id}
-            className="inline-flex max-w-full items-center gap-1 rounded bg-blue-50 px-2 py-1 text-[11px] text-blue-700"
-            href={`/api/expenses/attachments/${f.id}`}
-          >
-            <Paperclip className="size-3 shrink-0" />
-            <span className="truncate">{f.label}</span>
-          </a>
-        ))}
+        {list.map((f) => <span key={f.id} className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1 text-[11px]"><a className="max-w-48 truncate text-blue-700 underline" href={`/api/expenses/attachments/${f.id}`}>{f.label}</a>{allowed("expenses.manage") && <button type="button" className="font-bold text-rose-700" onClick={async () => { if (!window.confirm(`مسح ${f.label}؟`)) return; const response = await fetch(`/api/expenses/attachments/${f.id}`, { method: "DELETE" }); if (!response.ok) setError((await response.json()).error || "تعذر مسح المرفق."); else router.refresh(); }}>مسح</button>}</span>)}
       </div>
     );
   }
