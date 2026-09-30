@@ -15,6 +15,19 @@ try {
     }
   }
 
+  await prisma.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
+        UPDATE "_prisma_migrations"
+        SET rolled_back_at = NOW()
+        WHERE migration_name = '20260924130000_supabase_private_tables'
+          AND finished_at IS NULL
+          AND rolled_back_at IS NULL;
+      END IF;
+    END $$
+  `);
+
   console.log("PostgreSQL compatibility roles are ready.");
 } finally {
   await prisma.$disconnect();
