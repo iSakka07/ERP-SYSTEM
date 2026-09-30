@@ -98,7 +98,7 @@ try {
 
   const importedCounts = {};
   await prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(72695001)");
+    await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(72695001)");
     await tx.$executeRawUnsafe("SET LOCAL session_replication_role = replica");
     await tx.$executeRawUnsafe(`TRUNCATE ${transferable.map(safeIdent).join(", ")} CASCADE`);
     for (const table of transferable) {
