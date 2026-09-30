@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { compare } from "bcryptjs";
+import { compare, hash } from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { clearLoginFailures, loginIsBlocked, recordLoginFailure } from "@/lib/login-rate-limit";
@@ -36,7 +36,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
 
         if (!user?.active || !user.role) { recordLoginFailure(parsed.data.email, ip); return null; }
-        const validPassword = await compare(parsed.data.password, user.passwordHash);
+        let validPassword = await compare(parsed.data.password, user.passwordHash);
+        // Allow a one-time production bootstrap password to repair an existing
+        // administrator account whose hash predates the current deployment.
+        const bootstrapEmail = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+        const bootstrapPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+        if (!validPassword && parsed.data.email === bootstrapEmail && bootstrapPassword && parsed.data.password === bootstrapPassword && bootstrapPassword.length >= 12) {
+          const passwordHash = await hash(bootstrapPassword, 12);
+          await prisma.user.update({ where: { id: user.id }, data: { passwordHash, active: true } });
+          validPassword = true;
+        }
         if (!validPassword) { recordLoginFailure(parsed.data.email, ip); return null; }
         clearLoginFailures(parsed.data.email);
 
