@@ -30,17 +30,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
         if (loginIsBlocked(parsed.data.email, ip)) return null;
 
-        const user = await prisma.user.findUnique({
+        const bootstrapEmail = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+        const bootstrapPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+        let user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
           include: { role: { include: { permissions: { include: { permission: true } } } }, permissionOverrides: { include: { permission: true } } },
         });
 
+        if (!user && parsed.data.email === bootstrapEmail && bootstrapPassword && parsed.data.password === bootstrapPassword && bootstrapPassword.length >= 12) {
+          const role = await prisma.role.findUnique({ where: { key: "admin" } });
+          if (role) {
+            const passwordHash = await hash(bootstrapPassword, 12);
+            const created = await prisma.user.create({ data: { name: process.env.BOOTSTRAP_ADMIN_NAME?.trim() || "مدير النظام", email: parsed.data.email, passwordHash, roleId: role.id, active: true } });
+            user = await prisma.user.findUnique({ where: { id: created.id }, include: { role: { include: { permissions: { include: { permission: true } } } }, permissionOverrides: { include: { permission: true } } } });
+          }
+        }
         if (!user?.active || !user.role) { recordLoginFailure(parsed.data.email, ip); return null; }
         let validPassword = await compare(parsed.data.password, user.passwordHash);
         // Allow a one-time production bootstrap password to repair an existing
         // administrator account whose hash predates the current deployment.
-        const bootstrapEmail = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
-        const bootstrapPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
         if (!validPassword && parsed.data.email === bootstrapEmail && bootstrapPassword && parsed.data.password === bootstrapPassword && bootstrapPassword.length >= 12) {
           const passwordHash = await hash(bootstrapPassword, 12);
           await prisma.user.update({ where: { id: user.id }, data: { passwordHash, active: true } });
