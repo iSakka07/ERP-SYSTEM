@@ -20,6 +20,7 @@ const updateSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("user-profile"), userId: z.string(), employeeId: z.string().nullable().optional(), incomingVisible: z.boolean(), financialVisible: z.boolean() }),
   z.object({ type: z.literal("role-permissions"), roleId: z.string(), permissionIds: z.array(z.string()) }),
 ]);
+const deleteSchema = z.object({ userId: z.string().min(1) });
 const engineerRoles = new Set(["technical_office_engineer", "site_supervisor_engineer"]);
 
 async function adminSession() {
@@ -124,4 +125,38 @@ export async function PATCH(request: Request) {
     });
   }
   return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(request: Request) {
+  const session = await adminSession();
+  if (!session) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!sameOrigin(request)) return NextResponse.json({ error: "INVALID_ORIGIN" }, { status: 403 });
+  const parsed = deleteSchema.safeParse(await request.json());
+  if (!parsed.success) return NextResponse.json({ error: "INVALID_DATA" }, { status: 400 });
+  const { userId } = parsed.data;
+  if (userId === session.user.id) return NextResponse.json({ error: "SELF_DELETE" }, { status: 400 });
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({ where: { id: userId }, include: { employee: true } });
+      if (!target) throw new Error("USER_NOT_FOUND");
+
+      // Remove account-owned records and activity that has a required actor FK first.
+      await Promise.all([
+        tx.userPermissionOverride.deleteMany({ where: { userId } }),
+        tx.purchasePayment.deleteMany({ where: { actorId: userId } }),
+        tx.bankTransaction.deleteMany({ where: { actorId: userId } }),
+        tx.auditLog.deleteMany({ where: { OR: [{ actorId: userId }, { target: userId }] } }),
+        tx.financialOperationRequest.deleteMany({ where: { actorId: userId } }),
+      ]);
+
+      // Detach the employee/code from the deleted login. Historical employee data is preserved.
+      await tx.user.delete({ where: { id: userId } });
+      await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.delete", target: userId, details: JSON.stringify({ employeeId: target.employeeId, email: target.email }) } });
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    return NextResponse.json({ error: code === "USER_NOT_FOUND" ? code : "DELETE_FAILED" }, { status: code === "USER_NOT_FOUND" ? 404 : 400 });
+  }
 }
