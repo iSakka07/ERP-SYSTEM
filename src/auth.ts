@@ -38,7 +38,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
 
         if (!user && parsed.data.email === bootstrapEmail && bootstrapPassword && parsed.data.password === bootstrapPassword && bootstrapPassword.length >= 12) {
-          const role = await prisma.role.findUnique({ where: { key: "admin" } });
+          let role = await prisma.role.findUnique({ where: { key: "admin" } });
+          if (!role) {
+            role = await prisma.role.create({ data: { key: "admin", name: "مدير النظام" } });
+            const permissions = await prisma.permission.findMany({ select: { id: true } });
+            if (permissions.length) await prisma.rolePermission.createMany({ data: permissions.map(({ id }) => ({ roleId: role!.id, permissionId: id })), skipDuplicates: true });
+          }
           if (role) {
             const passwordHash = await hash(bootstrapPassword, 12);
             const created = await prisma.user.create({ data: { name: process.env.BOOTSTRAP_ADMIN_NAME?.trim() || "مدير النظام", email: parsed.data.email, passwordHash, roleId: role.id, active: true } });
