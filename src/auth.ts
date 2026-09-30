@@ -42,7 +42,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (!role) {
             role = await prisma.role.create({ data: { key: "admin", name: "مدير النظام" } });
             const permissions = await prisma.permission.findMany({ select: { id: true } });
-            if (permissions.length) await prisma.rolePermission.createMany({ data: permissions.map(({ id }) => ({ roleId: role!.id, permissionId: id })), skipDuplicates: true });
+            if (permissions.length) await prisma.rolePermission.createMany({ data: permissions.map(({ id }) => ({ roleId: role!.id, permissionId: id })) });
           }
           if (role) {
             const passwordHash = await hash(bootstrapPassword, 12);
