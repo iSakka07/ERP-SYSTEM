@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { financials } from "../src/lib/incoming.ts";
+import { financials, incomingStagesFor, isValidIncomingStageTransition } from "../src/lib/incoming.ts";
+assert.deepEqual(incomingStagesFor(false).map(([id]) => id), ["COMPANY", "IN_CYCLE", "PAID"]);
+assert.equal(isValidIncomingStageTransition("COMPANY", "IN_CYCLE", false).valid, true);
+assert.equal(isValidIncomingStageTransition("COMPANY", "PAID", false).valid, false);
+assert.equal(isValidIncomingStageTransition("COMPANY", "BATTALION", false).valid, false);
+assert.equal(isValidIncomingStageTransition("COMPANY", "BATTALION", true).valid, true);
 const c = {
   originalCents: 1_000_000_000,
   memos: [],

@@ -59,6 +59,9 @@ export function UploadBox({
           onFilesChange?.(next);
         }}
       />
+      {files.length > 0 && <span className="mt-3 grid gap-2 border-t border-dashed pt-3 text-xs">
+        {files.map((file, index) => <label key={`${file.name}-${index}`} className="grid gap-1 text-slate-600">وصف المرفق: {file.name}<input name={`${name || "files"}Labels`} required maxLength={160} placeholder="مثال: العقد الأصلي" className="rounded border border-slate-200 px-2 py-1 text-sm" /></label>)}
+      </span>}
     </label>
   );
 }

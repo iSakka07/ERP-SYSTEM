@@ -34,6 +34,8 @@ import {
   expenseStages,
   expenseSummary,
   expensePayableCents,
+  expenseStatementPaymentStatus,
+  previousExpenseOutstanding,
   newExpenseStatementBlockReason,
   expenseCumulativeQuantity,
 } from "@/lib/expenses";
@@ -85,6 +87,7 @@ export function ExpensesCenter({
   const [newAccount, setNewAccount] = useState(false);
   const [changeAccountId, setChangeAccountId] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({});
   const [reversePaymentId, setReversePaymentId] = useState<string | null>(null);
   const [returnId, setReturnId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -141,6 +144,7 @@ export function ExpensesCenter({
     setEditor(null);
     setNewAccount(false);
     setPaymentId(null);
+    setPaymentAmounts({});
     setReversePaymentId(null);
     setReturnId(null);
     setError("");
@@ -221,7 +225,7 @@ export function ExpensesCenter({
                 href={`/api/expenses/attachments/${f.id}`}
               >
                 <Paperclip className="size-3" />
-                <span className="truncate">{f.name}</span>
+                <span className="truncate">{f.label}</span>
               </a>
             ))}
           </div>
@@ -236,7 +240,7 @@ export function ExpensesCenter({
             href={`/api/expenses/attachments/${f.id}`}
           >
             <Paperclip className="size-3 shrink-0" />
-            <span className="truncate">{f.name}</span>
+            <span className="truncate">{f.label}</span>
           </a>
         ))}
       </div>
@@ -298,6 +302,7 @@ export function ExpensesCenter({
               revision: st.revision,
               amount: Number(f.get("amount")),
               paymentDate: f.get("paymentDate"),
+              paymentSource: f.get("paymentSource"),
               notes: f.get("notes"),
             },
             e.currentTarget,
@@ -319,7 +324,8 @@ export function ExpensesCenter({
               step="0.01"
               required
               className={`${expenseInput} mt-1`}
-              value={dueCents / 100}
+              value={paymentAmounts[st.id] ?? dueCents / 100}
+              onValueChange={(raw) => setPaymentAmounts((current) => ({ ...current, [st.id]: raw }))}
               max={dueCents / 100}
             />
           </label>
@@ -332,6 +338,13 @@ export function ExpensesCenter({
               defaultValue={new Date().toISOString().slice(0, 10)}
               className={`${expenseInput} mt-1`}
             />
+          </label>
+          <label className="text-xs">
+            مصدر الصرف
+            <ERPSelect name="paymentSource" defaultValue="EXECUTIVE_DIRECTOR" className={`${expenseInput} mt-1`}>
+              <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
+              <option value="PETTY_CASH">الخزنة الرئيسية</option>
+            </ERPSelect>
           </label>
         </div>
         <label className="block text-xs">
@@ -363,7 +376,7 @@ export function ExpensesCenter({
           </button>
         </div>
         <p className="text-[10px] text-slate-500">
-          دفعة موثقة من المدير التنفيذي؛ لا تمر عبر صندوق النثريات ولا تكرر تكلفة
+          يمر الصرف من المدير التنفيذي بالخزنة الرئيسية بحركتي تمويل وصرف دون تكرار تكلفة المستخلص.
           المشروع.
         </p>
       </form>
@@ -373,34 +386,13 @@ export function ExpensesCenter({
     const index = expenseStages.findIndex((s) => s[0] === st.stage);
     const next = expenseStages[index + 1];
     const summary = expenseSummary(account.statements);
-    const paidCents = account.statements.reduce(
-      (sum, statement) =>
-        sum +
-        statement.payments
-          .filter((payment) => payment.status !== "REVERSED")
-          .reduce((value, payment) => value + payment.amountCents, 0),
-      0,
-    );
-    const paymentStatus =
-      st.stage === "ACCOUNTING"
-        ? paidCents >= st.netCents
-          ? {
-              label: "تم الصرف",
-              className: "border-emerald-200 bg-emerald-50 text-emerald-800",
-            }
-          : paidCents > 0
-            ? {
-                label: "صرف جزئي",
-                className: "border-amber-200 bg-amber-50 text-amber-800",
-              }
-            : {
-                label: "الحسابات",
-                className: "border-blue-200 bg-blue-50 text-blue-800",
-              }
-        : {
-            label: stageName(st.stage),
-            className: "border-blue-200 bg-blue-50 text-blue-800",
-          };
+    const statementPayment = expenseStatementPaymentStatus(account.statements, st.id);
+    const previousOutstanding = previousExpenseOutstanding(account.statements, st.sequence);
+    const paymentStatus = st.stage === "ACCOUNTING"
+      ? statementPayment.status === "PAID" ? { label: "تم الصرف", className: "border-emerald-200 bg-emerald-50 text-emerald-800" }
+        : statementPayment.status === "PARTIAL" ? { label: "صرف جزئي", className: "border-amber-200 bg-amber-50 text-amber-800" }
+          : { label: "الحسابات", className: "border-blue-200 bg-blue-50 text-blue-800" }
+      : { label: stageName(st.stage), className: "border-blue-200 bg-blue-50 text-blue-800" };
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -618,6 +610,11 @@ export function ExpensesCenter({
                 d.amountCents,
               ]),
               ["صافي المستحق", st.netCents],
+              ...(previousOutstanding && previousOutstanding.remainingCents > 0
+                ? [[`باقي مستحق جاري ${previousOutstanding.sequence}`, previousOutstanding.remainingCents]]
+                : []),
+              ["المدفوع حتى الآن", statementPayment.paidCents],
+              ["المتبقي للحسابات", statementPayment.remainingCents],
             ].map(([label, value], n) => (
               <div
                 className="flex justify-between gap-3 border-b pb-2 text-xs last:border-0"
@@ -1226,46 +1223,12 @@ export function ExpensesCenter({
                                 <td colSpan={9} className="erp-table-details">
                                   <div className="flex flex-wrap gap-3 pb-2">
                                     {a.statements.map((st) => {
-                                      const paidThrough = a.statements
-                                        .filter(
-                                          (statement) =>
-                                            statement.sequence <= st.sequence,
-                                        )
-                                        .reduce(
-                                          (sum, statement) =>
-                                            sum +
-                                            statement.payments
-                                              .filter(
-                                                (payment) =>
-                                                  payment.status !== "REVERSED",
-                                              )
-                                              .reduce(
-                                                (value, payment) =>
-                                                  value + payment.amountCents,
-                                                0,
-                                              ),
-                                          0,
-                                        );
-                                      const status =
-                                        st.stage === "ACCOUNTING"
-                                          ? paidThrough >= st.netCents
-                                            ? {
-                                                label: "تم الصرف",
-                                                cls: "border-emerald-200 bg-emerald-50 text-emerald-800",
-                                              }
-                                            : paidThrough > 0
-                                              ? {
-                                                  label: "صرف جزئي",
-                                                  cls: "border-amber-200 bg-amber-50 text-amber-800",
-                                                }
-                                              : {
-                                                  label: "الحسابات",
-                                                  cls: "border-blue-200 bg-blue-50 text-blue-800",
-                                                }
-                                          : {
-                                              label: stageName(st.stage),
-                                              cls: "border-slate-200 bg-white text-slate-600",
-                                            };
+                                      const payment = expenseStatementPaymentStatus(a.statements, st.id);
+                                      const status = st.stage === "ACCOUNTING"
+                                        ? payment.status === "PAID" ? { label: "تم الصرف", cls: "border-emerald-200 bg-emerald-50 text-emerald-800" }
+                                          : payment.status === "PARTIAL" ? { label: "صرف جزئي", cls: "border-amber-200 bg-amber-50 text-amber-800" }
+                                            : { label: "الحسابات", cls: "border-blue-200 bg-blue-50 text-blue-800" }
+                                        : { label: stageName(st.stage), cls: "border-slate-200 bg-white text-slate-600" };
                                       return (
                                         <article
                                           className={`min-w-[180px] rounded-xl border p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${status.cls}`}

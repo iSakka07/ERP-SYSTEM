@@ -10,7 +10,7 @@ import {
   postStockIssueJournal,
   reversePostedJournal,
 } from "@/lib/accounting-posting";
-import { assertBalances, balanceForAccount } from "@/lib/petty-cash";
+import { settleThroughMainCash } from "@/lib/cash-settlement";
 import { centsNumber } from "@/lib/money";
 import {
   completeFinancialOperation,
@@ -334,34 +334,7 @@ export async function POST(request: Request) {
             actorId: user.id,
           },
         });
-        if (data.paymentSource === "PETTY_CASH") {
-          const main = await tx.pettyCashAccount.findFirst({
-            where: { type: "MAIN", active: true },
-          });
-          if (!main) throw new Error("لم يتم إعداد صندوق النثريات.");
-          const movements = await tx.pettyCashTransaction.findMany();
-          if (balanceForAccount(movements, main.id) < amountCents)
-            throw new Error("رصيد صندوق النثريات لا يكفي لسداد الدفعة.");
-          const id = randomUUID();
-          const movement = {
-            id,
-            number: `PC-PUR-${id}`,
-            type: "PURCHASE_PAYMENT",
-            amountCents,
-            transactionDate: new Date(data.paymentDate),
-            sourceAccountId: main.id,
-            destinationAccountId: null,
-            projectId: invoice.projectId,
-            categoryId: null,
-            description: `دفعة مورد عن فاتورة: ${invoice.name}`,
-            documentNumber: number,
-            fundingSource: null,
-            recordedById: user.id,
-            status: "POSTED",
-          };
-          assertBalances([...movements, movement]);
-          await tx.pettyCashTransaction.create({ data: movement });
-        }
+        await settleThroughMainCash(tx, { source: data.paymentSource, amountCents, date: new Date(data.paymentDate), actorId: user.id, projectId: invoice.projectId, documentNumber: number, description: `دفعة مورد عن فاتورة: ${invoice.name}`, operationId: created.id });
         await postPurchasePaymentJournal(tx, {
           id: created.id,
           amountCents,
@@ -534,34 +507,7 @@ export async function POST(request: Request) {
           items: { createMany: { data: items } },
         },
       });
-      if (data.paymentSource === "PETTY_CASH" && paidCents > 0) {
-        const main = await tx.pettyCashAccount.findFirst({
-          where: { type: "MAIN", active: true },
-        });
-        if (!main) throw new Error("لم يتم إعداد صندوق النثريات.");
-        const movements = await tx.pettyCashTransaction.findMany();
-        if (balanceForAccount(movements, main.id) < paidCents)
-          throw new Error("رصيد صندوق النثريات لا يكفي لسداد المبلغ المحدد.");
-        const id = randomUUID();
-        const movement = {
-          id,
-          number: `PC-PUR-${id}`,
-          type: "PURCHASE_PAYMENT",
-          amountCents: paidCents,
-          transactionDate: new Date(data.invoiceDate),
-          sourceAccountId: main.id,
-          destinationAccountId: null,
-          projectId: data.projectId,
-          categoryId: null,
-          description: `سداد فاتورة مشتريات: ${data.name}`,
-          documentNumber: number,
-          fundingSource: null,
-          recordedById: user.id,
-          status: "POSTED",
-        };
-        assertBalances([...movements, movement]);
-        await tx.pettyCashTransaction.create({ data: movement });
-      }
+      if (paidCents > 0) await settleThroughMainCash(tx, { source: data.paymentSource, amountCents: paidCents, date: new Date(data.invoiceDate), actorId: user.id, projectId: data.projectId, documentNumber: number, description: `سداد فاتورة مشتريات: ${data.name}`, operationId: created.id });
       if (paidCents > 0)
         await tx.purchasePayment.create({
           data: {

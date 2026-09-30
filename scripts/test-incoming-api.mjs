@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import { financials, incomingStages } from "../src/lib/incoming.ts";
+import { financials, engineeringIncomingStages } from "../src/lib/incoming.ts";
 const db = new PrismaClient();
 const base = process.env.ERP_TEST_URL || "http://localhost:3090";
 const cookieMap = new Map();
@@ -133,7 +133,7 @@ try {
     value: 900_000,
   });
   assert.equal(r.status, 400, "cumulative must not decrease");
-  for (const [stage] of incomingStages.slice(1, -1)) {
+  for (const [stage] of engineeringIncomingStages.slice(1, -1)) {
     r = await post({ action: "stage", id: first, stage }, false);
     assert.equal(r.status, 200, JSON.stringify(r));
   }
@@ -210,7 +210,7 @@ try {
     90_000_000,
     "unpaid second does not affect net",
   );
-  for (const [stage] of incomingStages.slice(1, -1))
+  for (const [stage] of engineeringIncomingStages.slice(1, -1))
     assert.equal(
       (await post({ action: "stage", id: second, stage }, false)).status,
       200,

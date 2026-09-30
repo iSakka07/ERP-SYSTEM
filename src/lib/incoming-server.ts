@@ -92,20 +92,27 @@ export async function incomingUser(permission: string) {
   return { id: profile.user.id, admin: profile.user.role!.key === "admin", roleKey: profile.user.role!.key, projectIds: profile.projectIds, isProjectScoped: profile.isProjectScoped };
 }
 
-export async function readIncomingFiles(form: FormData, field = "files") {
+export async function readIncomingFiles(
+  form: FormData,
+  field = "files",
+  limits: { maxFileBytes?: number; maxTotalBytes?: number } = {},
+) {
   const files = form
     .getAll(field)
     .filter((f): f is File => f instanceof File && f.size > 0);
-  const maxFileBytes = 5 * 1024 * 1024;
-  const maxTotalBytes = 10 * 1024 * 1024;
+  const labels = form.getAll(`${field}Labels`).map((value) => String(value).trim());
+  if (files.length && (labels.length !== files.length || labels.some((label) => !label || label.length > 160)))
+    throw new Error("اكتب وصفًا واضحًا لكل مرفق.");
+  const maxFileBytes = limits.maxFileBytes ?? 5 * 1024 * 1024;
+  const maxTotalBytes = limits.maxTotalBytes ?? 10 * 1024 * 1024;
   if (
     files.length > 5 ||
     files.some((file) => file.size > maxFileBytes) ||
     files.reduce((s, f) => s + f.size, 0) > maxTotalBytes
   )
-    throw new Error("الحد الأقصى 5 مرفقات بإجمالي 10 ميجابايت.");
+    throw new Error(`الحد الأقصى 5 مرفقات بإجمالي ${Math.round(maxTotalBytes / 1024 / 1024)} ميجابايت.`);
   return Promise.all(
-    files.map(async (f) => {
+    files.map(async (f, index) => {
       const data = Buffer.from(await f.arrayBuffer());
       if (data.length !== f.size || data.length > maxFileBytes)
         throw new Error("حجم أحد المرفقات غير مسموح به.");
@@ -130,6 +137,7 @@ export async function readIncomingFiles(form: FormData, field = "files") {
         );
       return {
         name: f.name.slice(0, 200),
+        label: labels[index],
         mime: "application/octet-stream",
         size: f.size,
         data,

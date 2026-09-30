@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { financials, incomingStages } from "@/lib/incoming";
+import { financials, incomingStages, isValidIncomingStageTransition } from "@/lib/incoming";
 import { assertMaterialCertificateTotals, createMaterialCertificate, incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import { incomingCollectionCashCents, postIncomingAccrual, postIncomingCollection, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
@@ -69,7 +69,7 @@ const schema = z.discriminatedUnion("action", [
   }),
 ]);
 const include = {
-  project: { select: { id: true, companyId: true } },
+  project: { select: { id: true, companyId: true, company: { select: { isEngineeringAuthority: true } } } },
   memos: true,
   statements: {
     orderBy: { sequence: "asc" as const },
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
   try {
     if (!validOrigin(request))
       return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
-    if (Number(request.headers.get("content-length") || 0) > 11 * 1024 * 1024)
+    if (Number(request.headers.get("content-length") || 0) > 55 * 1024 * 1024)
       return NextResponse.json(
         { error: "حجم الطلب أكبر من الحد المسموح." },
         { status: 413 },
@@ -107,12 +107,16 @@ export async function POST(request: Request) {
       );
     const d = parsed.data;
     const canUseProject = (projectId: string) => !user.isProjectScoped || user.projectIds.includes(projectId);
-    const files = await readIncomingFiles(form);
+    const contractFileLimits = d.action === "contract"
+      ? { maxFileBytes: 50 * 1024 * 1024, maxTotalBytes: 50 * 1024 * 1024 }
+      : undefined;
+    const files = await readIncomingFiles(form, "files", contractFileLimits);
     const estimateFiles = await readIncomingFiles(form, "estimateFiles");
     const memoFiles = await readIncomingFiles(form, "memoFiles");
     const allFiles = [...files, ...estimateFiles, ...memoFiles];
-    if (allFiles.length > 5 || allFiles.reduce((n, f) => n + f.size, 0) > 10 * 1024 * 1024)
-      throw new Error("الحد الأقصى 5 مرفقات بإجمالي 10 ميجابايت لكل المستند.");
+    const documentLimit = d.action === "contract" ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (allFiles.length > 5 || allFiles.reduce((n, f) => n + f.size, 0) > documentLimit)
+      throw new Error(`الحد الأقصى 5 مرفقات بإجمالي ${Math.round(documentLimit / 1024 / 1024)} ميجابايت لكل المستند.`);
     if (estimateFiles.length && d.action !== "contract") throw new Error("مرفق المقايسة خاص بالعقد فقط.");
     if (["statement", "material", "stage"].includes(d.action)) {
       const guarded = await guardFinancialOperation(request, { actorId: user.id, operation: `incoming.${d.action}`, requestData: d, businessData: d });
@@ -352,8 +356,8 @@ export async function POST(request: Request) {
         before = s;
         entityType = "statement";
         target = s.id;
-        const from = incomingStages.findIndex((x) => x[0] === s.stage);
-        const to = incomingStages.findIndex((x) => x[0] === d.stage);
+        const { from, to, valid } = isValidIncomingStageTransition(s.stage, d.stage, c.project.company.isEngineeringAuthority);
+        if (from < 0 || to < 0) throw new Error("مرحلة المستخلص لا توافق دورة الجهة المالكة الحالية. أعِد المستخلص إلى مرحلة شركة أولًا.");
         if (locked(c, s.sequence) && s.stage !== "PAID")
           throw new Error("مستخلص سابق مقفل بمستخلص لاحق مصروف.");
         if (to < from && (!d.reason || (s.stage === "PAID" && !user.admin)))
@@ -367,7 +371,7 @@ export async function POST(request: Request) {
           )
         )
           throw new Error("ارجع آخر مستخلص مصروف أولًا.");
-        if (to > from && to !== from + 1)
+        if (!valid || (to > from && to !== from + 1))
           throw new Error("انتقل للمرحلة التالية بالترتيب.");
         if (s.stage === "PAID" && d.stage !== "PAID") {
           const reversedAt = new Date();

@@ -55,4 +55,5 @@ export type ExpenseAttachmentInfo = {
   entityType: string;
   entityId: string;
   name: string;
+  label: string;
 };

@@ -32,6 +32,7 @@ import {
   financials,
   grossNotice,
   incomingStages,
+  incomingStagesFor,
   money,
   statementLabel,
 } from "@/lib/incoming";
@@ -39,7 +40,8 @@ import {
 export type Project = {
   id: string;
   name: string;
-  company: { id: string; name: string };
+  label: string;
+  company: { id: string; name: string; isEngineeringAuthority: boolean };
   supervisors?: { employee: { name: string } }[];
 };
 type Material = {
@@ -85,6 +87,7 @@ export type Attachment = {
   entityId: string;
   entityType: string;
   name: string;
+  label: string;
   size: number;
 };
 export type Editor = {
@@ -136,6 +139,8 @@ export function IncomingCenter({
   const [message, setMessage] = useState("");
   const [pdfChoiceOpen, setPdfChoiceOpen] = useState(false);
   const [pdfWorking, setPdfWorking] = useState(false);
+  const workflowProject = projects.find((item) => item.id === project || item.company.id === owner);
+  const filterStages = workflowProject ? incomingStagesFor(workflowProject.company.isEngineeringAuthority) : incomingStages;
   useEffect(() => {
     const showChoice = () => setPdfChoiceOpen(true);
     window.addEventListener("incoming-pdf-request", showChoice);
@@ -397,7 +402,7 @@ export function IncomingCenter({
                 label="كل مراحل المستخلصات"
                 value={stage}
                 onChange={setStage}
-                options={incomingStages.map(([id, name]) => ({ id, name }))}
+                options={filterStages.map(([id, name]) => ({ id, name }))}
               />
             </div>
             <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-400">
@@ -589,6 +594,7 @@ const stageStyles: Record<string, string> = {
   SUPPLY: "border-cyan-200 bg-cyan-50 text-cyan-800",
   FINANCE: "border-amber-200 bg-amber-50 text-amber-800",
   CENTRAL: "border-orange-200 bg-orange-50 text-orange-800",
+  IN_CYCLE: "border-violet-200 bg-violet-50 text-violet-800",
   PAID: "border-emerald-200 bg-emerald-50 text-emerald-800",
 };
 function stageClass(stage: string) { return stageStyles[stage] || stageStyles.COMPANY; }
@@ -710,10 +716,11 @@ export function IncomingEditor({
   const [projectId, setProjectId] = useState(
     c?.projectId || projects[0]?.id || "",
   );
+  const stageFlow = incomingStagesFor(Boolean(c?.project.company.isEngineeringAuthority));
   const [stage, setStage] = useState<string>(
     s
-      ? incomingStages[
-          Math.min(incomingStages.findIndex((x) => x[0] === s.stage) + 1, 8)
+      ? stageFlow[
+          Math.min(stageFlow.findIndex((x) => x[0] === s.stage) + 1, stageFlow.length - 1)
         ][0]
       : "COMPANY",
   );
@@ -785,7 +792,9 @@ export function IncomingEditor({
   const statementValue = statementKind === "FINAL" ? String(finalValueCents / 100) : value;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = Object.fromEntries(new FormData(event.currentTarget));
+    const formData = new FormData(event.currentTarget);
+    const attachedMemoFiles = formData.getAll("memoFiles").filter((file): file is File => file instanceof File && file.size > 0);
+    const data = Object.fromEntries(formData);
     const finalAdjustment = e.action === "statement" && statementKind === "FINAL" && hasFinalAdjustment
       ? { increase: adjustmentIncrease, decrease: adjustmentDecrease, cancelled: adjustmentCancelled }
       : undefined;
@@ -801,7 +810,7 @@ export function IncomingEditor({
       ...(finalAdjustment ? { finalAdjustment } : {}),
       ...(statementMaterials?.length ? { materialNumber, materials: statementMaterials } : {}),
     };
-    await onSave(payload, files, estimateFiles, memoFiles);
+    await onSave(payload, files, estimateFiles, memoFiles.length ? memoFiles : attachedMemoFiles);
   }
   const patchItem = (index: number, patch: Partial<Item>) =>
     setItems((rows) =>
@@ -933,7 +942,7 @@ export function IncomingEditor({
             </div>
             {statementKind === "FINAL" && <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold text-slate-900">مذكرة خفض/رفع</h3><p className="mt-1 text-xs text-slate-500">هل يوجد مذكرة خفض/رفع؟</p></div><div className="flex gap-2"><button type="button" onClick={() => setHasFinalAdjustment(true)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${hasFinalAdjustment ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white text-slate-700"}`}>نعم</button><button type="button" onClick={() => setHasFinalAdjustment(false)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${!hasFinalAdjustment ? "border-slate-500 bg-slate-200 text-slate-800" : "border-slate-300 bg-white text-slate-700"}`}>لا</button></div></div>
-              {hasFinalAdjustment && <><div className="grid gap-3 md:grid-cols-3"><Field label="بنود رفع (زيادة العقد)" name="adjustmentIncrease" type="number" value={adjustmentIncrease} onChange={setAdjustmentIncrease} required={false} /><Field label="بنود خفض" name="adjustmentDecrease" type="number" value={adjustmentDecrease} onChange={setAdjustmentDecrease} required={false} /><Field label="بنود ملغاة" name="adjustmentCancelled" type="number" value={adjustmentCancelled} onChange={setAdjustmentCancelled} required={false} /></div><UploadBox label="مرفق المذكرة" required onFilesChange={setMemoFiles} hint="PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت" /></>}
+              {hasFinalAdjustment && <><div className="grid gap-3 md:grid-cols-3"><Field label="بنود رفع (زيادة العقد)" name="adjustmentIncrease" type="number" value={adjustmentIncrease} onChange={setAdjustmentIncrease} required={false} /><Field label="بنود خفض" name="adjustmentDecrease" type="number" value={adjustmentDecrease} onChange={setAdjustmentDecrease} required={false} /><Field label="بنود ملغاة" name="adjustmentCancelled" type="number" value={adjustmentCancelled} onChange={setAdjustmentCancelled} required={false} /></div><UploadBox label="مرفق المذكرة" name="memoFiles" required onFilesChange={setMemoFiles} hint="PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت" /></>}
             </section>}
             {statementKind === "FINAL" && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-900">الختامي يقفل قيمة العقد تلقائيًا بعد احتساب مذكرة الخفض/الرفع.</p>}
             <div className="grid gap-3 rounded-lg bg-blue-50 p-4 text-xs md:grid-cols-3">
@@ -1141,7 +1150,7 @@ export function IncomingEditor({
           <>
             <p className="text-sm">
               المرحلة الحالية:{" "}
-              <b>{incomingStages.find((x) => x[0] === s?.stage)?.[1]}</b>
+              <b>{stageFlow.find((x) => x[0] === s?.stage)?.[1] || s?.stage}</b>
             </p>
             <label>
               <Label>المرحلة الجديدة</Label>
@@ -1151,13 +1160,13 @@ export function IncomingEditor({
                 onValueChange={(ev) => setStage(ev)}
                 className={inputClass}
               >
-                {incomingStages.map(([key, label], index) => (
+                {stageFlow.map(([key, label], index) => (
                   <option
                     key={key}
                     value={key}
                     disabled={
                       index >
-                        incomingStages.findIndex((x) => x[0] === s?.stage) +
+                        stageFlow.findIndex((x) => x[0] === s?.stage) +
                           1 ||
                       (s?.stage === "PAID" && !isAdmin)
                     }
@@ -1171,8 +1180,8 @@ export function IncomingEditor({
               label="سبب الرجوع / ملاحظات الحركة"
               name="reason"
               required={
-                incomingStages.findIndex((x) => x[0] === stage) <
-                incomingStages.findIndex((x) => x[0] === s?.stage)
+                stageFlow.findIndex((x) => x[0] === stage) <
+                stageFlow.findIndex((x) => x[0] === s?.stage)
               }
             />
             {stage === "PAID" && (
@@ -1216,7 +1225,7 @@ export function IncomingEditor({
         )}
         {!(e.action === "statement" && hasMaterials) && <UploadBox
           label={e.action === "stage" && stage === "PAID" ? "إثبات الصرف" : e.action === "contract" ? "مرفق العقد" : e.action === "statement" ? "مرفق المستخلص" : e.action === "material" ? "مرفق شهادة الخامات" : "مرفق المذكرة"}
-          hint={e.action === "statement" ? "A3 · PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت" : undefined}
+          hint={e.action === "contract" ? "PDF / Excel / صورة · حتى 5 ملفات بإجمالي 50 ميجابايت" : e.action === "statement" ? "A3 · PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت" : undefined}
           required={needsFile}
           onFilesChange={setFiles}
         />}
@@ -1360,7 +1369,7 @@ function FloatingPanel({ trigger, children, width = 280, clickOnly = false, full
 
 function Files({ files, compact = false }: { files: Attachment[]; compact?: boolean }) {
   if (!files.length) return compact ? <span className="inline-grid size-[34px] place-items-center text-slate-300" aria-label="لا توجد مرفقات"><Paperclip className="size-4" /></span> : null;
-  if (compact) return <FloatingPanel clickOnly trigger={<button type="button" className="erp-icon-action relative" aria-label={`عرض ${files.length} مرفق`} title={`عرض ${files.length} مرفق`}><Paperclip className="size-4" />{files.length > 1 && <span className="absolute -left-1 -top-1 grid size-4 place-items-center rounded-full bg-blue-700 text-[9px] font-bold text-white">{files.length}</span>}</button>}><div className="p-2">{files.map(file => <a key={file.id} className="block rounded-md px-2 py-2 text-xs text-blue-700 hover:bg-blue-50" href={`/api/incoming/attachments/${file.id}`}>{file.name}</a>)}</div></FloatingPanel>;
+  if (compact) return <span className="inline-flex flex-wrap gap-1">{files.map(file => <a key={file.id} className="text-xs font-bold text-blue-700 underline" href={`/api/incoming/attachments/${file.id}`}>{file.label}</a>)}</span>;
   return (
     <span className="inline-flex flex-wrap gap-2">
       {files.map((f) => (
@@ -1370,7 +1379,7 @@ function Files({ files, compact = false }: { files: Attachment[]; compact?: bool
           href={`/api/incoming/attachments/${f.id}`}
         >
           <Paperclip className="size-3" />
-          {f.name} ({Math.ceil(f.size / 1024)} KB)
+          {f.label} ({Math.ceil(f.size / 1024)} KB)
         </a>
       ))}
     </span>
@@ -1380,6 +1389,6 @@ function Files({ files, compact = false }: { files: Attachment[]; compact?: bool
 function AttachmentLinks({ label, files }: { label: string; files: Attachment[] }) {
   if (!files.length) return null;
   return <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-    {files.map((file) => <a key={file.id} className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.name}>{label}</a>)}
+    {files.map((file) => <a key={file.id} className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.label}>{file.label || label}</a>)}
   </span>;
 }

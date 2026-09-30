@@ -311,7 +311,7 @@ export function PurchaseInvoicePage({
               className={`${expenseInput} mt-2`}
             >
               <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
-              <option value="PETTY_CASH">صندوق النثريات</option>
+              <option value="PETTY_CASH">الخزنة الرئيسية</option>
             </ERPSelect>
           </label>
           <label className="text-xs font-bold md:col-span-2">

@@ -112,6 +112,8 @@ model Company {
   id                  String               @id @default(cuid())
   name                String               @unique
   type                String
+  isEngineeringAuthority Boolean              @default(false)
+  workNature          String?
   phone               String?
   active              Boolean              @default(true)
   projects            Project[]
@@ -225,6 +227,7 @@ model IncomingAttachment {
   entityType String
   entityId   String
   name       String
+  label      String   @default("مرفق")
   mime       String
   size       Int
   data       Bytes
@@ -252,6 +255,35 @@ model Employee {
   deductions EmployeeDeduction[]
   advances EmployeeAdvance[]
   payrollLines PayrollLine[]
+  statusPeriods EmployeeStatusPeriod[]
+  salaryRates EmployeeSalaryRate[]
+}
+
+model EmployeeSalaryRate {
+  id                 String   @id @default(cuid())
+  employeeId         String
+  startDate          DateTime
+  monthlySalaryCents Float
+  changedById        String
+  createdAt          DateTime @default(now())
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, startDate])
+  @@index([employeeId, startDate])
+}
+
+model EmployeeStatusPeriod {
+  id          String   @id @default(cuid())
+  employeeId  String
+  startDate   DateTime
+  endDate     DateTime?
+  startedById String
+  endedById   String?
+  createdAt   DateTime @default(now())
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, startDate])
+  @@index([employeeId, endDate])
 }
 
 model EmployeeSalaryAllocation {
@@ -364,6 +396,7 @@ model SalaryAttachment {
   bonusId String?
   deductionId String?
   name String
+  label String @default("مرفق")
   mime String
   size Int
   data Bytes
@@ -483,6 +516,8 @@ model SubcontractPayment {
   reference   String
   notes       String?
   actorId     String
+  paymentSource String @default("EXECUTIVE_DIRECTOR")
+  cashOperationId String?
   status      String               @default("POSTED")
   reversedAt  DateTime?
   reversalReason String?
@@ -538,6 +573,7 @@ model ExpenseAttachment {
   entityType String
   entityId   String
   name       String
+  label      String   @default("مرفق")
   mime       String
   size       Int
   data       Bytes
@@ -725,6 +761,7 @@ model PurchaseAttachment {
   entityType String
   entityId   String
   name       String
+  label      String   @default("مرفق")
   mime       String
   size       Int
   data       Bytes
@@ -779,6 +816,8 @@ model PettyCashTransaction {
   description        String
   documentNumber     String?
   fundingSource      String?
+  operationId        String?
+  linkedEntityType   String?
   recordedById       String
   recordedBy         User                 @relation(fields: [recordedById], references: [id])
   reversedAt         DateTime?
@@ -789,6 +828,7 @@ model PettyCashTransaction {
   @@index([projectId])
   @@index([sourceAccountId, transactionDate])
   @@index([destinationAccountId, transactionDate])
+  @@index([operationId])
 }
 
 model PettyCashAttachment {
@@ -796,6 +836,7 @@ model PettyCashAttachment {
   transactionId String
   transaction   PettyCashTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   name          String
+  label         String               @default("مرفق")
   mime          String
   size          Int
   data          Bytes
@@ -864,6 +905,7 @@ model BankAttachment {
   transactionId String
   transaction   BankTransaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   name          String
+  label         String           @default("مرفق")
   mime          String
   size          Int
   data          Bytes

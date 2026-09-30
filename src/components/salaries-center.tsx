@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   Banknote,
   BadgeMinus,
+  ChevronDown,
   FileText,
   Gift,
-  Trash2,
+  Power,
+  RotateCcw,
   UserRound,
   WalletCards,
 } from "lucide-react";
@@ -27,6 +29,7 @@ import {
   previewDataPdf,
   usePdfDataExport,
 } from "@/components/pdf-data-export";
+import { buildPayrollDistribution } from "@/lib/salary-payroll";
 
 type Employee = {
   id: string;
@@ -34,6 +37,7 @@ type Employee = {
   name: string;
   jobTitle: string;
   monthlySalaryCents: number;
+  active: boolean;
 };
 type Project = { id: string; name: string };
 type Allocation = {
@@ -43,6 +47,8 @@ type Allocation = {
   startDate: string | Date;
   endDate: string | Date | null;
 };
+type StatusPeriod = { employeeId: string; startDate: string | Date; endDate: string | Date | null };
+type SalaryRate = { employeeId: string; startDate: string | Date; monthlySalaryCents: number };
 type Run = {
   id: string;
   month: string;
@@ -131,6 +137,8 @@ export function SalariesCenter({
   employees,
   projects,
   allocations,
+  statusPeriods,
+  salaryRates,
   runs,
   advances,
   bonuses,
@@ -142,6 +150,8 @@ export function SalariesCenter({
   employees: Employee[];
   projects: Project[];
   allocations: Allocation[];
+  statusPeriods: StatusPeriod[];
+  salaryRates: SalaryRate[];
   runs: Run[];
   advances: Advance[];
   bonuses: Adjustment[];
@@ -160,6 +170,11 @@ export function SalariesCenter({
     employee: Employee;
     type: "bonus" | "deduction";
   } | null>(null);
+  const [statusChange, setStatusChange] = useState<{
+    employee: Employee;
+    status: "ACTIVE" | "INACTIVE";
+  } | null>(null);
+  const [salaryEditEmployee, setSalaryEditEmployee] = useState<Employee | null>(null);
   const currentAllocations = useMemo(
     () =>
       new Map(
@@ -179,6 +194,14 @@ export function SalariesCenter({
   const monthlyBonuses = bonuses.filter((item) => item.month === month);
   const monthlyDeductions = deductions.filter((item) => item.month === month);
   const currentAdvances = advances.filter((item) => item.remainingCents > 0);
+  const salaryDistribution = (employee: Employee) =>
+    buildPayrollDistribution(
+      month,
+      employee.monthlySalaryCents,
+      allocations.filter((allocation) => allocation.employee.id === employee.id).map((allocation) => ({ projectId: allocation.project?.id ?? null, startDate: new Date(allocation.startDate), endDate: allocation.endDate ? new Date(allocation.endDate) : null })),
+      statusPeriods.filter((period) => period.employeeId === employee.id).map((period) => ({ startDate: new Date(period.startDate), endDate: period.endDate ? new Date(period.endDate) : null })),
+      salaryRates.filter((rate) => rate.employeeId === employee.id).map((rate) => ({ startDate: new Date(rate.startDate), monthlySalaryCents: rate.monthlySalaryCents })),
+    );
   usePdfDataExport(() => {
     if (tab === "payroll") {
       void previewDataPdf({
@@ -234,10 +257,12 @@ export function SalariesCenter({
             ["السلف", 2],
             ["المكافآت", 2],
             ["الخصومات", 2],
+            ["توزيع الراتب", 3],
             ["الحالة", 1],
           ),
           rows: employees.map((employee) => {
             const allocation = currentAllocations.get(employee.id);
+            const distribution = salaryDistribution(employee);
             return [
               `${employee.name} · ${employee.employeeCode}`,
               allocation?.project ? "مشروع" : "عام الشركة",
@@ -258,7 +283,8 @@ export function SalariesCenter({
                   .filter((item) => item.employee.id === employee.id)
                   .reduce((sum, item) => sum + item.amountCents, 0),
               ),
-              "نشط",
+              distribution.length > 1 ? distribution.map((part) => `${part.projectId ? projects.find((project) => project.id === part.projectId)?.name ?? "مشروع غير متاح" : "عام الشركة"}: ${part.days} يوم — ${pdfMoney(part.cents)}`).join("\n") : "—",
+              employee.active ? "نشط" : "غير نشط",
             ];
           }),
         },
@@ -328,6 +354,8 @@ export function SalariesCenter({
       form.reset();
       setAdvanceEmployee(null);
       setAdjustment(null);
+      setStatusChange(null);
+      setSalaryEditEmployee(null);
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "تعذر حفظ العملية.");
@@ -343,34 +371,10 @@ export function SalariesCenter({
     event.preventDefault();
     await send(event.currentTarget, action, files);
   }
-  async function removeEmployee(employee: Employee) {
-    if (
-      !window.confirm(
-        `مسح «${employee.name}» من قوائم المرتبات؟ سيظل تاريخه المالي محفوظًا.`,
-      )
-    )
-      return;
-    const form = new FormData();
-    form.set("action", "employee-delete");
-    form.set("payload", JSON.stringify({ employeeId: employee.id }));
-    setBusy(`delete-${employee.id}`);
-    const response = await fetch("/api/salaries", {
-      method: "POST",
-      body: form,
-    });
-    const result = await response.json();
-    setBusy("");
-    setMessage(
-      response.ok
-        ? "تم مسح الموظف من القوائم مع حفظ تاريخه المالي."
-        : result.error || "تعذر المسح.",
-    );
-    if (response.ok) router.refresh();
-  }
-  async function pay(id: string) {
+  async function pay(id: string, source = "EXECUTIVE_DIRECTOR") {
     const form = new FormData();
     form.set("action", "payroll-pay");
-    form.set("payload", JSON.stringify({ id }));
+    form.set("payload", JSON.stringify({ id, source }));
     const scope = `salary-payroll-pay-${id}`;
     setBusy(`pay-${id}`);
     try {
@@ -442,6 +446,7 @@ export function SalariesCenter({
         <EmployeesTab
           employees={employees}
           projects={projects}
+          salaryDistribution={salaryDistribution}
           currentAllocations={currentAllocations}
           advances={currentAdvances}
           bonuses={monthlyBonuses}
@@ -453,7 +458,8 @@ export function SalariesCenter({
           onSubmit={submit}
           onAdvance={setAdvanceEmployee}
           onAdjustment={setAdjustment}
-          onDelete={removeEmployee}
+          onStatusChange={setStatusChange}
+          onEditSalary={setSalaryEditEmployee}
         />
       ) : (
         <>
@@ -522,6 +528,16 @@ export function SalariesCenter({
           onSubmit={submit}
         />
       )}
+      {statusChange && (
+        <EmployeeStatusDialog
+          employee={statusChange.employee}
+          status={statusChange.status}
+          busy={busy}
+          onClose={() => setStatusChange(null)}
+          onSubmit={submit}
+        />
+      )}
+      {salaryEditEmployee && <SalaryEditDialog employee={salaryEditEmployee} busy={busy} onClose={() => setSalaryEditEmployee(null)} onSubmit={submit} />}
     </div>
   );
 }
@@ -529,6 +545,7 @@ export function SalariesCenter({
 function EmployeesTab({
   employees,
   projects,
+  salaryDistribution,
   currentAllocations,
   advances,
   bonuses,
@@ -540,10 +557,12 @@ function EmployeesTab({
   onSubmit,
   onAdvance,
   onAdjustment,
-  onDelete,
+  onStatusChange,
+  onEditSalary,
 }: {
   employees: Employee[];
   projects: Project[];
+  salaryDistribution: (employee: Employee) => { projectId: string | null; days: number; cents: number }[];
   currentAllocations: Map<string, Allocation | undefined>;
   advances: Advance[];
   bonuses: Adjustment[];
@@ -562,28 +581,31 @@ function EmployeesTab({
     employee: Employee;
     type: "bonus" | "deduction";
   }) => void;
-  onDelete: (employee: Employee) => Promise<void>;
+  onStatusChange: (change: { employee: Employee; status: "ACTIVE" | "INACTIVE" }) => void;
+  onEditSalary: (employee: Employee) => void;
 }) {
+  const [statusTab, setStatusTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
+  const [expandedSalaryDistribution, setExpandedSalaryDistribution] = useState<string | null>(null);
+  const activeEmployees = employees.filter((employee) => employee.active);
+  const inactiveEmployees = employees.filter((employee) => !employee.active);
+  const visibleEmployees = statusTab === "ACTIVE" ? activeEmployees : inactiveEmployees;
   return (
     <div className="space-y-5">
       {canManage && (
         <section className="rounded-2xl border bg-white p-5 shadow-sm">
-          <h2 className="text-base font-black">الراتب والتسكين</h2>
+          <h2 className="text-base font-black">التسكين</h2>
           <p className="mt-1 text-xs text-slate-500">
             اختيار تسكين جديد يقفل السابق تلقائيًا من تاريخ اليوم.
           </p>
           <form
             onSubmit={(event) => onSubmit(event, "employee-config")}
-            className="mt-4 grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto]"
+            className="mt-4 grid gap-3 md:grid-cols-[1.2fr_1fr_auto]"
           >
             <Field label="الموظف *">
-              <Select name="employeeId" options={employees} />
+              <Select name="employeeId" options={activeEmployees} />
             </Field>
             <Field label="المشروع / عام الشركة">
               <Select name="projectId" options={projects} optional />
-            </Field>
-            <Field label="الراتب الشهري *">
-              <CurrencyInput name="monthlySalaryCents" required min="0.01" />
             </Field>
             <button
               disabled={busy === "employee-config"}
@@ -606,6 +628,10 @@ function EmployeesTab({
             <MonthInput value={month} onChange={setMonth} />
           </Field>
         </div>
+        <div className="flex gap-2 border-b bg-slate-50 p-3">
+          <button type="button" onClick={() => setStatusTab("ACTIVE")} className={`rounded-lg px-4 py-2 text-sm font-bold ${statusTab === "ACTIVE" ? "bg-emerald-700 text-white" : "bg-white text-slate-600"}`}>نشط ({activeEmployees.length})</button>
+          <button type="button" onClick={() => setStatusTab("INACTIVE")} className={`rounded-lg px-4 py-2 text-sm font-bold ${statusTab === "INACTIVE" ? "bg-slate-700 text-white" : "bg-white text-slate-600"}`}>غير نشط ({inactiveEmployees.length})</button>
+        </div>
         <div className="erp-table-scroll">
           <table className="erp-data-table erp-responsive-table min-w-[1150px]">
             <thead>
@@ -626,8 +652,9 @@ function EmployeesTab({
               </tr>
             </thead>
             <tbody>
-              {employees.map((employee) => {
+              {visibleEmployees.map((employee) => {
                 const allocation = currentAllocations.get(employee.id);
+                const distribution = salaryDistribution(employee);
                 const employeeAdvances = advances
                   .filter((item) => item.employee.id === employee.id)
                   .reduce((sum, item) => sum + item.remainingCents, 0);
@@ -649,9 +676,30 @@ function EmployeesTab({
                       {allocation?.project ? "مشروع" : "عام الشركة"}
                     </td>
                     <td data-label="الراتب الشهري" className="text-center">
-                      <MoneyValue>
-                        {money(employee.monthlySalaryCents)} ج.م
-                      </MoneyValue>
+                      <div className="flex items-center justify-center gap-1">
+                        <MoneyValue>{money(employee.monthlySalaryCents)} ج.م</MoneyValue>
+                        {distribution.length > 1 && (
+                          <button
+                            type="button"
+                            aria-label={`عرض توزيع راتب ${employee.name}`}
+                            aria-expanded={expandedSalaryDistribution === employee.id}
+                            onClick={() => setExpandedSalaryDistribution((current) => current === employee.id ? null : employee.id)}
+                            className="rounded p-1 text-blue-700 hover:bg-blue-50"
+                          >
+                            <ChevronDown className={`size-4 transition-transform ${expandedSalaryDistribution === employee.id ? "rotate-180" : ""}`} />
+                          </button>
+                        )}
+                      </div>
+                      {distribution.length > 1 && expandedSalaryDistribution === employee.id && (
+                        <div className="mt-2 space-y-1 text-right text-[11px] font-medium text-slate-500">
+                          <p className="font-bold text-blue-700">توزيع راتب {month}</p>
+                          {distribution.map((part, index) => (
+                            <p key={`${part.projectId ?? "general"}-${index}`}>
+                              {part.projectId ? projects.find((project) => project.id === part.projectId)?.name ?? "مشروع غير متاح" : "عام الشركة"}: {part.days} يوم — {money(part.cents)} ج.م
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td data-label="المشروع">
                       {allocation?.project?.name ?? "عام الشركة"}
@@ -666,20 +714,27 @@ function EmployeesTab({
                       <MoneyValue>{money(employeeDeductions)} ج.م</MoneyValue>
                     </td>
                     <td data-label="الحالة">
-                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
-                        نشط
+                      <span className={`rounded-full px-2 py-1 text-xs font-bold ${employee.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                        {employee.active ? "نشط" : "غير نشط"}
                       </span>
                     </td>
                     <td data-label="الإجراءات">
                       <div className="flex justify-end gap-2">
-                        {canManage && (
+                        {canManage && employee.active && (
+                          <IconAction
+                            label="تعديل الراتب"
+                            icon={Banknote}
+                            onClick={() => onEditSalary(employee)}
+                          />
+                        )}
+                        {canManage && employee.active && (
                           <IconAction
                             label="إضافة سلفة"
                             icon={WalletCards}
                             onClick={() => onAdvance(employee)}
                           />
                         )}
-                        {canManage && (
+                        {canManage && employee.active && (
                           <IconAction
                             label="إضافة مكافأة"
                             icon={Gift}
@@ -689,7 +744,7 @@ function EmployeesTab({
                             }
                           />
                         )}
-                        {canManage && (
+                        {canManage && employee.active && (
                           <IconAction
                             label="إضافة خصم"
                             icon={BadgeMinus}
@@ -701,11 +756,11 @@ function EmployeesTab({
                         )}
                         {canManage && (
                           <IconAction
-                            label="مسح الموظف"
-                            icon={Trash2}
-                            tone="danger"
-                            disabled={busy === `delete-${employee.id}`}
-                            onClick={() => onDelete(employee)}
+                            label={employee.active ? "إيقاف الموظف" : "إعادة تفعيل الموظف"}
+                            icon={employee.active ? Power : RotateCcw}
+                            tone={employee.active ? "danger" : "success"}
+                            disabled={busy === "employee-status"}
+                            onClick={() => onStatusChange({ employee, status: employee.active ? "INACTIVE" : "ACTIVE" })}
                           />
                         )}
                       </div>
@@ -713,10 +768,10 @@ function EmployeesTab({
                   </tr>
                 );
               })}
-              {!employees.length && (
+              {!visibleEmployees.length && (
                 <tr>
                   <td colSpan={9} className="p-10 text-center text-slate-400">
-                    لا يوجد موظفون نشطون.
+                    {statusTab === "ACTIVE" ? "لا يوجد موظفون نشطون." : "لا يوجد موظفون غير نشطين."}
                   </td>
                 </tr>
               )}
@@ -724,6 +779,81 @@ function EmployeesTab({
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+function EmployeeStatusDialog({
+  employee,
+  status,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  employee: Employee;
+  status: "ACTIVE" | "INACTIVE";
+  busy: string;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>, action: string) => Promise<void>;
+}) {
+  const activating = status === "ACTIVE";
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
+      <form onSubmit={(event) => onSubmit(event, "employee-status")} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+        <h2 className="text-lg font-black">{activating ? "إعادة تفعيل الموظف" : "إيقاف الموظف"}</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          {activating
+            ? `سيعود «${employee.name}» إلى قوائم التشغيل والرواتب من التاريخ المحدد.`
+            : `سيُحفظ سجل «${employee.name}» بالكامل، ولن يدخل في الرواتب من التاريخ المحدد.`}
+        </p>
+        <input type="hidden" name="employeeId" value={employee.id} />
+        <input type="hidden" name="status" value={status} />
+        <Field label={activating ? "تاريخ العودة للعمل *" : "تاريخ الإيقاف (أول يوم لا يستحق فيه راتبًا) *"}>
+          <input name="effectiveDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className={expenseInput} />
+        </Field>
+        <p className="mt-3 text-xs text-slate-500">لا يمكن اختيار تاريخ داخل شهر له كشف رواتب قائم، ولا تتغير حالة حساب الدخول.</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-bold">إلغاء</button>
+          <button disabled={busy === "employee-status"} className={`rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${activating ? "bg-emerald-700" : "bg-rose-700"}`}>{activating ? "إعادة التفعيل" : "إيقاف الموظف"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SalaryEditDialog({
+  employee,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  employee: Employee;
+  busy: string;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>, action: string) => Promise<void>;
+}) {
+  const [effectiveMode, setEffectiveMode] = useState<"MONTH_START" | "DATE">("MONTH_START");
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
+      <form onSubmit={(event) => onSubmit(event, "employee-salary-update")} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+        <h2 className="text-lg font-black">تعديل الراتب</h2>
+        <p className="mt-2 text-sm text-slate-600">{employee.name} · الراتب الحالي {money(employee.monthlySalaryCents)} ج.م</p>
+        <input type="hidden" name="employeeId" value={employee.id} />
+        <div className="mt-4 grid gap-3">
+          <Field label="الراتب الشهري الجديد *"><CurrencyInput name="amount" required min="0.01" /></Field>
+          <Field label="يسري التعديل *">
+            <ERPSelect name="effectiveMode" value={effectiveMode} onValueChange={(value) => setEffectiveMode(value as "MONTH_START" | "DATE")} className={expenseInput}>
+              <option value="MONTH_START">من أول الشهر المحدد</option>
+              <option value="DATE">من تاريخ محدد داخل الشهر</option>
+            </ERPSelect>
+          </Field>
+          <Field label={effectiveMode === "MONTH_START" ? "الشهر الذي يسري منه الراتب" : "تاريخ بدء الراتب الجديد"}>
+            <input name="effectiveDate" type={effectiveMode === "MONTH_START" ? "month" : "date"} required defaultValue={effectiveMode === "MONTH_START" ? new Date().toISOString().slice(0, 7) : new Date().toISOString().slice(0, 10)} className={expenseInput} />
+          </Field>
+        </div>
+        <p className="mt-3 text-xs text-slate-500">عند اختيار تاريخ محدد، يحسب كشف الشهر الراتب القديم حتى اليوم السابق والجديد من التاريخ المختار. لا يمكن تعديل شهر له كشف رواتب قائم.</p>
+        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-bold">إلغاء</button><button disabled={busy === "employee-salary-update"} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">حفظ تعديل الراتب</button></div>
+      </form>
     </div>
   );
 }
@@ -795,7 +925,7 @@ function AdvanceDialog({
           <Field label="مصدر الصرف">
             <ERPSelect name="source" className={expenseInput}>
               <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
-              <option value="PETTY_CASH">صندوق النثريات</option>
+              <option value="PETTY_CASH">الخزنة الرئيسية</option>
             </ERPSelect>
           </Field>
           <Field label="ملاحظات">
@@ -926,8 +1056,9 @@ function PayrollTab({
     action: string,
     files?: boolean,
   ) => Promise<void>;
-  onPay: (id: string) => Promise<void>;
+  onPay: (id: string, source?: string) => Promise<void>;
 }) {
+  const [sources, setSources] = useState<Record<string, string>>({});
   const approvedCost = runs
     .filter((run) => ["APPROVED", "PAID"].includes(run.status))
     .flatMap((run) =>
@@ -1030,12 +1161,19 @@ function PayrollTab({
                       {run.status === "PAID" ? "مصروف" : "معتمد"}
                     </span>
                   </td>
-                  <td data-label="مصدر الصرف">المدير التنفيذي</td>
+                  <td data-label="مصدر الصرف">
+                    {run.status === "APPROVED" ? (
+                      <select value={sources[run.id] || "EXECUTIVE_DIRECTOR"} onChange={(event) => setSources((current) => ({ ...current, [run.id]: event.target.value }))} className="h-8 min-w-32 rounded border border-slate-200 bg-white px-2 text-xs">
+                        <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
+                        <option value="PETTY_CASH">الخزنة الرئيسية</option>
+                      </select>
+                    ) : "المدير التنفيذي"}
+                  </td>
                   <td data-label="الإجراءات">
                     {canPay && run.status === "APPROVED" ? (
                       <button
                         disabled={busy === `pay-${run.id}`}
-                        onClick={() => onPay(run.id)}
+                        onClick={() => onPay(run.id, sources[run.id] || "EXECUTIVE_DIRECTOR")}
                         className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                       >
                         تسجيل الصرف

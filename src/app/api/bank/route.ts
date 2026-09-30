@@ -18,7 +18,7 @@ export async function GET() {
   if (!(await incomingUser("bank.view"))) return json({ error: "غير مصرح" }, 403);
   const [account, transactions, projects, canManage] = await Promise.all([
     prisma.bankAccount.findFirst({ where: { active: true }, orderBy: { createdAt: "asc" } }),
-    prisma.bankTransaction.findMany({ include: { project: { select: { id: true, name: true } }, actor: { select: { name: true } }, attachments: { select: { id: true, name: true } } }, orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }] }),
+    prisma.bankTransaction.findMany({ include: { project: { select: { id: true, name: true } }, actor: { select: { name: true } }, attachments: { select: { id: true, name: true, label: true } } }, orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }] }),
     prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     incomingUser("bank.manage"),
   ]);

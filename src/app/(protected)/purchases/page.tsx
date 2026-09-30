@@ -30,7 +30,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
       orderBy: { name: "asc" },
     }),
     prisma.purchaseAttachment.findMany({
-      select: { id: true, entityType: true, entityId: true, name: true },
+      select: { id: true, entityType: true, entityId: true, name: true, label: true },
       orderBy: { createdAt: "desc" },
     }),
   ]);

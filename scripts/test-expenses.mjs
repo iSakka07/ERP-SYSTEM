@@ -6,7 +6,15 @@ import {
   expenseCumulativeQuantity,
   correctionDebtAfterApproval,
   expensePayableCents,
+  expenseStatementPaymentStatus,
+  previousExpenseOutstanding,
 } from "../src/lib/expenses.ts";
+const partialPayments = [
+  { id: "partial-1", sequence: 1, stage: "ACCOUNTING", grossCents: 5000000, netCents: 5000000, payments: [{ amountCents: 4000000 }] },
+  { id: "partial-2", sequence: 2, stage: "EXECUTIVE", grossCents: 8000000, netCents: 8000000, payments: [] },
+];
+assert.deepEqual(expenseStatementPaymentStatus(partialPayments, "partial-1"), { paidCents: 4000000, remainingCents: 1000000, status: "PARTIAL" });
+assert.deepEqual(previousExpenseOutstanding(partialPayments, 2), { sequence: 1, remainingCents: 1000000 });
 assert.equal(newExpenseStatementBlockReason(), "");
 for (const stage of ["DRAFT", "TECHNICAL", "SITE"])
   assert.ok(newExpenseStatementBlockReason({ stage, kind: "CURRENT" }));

@@ -314,6 +314,38 @@ export function expensePayableCents(
   );
   return Math.max(0, centsNumber(latest.netCents) - paidCents);
 }
+
+export function expenseStatementPaymentStatus(
+  statements: ExpenseSummaryStatement[],
+  statementId: string,
+) {
+  const statement = statements.find((item) => item.id === statementId);
+  if (!statement || !["EXECUTIVE", "ACCOUNTING"].includes(statement.stage))
+    return { paidCents: 0, remainingCents: 0, status: "NOT_DUE" as const };
+  const totalPaidCents = statements.reduce(
+    (sum, item) => sum + item.payments.filter((payment) => payment.status !== "REVERSED").reduce((value, payment) => value + centsNumber(payment.amountCents), 0),
+    0,
+  );
+  const dueCents = centsNumber(statement.netCents);
+  const paidCents = Math.min(dueCents, totalPaidCents);
+  const remainingCents = Math.max(0, dueCents - totalPaidCents);
+  return { paidCents, remainingCents, status: remainingCents === 0 ? "PAID" as const : paidCents > 0 ? "PARTIAL" as const : "UNPAID" as const };
+}
+
+export function previousExpenseOutstanding(
+  statements: ExpenseSummaryStatement[],
+  sequence: number,
+) {
+  const previous = statements
+    .filter((item) => item.sequence < sequence && ["EXECUTIVE", "ACCOUNTING"].includes(item.stage))
+    .sort((a, b) => b.sequence - a.sequence)[0];
+  if (!previous) return null;
+  const totalPaidCents = statements.reduce(
+    (sum, item) => sum + item.payments.filter((payment) => payment.status !== "REVERSED").reduce((value, payment) => value + centsNumber(payment.amountCents), 0),
+    0,
+  );
+  return { sequence: previous.sequence, remainingCents: Math.max(0, centsNumber(previous.netCents) - totalPaidCents) };
+}
 export function correctionDebtAfterApproval(
   previous: {
     netCents: number;

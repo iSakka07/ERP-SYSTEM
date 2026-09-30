@@ -21,6 +21,7 @@ import {
 import { postSubcontractApproval, postSubcontractPayment, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
 import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { settleThroughMainCash, reverseCashSettlement } from "@/lib/cash-settlement";
 
 const text = z.string().trim().min(1).max(300);
 const date = z
@@ -96,6 +97,7 @@ const schema = z.discriminatedUnion("action", [
     revision: z.number().int().positive(),
     amount: z.number().finite().positive().max(1e10),
     paymentDate: date,
+    paymentSource: z.enum(["EXECUTIVE_DIRECTOR", "PETTY_CASH"]).default("EXECUTIVE_DIRECTOR"),
     method: z.enum(["CHEQUE", "TRANSFER", "CASH", "ATTACHMENT"]).optional(),
     reference: text.optional(),
     notes: z.string().trim().max(2000).optional(),
@@ -107,6 +109,7 @@ const schema = z.discriminatedUnion("action", [
     revision: z.number().int().positive(),
     amount: z.number().finite().positive().max(1e10),
     paymentDate: date,
+    paymentSource: z.enum(["EXECUTIVE_DIRECTOR", "PETTY_CASH"]).default("EXECUTIVE_DIRECTOR"),
     notes: z.string().trim().max(2000).optional(),
   }),
   z.object({
@@ -688,6 +691,7 @@ export async function POST(request: Request) {
             throw new Error("الدفعة ملغاة بالفعل أو غير موجودة.");
           const reversedAt = new Date();
           await reversePostedJournal(tx, "SUBCONTRACT_PAYMENT", payment.id, reversedAt, user.id, data.reason);
+          if (payment.cashOperationId) await reverseCashSettlement(tx, payment.cashOperationId, user.id, data.reason);
           await tx.subcontractPayment.update({
             where: { id: payment.id },
             data: { status: "REVERSED", reversedAt, reversalReason: data.reason },
@@ -830,8 +834,11 @@ export async function POST(request: Request) {
                 reference: "مرفق",
                 notes: data.notes,
                 actorId: user.id,
+                paymentSource: data.paymentSource,
+                cashOperationId: randomUUID(),
               },
             });
+            await settleThroughMainCash(tx, { source: data.paymentSource, amountCents, date: payment.paymentDate, actorId: user.id, projectId: st.account.projectId, documentNumber: `SUB-${payment.id}`, description: `دفعة مستخلص مقاول باطن`, operationId: payment.cashOperationId! });
             await postSubcontractPayment(tx, { ...payment, statement: { account: st.account } });
             id = payment.id;
             entityType = "payment";
@@ -865,8 +872,11 @@ export async function POST(request: Request) {
                 reference: data.reference ?? "مرفق",
                 notes: data.notes,
                 actorId: user.id,
+                paymentSource: data.paymentSource,
+                cashOperationId: randomUUID(),
               },
             });
+            await settleThroughMainCash(tx, { source: data.paymentSource, amountCents, date: payment.paymentDate, actorId: user.id, projectId: st.account.projectId, documentNumber: `SUB-${payment.id}`, description: `دفعة مستخلص مقاول باطن`, operationId: payment.cashOperationId! });
             await postSubcontractPayment(tx, { ...payment, statement: { account: st.account } });
             id = payment.id;
             entityType = "payment";

@@ -83,6 +83,7 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
         entityType: true,
         entityId: true,
         name: true,
+        label: true,
         size: true,
       },
       orderBy: { createdAt: "desc" },

@@ -40,7 +40,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
       orderBy: { name: "asc" },
     }),
     prisma.expenseAttachment.findMany({
-      select: { id: true, entityType: true, entityId: true, name: true },
+      select: { id: true, entityType: true, entityId: true, name: true, label: true },
     }),
   ]);
   return (

@@ -68,7 +68,7 @@ type PurchaseInvoice = {
     createdAt: string;
   }[];
 };
-type Attachment = { id: string; entityId: string; name: string };
+type Attachment = { id: string; entityId: string; name: string; label: string };
 
 function AttachmentMenu({ files }: { files: Attachment[] }) {
   if (!files.length) return <span className="text-slate-400">—</span>;
@@ -94,7 +94,7 @@ function AttachmentMenu({ files }: { files: Attachment[] }) {
             className="flex items-center gap-2 rounded-md px-2 py-2 text-xs text-blue-700 hover:bg-blue-50"
           >
             <Paperclip className="size-3 shrink-0" />
-            <span className="truncate">{file.name}</span>
+            <span className="truncate">{file.label}</span>
           </a>
         ))}
       </div>
@@ -716,7 +716,7 @@ export function PurchasesCenter({
                                         <td className="p-2">
                                           {payment.paymentSource ===
                                           "PETTY_CASH"
-                                            ? "صندوق النثريات"
+                                            ? "الخزنة الرئيسية"
                                             : "المدير التنفيذي"}
                                         </td>
                                         <td className="p-2">
@@ -852,7 +852,7 @@ export function PurchasesCenter({
                   className={expenseInput}
                 >
                   <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
-                  <option value="PETTY_CASH">صندوق النثريات</option>
+                  <option value="PETTY_CASH">الخزنة الرئيسية</option>
                 </ERPSelect>
               </label>
               <label className="grid gap-2 text-xs font-bold">

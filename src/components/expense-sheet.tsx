@@ -11,6 +11,7 @@ import {
   expenseSummary,
   expenseCumulativeQuantity,
   correctionDebtAfterApproval,
+  previousExpenseOutstanding,
 } from "@/lib/expenses";
 import { withdrawnKeys } from "@/lib/work-withdrawals";
 import { Plus, Trash2, Save, ArrowRight } from "lucide-react";
@@ -271,6 +272,7 @@ export function ExpenseSheet({
   );
   const discount = discountAmounts.reduce((s, d) => s + d, 0);
   const summary = expenseSummary(account.statements);
+  const previousOutstanding = previousExpenseOutstanding(account.statements, statement?.sequence ?? (account.statements.at(-1)?.sequence ?? 0) + 1);
   const paid = summary.paidCents;
   const net = gross - discount;
   const previewDebt =
@@ -761,8 +763,12 @@ export function ExpenseSheet({
               ["أعمال الجاري الحالي", previewReady ? gross - (previous?.grossCents ?? 0) : "—"],
               ["إجمالي الخصومات", previewReady ? discount : "—"],
               ["صافي المستحق التراكمي", previewReady ? net : "—"],
+              ...(previousOutstanding && previousOutstanding.remainingCents > 0
+                ? [[`باقي مستحق جاري ${previousOutstanding.sequence}`, previousOutstanding.remainingCents]]
+                : []),
+              ["صافي أعمال الجاري الحالي", previewReady ? net - (previous?.netCents ?? 0) : "—"],
               ["سابق الصرف الفعلي لأعمال المقاول", paid],
-              ["المتبقي للمقاول", previewReady ? Math.max(0, net - paid) : "—"],
+              ["إجمالي مستحق الحسابات", previewReady ? Math.max(0, net - paid) : "—"],
               ...(previewReady && previewDebt > 0
                 ? [["مديونية على المقاول — بعد الاعتماد", previewDebt]]
                 : []),

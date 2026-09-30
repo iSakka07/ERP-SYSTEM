@@ -14,7 +14,7 @@ export async function GET() {
   const [accounts, categories, transactions, counts, projects, employees, audit] = await Promise.all([
     prisma.pettyCashAccount.findMany({ include: { employee: { select: { name: true } } }, orderBy: { createdAt: "asc" } }),
     prisma.pettyCashCategory.findMany({ orderBy: { name: "asc" } }),
-    prisma.pettyCashTransaction.findMany({ include: { project: { select: { name: true } }, category: { select: { name: true } }, recordedBy: { select: { name: true } }, attachments: { select: { id: true, name: true } } }, orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }] }),
+    prisma.pettyCashTransaction.findMany({ include: { project: { select: { name: true } }, category: { select: { name: true } }, recordedBy: { select: { name: true } }, attachments: { select: { id: true, name: true, label: true } } }, orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }] }),
     prisma.pettyCashCount.findMany({ orderBy: { createdAt: "desc" } }),
     prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.employee.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),

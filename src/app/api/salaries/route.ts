@@ -6,8 +6,8 @@ import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { readIncomingFiles } from "@/lib/incoming-server";
 import { assertBalances } from "@/lib/petty-cash";
+import { fundMainCash, settleThroughMainCash } from "@/lib/cash-settlement";
 import {
-  postExecutiveAdvance,
   postPayrollApproval,
   postPayrollPayment,
   postPettyCashJournal,
@@ -20,6 +20,9 @@ import {
 } from "@/lib/financial-idempotency";
 import { assertMutation } from "@/lib/request-security";
 import { centsNumber } from "@/lib/money";
+import {
+  buildPayrollDistribution,
+} from "@/lib/salary-payroll";
 
 const money = (value: unknown) => {
   const cents = Math.round(Number(value) * 100);
@@ -39,24 +42,13 @@ async function currentUser(permission: string) {
   const session = await auth();
   return session?.user && can(session.user, permission) ? session : null;
 }
-function monthDays(value: string) {
-  const [year, month] = value.split("-").map(Number);
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-function daysInPeriod(
-  start: Date,
-  end: Date | null,
-  year: number,
-  month: number,
-) {
-  const first = new Date(Date.UTC(year, month - 1, 1));
-  const last = new Date(Date.UTC(year, month, 0));
-  const from = start > first ? start : first;
-  const to = !end || end > last ? last : end;
-  return to < from
-    ? 0
-    : Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
-}
+const statusSchema = z.enum(["ACTIVE", "INACTIVE"]);
+const salaryChangeSchema = z.object({
+  employeeId: z.string().min(1),
+  amount: z.coerce.number().positive(),
+  effectiveMode: z.enum(["MONTH_START", "DATE"]),
+  effectiveDate: z.string(),
+});
 
 export async function GET() {
   const session = await currentUser("salaries.view");
@@ -72,7 +64,6 @@ export async function GET() {
     paymentDay,
   ] = await Promise.all([
     prisma.employee.findMany({
-      where: { active: true },
       orderBy: { name: "asc" },
     }),
     prisma.project.findMany({
@@ -206,7 +197,6 @@ export async function POST(request: Request) {
             : true;
           if (!employee || !project)
             throw new Error("الموظف أو المشروع غير صحيح.");
-          const monthlySalaryCents = money(payload.monthlySalaryCents);
           const today = new Date();
           today.setUTCHours(0, 0, 0, 0);
           const activeAllocation = await tx.employeeSalaryAllocation.findFirst({
@@ -246,38 +236,86 @@ export async function POST(request: Request) {
               });
             }
           }
-          await tx.employee.update({
-            where: { id: employee.id },
-            data: { monthlySalaryCents },
-          });
           await audit("salary.employee.configure", employee.id, {
-            monthlySalaryCents,
             projectId: nextProjectId,
             effectiveDate: today.toISOString(),
           });
           return { id: employee.id };
         }
         if (action === "employee-delete") {
-          const employee = await tx.employee.findFirst({
-            where: { id: String(payload.employeeId), active: true },
-          });
-          if (!employee) throw new Error("الموظف غير موجود أو تم مسحه بالفعل.");
-          await tx.employee.update({
-            where: { id: employee.id },
-            data: { active: false },
-          });
-          await audit("salary.employee.delete", employee.id, {
-            safeDelete: true,
-          });
-          return { id: employee.id };
+          throw new Error("إجراء مسح الموظف لم يعد متاحًا. استخدم تغيير الحالة.");
         }
-        if (action === "salary") {
-          const value = money(payload.monthlySalaryCents);
-          const employee = await tx.employee.update({
-            where: { id: String(payload.employeeId) },
-            data: { monthlySalaryCents: value },
+        if (action === "employee-status") {
+          const employeeId = String(payload.employeeId || "");
+          const status = statusSchema.parse(payload.status);
+          const effectiveDate = dateSchema.parse(payload.effectiveDate);
+          const today = new Date();
+          today.setUTCHours(0, 0, 0, 0);
+          if (effectiveDate > today)
+            throw new Error("لا يمكن تسجيل حالة موظف بتاريخ مستقبلي.");
+          const employee = await tx.employee.findUnique({ where: { id: employeeId } });
+          if (!employee) throw new Error("الموظف غير موجود.");
+          if ((status === "ACTIVE") === employee.active)
+            throw new Error(status === "ACTIVE" ? "الموظف نشط بالفعل." : "الموظف غير نشط بالفعل.");
+
+          const latestRun = await tx.payrollRun.findFirst({ orderBy: { month: "desc" }, select: { month: true } });
+          if (latestRun) {
+            const [year, month] = latestRun.month.split("-").map(Number);
+            const earliestAllowed = new Date(Date.UTC(year, month, 1));
+            earliestAllowed.setUTCMonth(earliestAllowed.getUTCMonth() + 1);
+            if (effectiveDate < earliestAllowed)
+              throw new Error(`لا يمكن تغيير حالة الموظف بتاريخ ${effectiveDate.toISOString().slice(0, 10)} لأن كشف رواتب شهر ${latestRun.month} موجود. اختر تاريخًا من ${earliestAllowed.toISOString().slice(0, 10)} أو بعده.`);
+          }
+
+          if (status === "INACTIVE") {
+            const openPeriod = await tx.employeeStatusPeriod.findFirst({
+              where: { employeeId, endDate: null },
+              orderBy: { startDate: "desc" },
+            });
+            if (!openPeriod) throw new Error("لا توجد فترة نشاط مفتوحة لهذا الموظف.");
+            if (effectiveDate <= openPeriod.startDate)
+              throw new Error("تاريخ الإيقاف يجب أن يكون بعد بداية فترة نشاط الموظف.");
+            const lastActiveDate = new Date(effectiveDate);
+            lastActiveDate.setUTCDate(lastActiveDate.getUTCDate() - 1);
+            await tx.employeeStatusPeriod.update({ where: { id: openPeriod.id }, data: { endDate: lastActiveDate, endedById: session.user.id } });
+            await tx.employee.update({ where: { id: employeeId }, data: { active: false } });
+            await audit("salary.employee.deactivate", employeeId, { effectiveDate: effectiveDate.toISOString(), lastActiveDate: lastActiveDate.toISOString() });
+          } else {
+            const conflictingPeriod = await tx.employeeStatusPeriod.findFirst({
+              where: { employeeId, startDate: { lte: effectiveDate }, OR: [{ endDate: null }, { endDate: { gte: effectiveDate } }] },
+            });
+            if (conflictingPeriod) throw new Error("تاريخ إعادة التفعيل يتداخل مع فترة نشاط محفوظة.");
+            await tx.employeeStatusPeriod.create({ data: { employeeId, startDate: effectiveDate, startedById: session.user.id } });
+            await tx.employee.update({ where: { id: employeeId }, data: { active: true } });
+            await audit("salary.employee.reactivate", employeeId, { effectiveDate: effectiveDate.toISOString() });
+          }
+          return { id: employeeId };
+        }
+        if (action === "employee-salary-update") {
+          const input = salaryChangeSchema.parse(payload);
+          const employee = await tx.employee.findFirst({ where: { id: input.employeeId, active: true } });
+          if (!employee) throw new Error("الموظف غير نشط أو غير موجود.");
+          const value = money(input.amount);
+          const effectiveDate = input.effectiveMode === "MONTH_START"
+            ? new Date(`${z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).parse(input.effectiveDate)}-01T00:00:00.000Z`)
+            : dateSchema.parse(input.effectiveDate);
+          const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+          if (effectiveDate > today) throw new Error("لا يمكن تعديل الراتب بتاريخ مستقبلي.");
+          const latestRun = await tx.payrollRun.findFirst({ orderBy: { month: "desc" }, select: { month: true } });
+          if (latestRun) {
+            const [year, month] = latestRun.month.split("-").map(Number);
+            const earliestAllowed = new Date(Date.UTC(year, month, 1)); earliestAllowed.setUTCMonth(earliestAllowed.getUTCMonth() + 1);
+            if (effectiveDate < earliestAllowed) throw new Error(`لا يمكن تعديل الراتب بتاريخ ${effectiveDate.toISOString().slice(0, 10)} لأن كشف رواتب شهر ${latestRun.month} موجود. اختر تاريخًا من ${earliestAllowed.toISOString().slice(0, 10)} أو بعده.`);
+          }
+          const latestRate = await tx.employeeSalaryRate.findFirst({ where: { employeeId: employee.id }, orderBy: { startDate: "desc" } });
+          if (latestRate && effectiveDate < latestRate.startDate) throw new Error("تاريخ تعديل الراتب يجب أن يكون بعد آخر تعديل محفوظ للموظف.");
+          await tx.employeeSalaryRate.upsert({
+            where: { employeeId_startDate: { employeeId: employee.id, startDate: effectiveDate } },
+            create: { employeeId: employee.id, startDate: effectiveDate, monthlySalaryCents: value, changedById: session.user.id },
+            update: { monthlySalaryCents: value, changedById: session.user.id },
           });
-          await audit("salary.employee.update", employee.id, { value });
+          await tx.employee.update({ where: { id: employee.id }, data: { monthlySalaryCents: value } });
+          await audit("salary.employee.rate.update", employee.id, { monthlySalaryCents: value, effectiveDate: effectiveDate.toISOString(), effectiveMode: input.effectiveMode });
           return { id: employee.id };
         }
         if (action === "allocation") {
@@ -374,7 +412,10 @@ export async function POST(request: Request) {
               },
             },
           });
-          if (source === "PETTY_CASH") {
+          if (source === "EXECUTIVE_DIRECTOR") {
+            await fundMainCash(tx, { amountCents, date: issuedAt, actorId: session.user.id, documentNumber: `SALADV-${created.id}`, description: `سلفة موظف: ${employee.name}`, operationId: created.id });
+          }
+          {
             const [accounts, movements] = await Promise.all([
               tx.pettyCashAccount.findMany(),
               tx.pettyCashTransaction.findMany(),
@@ -382,7 +423,7 @@ export async function POST(request: Request) {
             const main = accounts.find(
               (account) => account.type === "MAIN" && account.active,
             );
-            if (!main) throw new Error("لم يتم إعداد صندوق النثريات لصرف السلفة.");
+            if (!main) throw new Error("لم يتم إعداد الخزنة الرئيسية لصرف السلفة.");
             const custody = await tx.pettyCashAccount.create({
               data: {
                 name: `سلفة ${employee.name} — ${payload.issuedAt}`,
@@ -425,7 +466,7 @@ export async function POST(request: Request) {
               amountCents,
               employeeId: employee.id,
             });
-          } else await postExecutiveAdvance(tx, created, session.user.id);
+          }
           await audit("salary.advance.create", created.id, {
             amountCents,
             repaymentMode,
@@ -490,54 +531,28 @@ export async function POST(request: Request) {
             await tx.payrollRun.findUnique({ where: { month: payrollMonth } })
           )
             throw new Error("تم إنشاء كشف هذا الشهر بالفعل.");
-          const [employees, allocations, bonuses, deductions, advances] =
+          const [employees, allocations, statusPeriods, salaryRates, bonuses, deductions, advances] =
             await Promise.all([
-              tx.employee.findMany({ where: { active: true } }),
+              tx.employee.findMany(),
               tx.employeeSalaryAllocation.findMany(),
+              tx.employeeStatusPeriod.findMany(),
+              tx.employeeSalaryRate.findMany(),
               tx.employeeBonus.findMany({ where: { month: payrollMonth } }),
               tx.employeeDeduction.findMany({ where: { month: payrollMonth } }),
               tx.employeeAdvance.findMany({ where: { status: "OPEN" } }),
             ]);
-          const [year, month] = payrollMonth.split("-").map(Number);
-          const days = monthDays(payrollMonth);
-          const lineData = employees.map((employee) => {
-            const units = allocations
-              .filter((allocation) => allocation.employeeId === employee.id)
-              .map((allocation) => ({
-                projectId: allocation.projectId,
-                days: daysInPeriod(
-                  allocation.startDate,
-                  allocation.endDate,
-                  year,
-                  month,
-                ),
-              }))
-              .filter((allocation) => allocation.days > 0);
-            const covered = units.reduce(
-              (sum, allocation) => sum + allocation.days,
-              0,
-            );
-            if (covered < days)
-              units.push({ projectId: null, days: days - covered });
+          const lineData = employees.flatMap((employee) => {
+            const employeePeriods = statusPeriods.filter((period) => period.employeeId === employee.id);
             const monthlySalaryCents = centsNumber(employee.monthlySalaryCents);
-            const distribution = units.map((allocation) => ({
-              ...allocation,
-              cents: Math.floor(
-                (monthlySalaryCents * allocation.days) / days,
-              ),
-            }));
-            let residue =
-              monthlySalaryCents -
-              distribution.reduce(
-                (sum, allocation) => sum + allocation.cents,
-                0,
-              );
-            distribution.forEach((allocation) => {
-              if (residue > 0) {
-                allocation.cents += 1;
-                residue -= 1;
-              }
-            });
+            const distribution = buildPayrollDistribution(
+              payrollMonth,
+              monthlySalaryCents,
+              allocations.filter((allocation) => allocation.employeeId === employee.id),
+              employeePeriods,
+              salaryRates.filter((rate) => rate.employeeId === employee.id).map((rate) => ({ startDate: rate.startDate, monthlySalaryCents: centsNumber(rate.monthlySalaryCents) })),
+            );
+            if (!distribution.length) return [];
+            const proRatedSalaryCents = distribution.reduce((sum, allocation) => sum + allocation.cents, 0);
             const bonusCents = bonuses
               .filter((bonus) => bonus.employeeId === employee.id)
               .reduce((sum, bonus) => sum + centsNumber(bonus.amountCents), 0);
@@ -546,7 +561,7 @@ export async function POST(request: Request) {
               .reduce((sum, deduction) => sum + centsNumber(deduction.amountCents), 0);
             let available = Math.max(
               0,
-              monthlySalaryCents + bonusCents - deductionCents,
+              proRatedSalaryCents + bonusCents - deductionCents,
             );
             const advanceApplications = advances
               .filter((advance) => advance.employeeId === employee.id)
@@ -565,7 +580,7 @@ export async function POST(request: Request) {
               .filter((application) => application.appliedCents > 0);
             return {
               employeeId: employee.id,
-              basicCents: monthlySalaryCents,
+              basicCents: proRatedSalaryCents,
               bonusCents,
               deductionCents,
               advanceCents: advanceApplications.reduce(
@@ -647,6 +662,7 @@ export async function POST(request: Request) {
         }
         if (action === "payroll-pay") {
           const id = String(payload.id);
+          const paymentSource = payload.source === "PETTY_CASH" ? "PETTY_CASH" : "EXECUTIVE_DIRECTOR";
           const existingRun = await tx.payrollRun.findUnique({ where: { id } });
           if (!existingRun || existingRun.status !== "APPROVED")
             throw new Error("الكشف غير جاهز للصرف أو تم صرفه بالفعل.");
@@ -658,14 +674,16 @@ export async function POST(request: Request) {
               status: "PAID",
               paidAt: new Date(),
               paidById: session.user.id,
+              paymentSource,
             },
           });
           if (updated.count !== 1)
             throw new Error("الكشف غير جاهز للصرف أو تم صرفه بالفعل.");
           const run = await tx.payrollRun.findUniqueOrThrow({ where: { id } });
+          await settleThroughMainCash(tx, { source: paymentSource, amountCents: centsNumber(run.totalCents), date: run.paidAt!, actorId: session.user.id, documentNumber: `PAYROLL-${run.id}`, description: `صرف كشف رواتب ${run.month}`, operationId: run.id });
           await postPayrollPayment(tx, run);
           await audit("salary.payroll.pay", id, {
-            source: "EXECUTIVE_DIRECTOR",
+            source: paymentSource,
             paidById: session.user.id,
           });
           return finish({ id }, "payrollRun", {

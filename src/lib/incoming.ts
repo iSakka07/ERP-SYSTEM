@@ -1,6 +1,6 @@
 import { centsNumber, type CentsValue } from "./money.ts";
 
-export const incomingStages = [
+export const engineeringIncomingStages = [
   ["COMPANY", "شركة"],
   ["BATTALION", "كتيبة"],
   ["BRIGADE", "لواء"],
@@ -11,6 +11,25 @@ export const incomingStages = [
   ["CENTRAL", "مركزية"],
   ["PAID", "تم الصرف"],
 ] as const;
+export const regularIncomingStages = [
+  ["COMPANY", "شركة"],
+  ["IN_CYCLE", "قيد الدورة"],
+  ["PAID", "تم الصرف"],
+] as const;
+export const incomingStages = [
+  ...engineeringIncomingStages.slice(0, -1),
+  ["IN_CYCLE", "قيد الدورة"],
+  engineeringIncomingStages.at(-1)!,
+] as const;
+export function incomingStagesFor(isEngineeringAuthority: boolean) {
+  return isEngineeringAuthority ? engineeringIncomingStages : regularIncomingStages;
+}
+export function isValidIncomingStageTransition(current: string, next: string, isEngineeringAuthority: boolean) {
+  const stages = incomingStagesFor(isEngineeringAuthority);
+  const from = stages.findIndex(([id]) => id === current);
+  const to = stages.findIndex(([id]) => id === next);
+  return { from, to, valid: from >= 0 && to >= 0 && (to <= from || to === from + 1) };
+}
 export const grossNotice =
   "أدخل إجمالي المستخلص التراكمي قبل خصم الخامات. تُضاف الخامات في مربع منفصل، والنظام يحسب الصافي تلقائيًا. لا تخصم الخامات يدويًا من قيمة المستخلص.";
 export const money = (cents: CentsValue) =>

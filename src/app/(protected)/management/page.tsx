@@ -36,6 +36,8 @@ export default async function ManagementPage() {
             id: true,
             name: true,
             type: true,
+            isEngineeringAuthority: true,
+            workNature: true,
             phone: true,
           },
         },
@@ -97,4 +99,3 @@ export default async function ManagementPage() {
 
   return <ManagementCenter canManage={can(session.user, "masterdata.manage")} companies={companies} projects={projects} engineers={engineers} />;
 }
-

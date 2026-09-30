@@ -60,13 +60,13 @@ export async function postPurchaseJournal(tx: Tx, invoice: { id: string; totalCe
   const inventory = invoice.stockMode === "WAREHOUSE" || invoice.stockMode === "DIRECT_PROJECT";
   const totalCents = centsNumber(invoice.totalCents); const paidCents = centsNumber(invoice.paidCents); const unpaidCents = totalCents - paidCents;
   const lines: PostingLine[] = [{ accountKey: inventory ? "INVENTORY_ASSET" : "PURCHASE_COST", debitCents: totalCents }];
-  if (paidCents > 0) lines.push({ accountKey: invoice.paymentSource === "PETTY_CASH" ? "PETTY_CASH" : "OWNER_FUNDING", creditCents: paidCents });
+  if (paidCents > 0) lines.push({ accountKey: "PETTY_CASH", creditCents: paidCents });
   if (unpaidCents > 0) lines.push({ accountKey: "SUPPLIER_PAYABLE", creditCents: unpaidCents, counterpartyType: "SUPPLIER", counterpartyId: invoice.supplierId || undefined });
   return postJournal(tx, { sourceType: "PURCHASE", sourceId: invoice.id, entryDate: invoice.invoiceDate, description: `فاتورة مشتريات: ${invoice.name}`, actorId: invoice.actorId, projectId: inventory ? null : invoice.projectId, lines });
 }
 
 export async function postPurchasePaymentJournal(tx: Tx, payment: { id: string; amountCents: CentsValue; paymentDate: Date; paymentSource: string; invoiceName: string; invoiceId: string; projectId: string; supplierId: string | null; actorId: string }) {
-  return postJournal(tx, { sourceType: "PURCHASE_PAYMENT", sourceId: payment.id, entryDate: payment.paymentDate, description: `سداد دفعة من فاتورة مشتريات: ${payment.invoiceName}`, actorId: payment.actorId, projectId: null, lines: [{ accountKey: "SUPPLIER_PAYABLE", debitCents: payment.amountCents, counterpartyType: "SUPPLIER", counterpartyId: payment.supplierId || undefined }, { accountKey: payment.paymentSource === "PETTY_CASH" ? "PETTY_CASH" : "OWNER_FUNDING", creditCents: payment.amountCents }] });
+  return postJournal(tx, { sourceType: "PURCHASE_PAYMENT", sourceId: payment.id, entryDate: payment.paymentDate, description: `سداد دفعة من فاتورة مشتريات: ${payment.invoiceName}`, actorId: payment.actorId, projectId: null, lines: [{ accountKey: "SUPPLIER_PAYABLE", debitCents: payment.amountCents, counterpartyType: "SUPPLIER", counterpartyId: payment.supplierId || undefined }, { accountKey: "PETTY_CASH", creditCents: payment.amountCents }] });
 }
 
 export async function postStockIssueJournal(tx: Tx, movement: { id: string; movementDate: Date; projectId: string | null; actorId: string; totalCents: CentsValue }) {
@@ -117,11 +117,11 @@ export async function postPayrollApproval(tx: Tx, run: { id: string; month: stri
 
 export async function postPayrollPayment(tx: Tx, run: { id: string; month: string; totalCents: CentsValue; paidAt: Date | null; paidById: string | null }) {
   if (!run.paidAt || !run.paidById) throw new Error("بيانات صرف الرواتب غير مكتملة.");
-  return postJournal(tx, { sourceType: "PAYROLL_PAYMENT", sourceId: run.id, entryDate: run.paidAt, description: `صرف كشف رواتب ${run.month}`, actorId: run.paidById, lines: [{ accountKey: "PAYROLL_PAYABLE", debitCents: run.totalCents }, { accountKey: "OWNER_FUNDING", creditCents: run.totalCents }] });
+  return postJournal(tx, { sourceType: "PAYROLL_PAYMENT", sourceId: run.id, entryDate: run.paidAt, description: `صرف كشف رواتب ${run.month}`, actorId: run.paidById, lines: [{ accountKey: "PAYROLL_PAYABLE", debitCents: run.totalCents }, { accountKey: "PETTY_CASH", creditCents: run.totalCents }] });
 }
 
 export async function postExecutiveAdvance(tx: Tx, advance: { id: string; amountCents: CentsValue; issuedAt: Date; employeeId: string; note: string | null }, actorId: string) {
-  return postJournal(tx, { sourceType: "EMPLOYEE_ADVANCE", sourceId: advance.id, entryDate: advance.issuedAt, description: `سلفة موظف${advance.note ? `: ${advance.note}` : ""}`, actorId, lines: [{ accountKey: "EMPLOYEE_ADVANCES", debitCents: advance.amountCents, counterpartyType: "EMPLOYEE", counterpartyId: advance.employeeId }, { accountKey: "OWNER_FUNDING", creditCents: advance.amountCents }] });
+  return postJournal(tx, { sourceType: "EMPLOYEE_ADVANCE", sourceId: advance.id, entryDate: advance.issuedAt, description: `سلفة موظف${advance.note ? `: ${advance.note}` : ""}`, actorId, lines: [{ accountKey: "EMPLOYEE_ADVANCES", debitCents: advance.amountCents, counterpartyType: "EMPLOYEE", counterpartyId: advance.employeeId }, { accountKey: "PETTY_CASH", creditCents: advance.amountCents }] });
 }
 
 type SubcontractDeduction = { name: string; amountCents: CentsValue };
@@ -177,7 +177,7 @@ export async function postSubcontractApproval(tx: Tx, statement: SubcontractAppr
 }
 
 export async function postSubcontractPayment(tx: Tx, payment: { id: string; amountCents: CentsValue; paymentDate: Date; actorId: string; statement: { account: { projectId: string; companyId: string } } }) {
-  return postJournal(tx, { sourceType: "SUBCONTRACT_PAYMENT", sourceId: payment.id, entryDate: payment.paymentDate, description: "دفعة لمقاول باطن", actorId: payment.actorId, projectId: payment.statement.account.projectId, lines: [{ accountKey: "SUBCONTRACTOR_PAYABLE", debitCents: payment.amountCents, counterpartyType: "SUBCONTRACTOR", counterpartyId: payment.statement.account.companyId }, { accountKey: "OWNER_FUNDING", creditCents: payment.amountCents }] });
+  return postJournal(tx, { sourceType: "SUBCONTRACT_PAYMENT", sourceId: payment.id, entryDate: payment.paymentDate, description: "دفعة لمقاول باطن", actorId: payment.actorId, projectId: payment.statement.account.projectId, lines: [{ accountKey: "SUBCONTRACTOR_PAYABLE", debitCents: payment.amountCents, counterpartyType: "SUBCONTRACTOR", counterpartyId: payment.statement.account.companyId }, { accountKey: "PETTY_CASH", creditCents: payment.amountCents }] });
 }
 
 export async function postIncomingAccrual(tx: Tx, statement: { id: string; grossCents: CentsValue; submittedAt: Date; contract: { projectId: string } }, previousGrossCents: CentsValue, ownerCompanyId: string, actorId: string) {
