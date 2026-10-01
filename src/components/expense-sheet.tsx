@@ -34,12 +34,12 @@ export const stageName = (key: string) =>
     ACCOUNTING: "الحسابات",
   })[key] ?? key;
 type SheetRow = ExpenseItemInput & { priceVersionKey?: string | null };
-export function ExpenseFileInput({ required = true }: { required?: boolean }) {
+export function ExpenseFileInput({ required = true, label }: { required?: boolean; label?: string }) {
   return (
     <UploadBox
       name="files"
       required={required}
-      label={required ? "مرفق مستخلص المقاول" : "إضافة إثبات لمستخلص المقاول"}
+      label={label ?? (required ? "مرفق مستخلص المقاول" : "إضافة إثبات لمستخلص المقاول")}
       hint="A3 · PDF / Excel / صورة · حتى 5 ملفات بإجمالي 10 ميجابايت"
     />
   );

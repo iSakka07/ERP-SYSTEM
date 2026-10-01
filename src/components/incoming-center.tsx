@@ -660,24 +660,25 @@ function StatementCard({ statement, locked, canManage, statementFiles, paymentPr
     <button type="button" className="w-full text-right" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       <div className="flex items-start justify-between gap-3"><strong className="text-sm text-slate-950">{statementLabel(statement)}</strong><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${stageClass(statement.stage)}`}>{stageLabel(statement.stage)}</span></div>
       <MoneyValue className="mt-3 w-full text-center text-base">{money(statement.grossCents)}</MoneyValue>
+      {statement.materials.map((material) => <div key={material.id} className="mt-2 flex justify-center"><AttachmentLinks label="مرفق شهادة الخامات" files={materialFiles.filter((file) => file.entityId === material.id)} canDelete={false} /></div>)}
     </button>
     {open && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-slate-700 shadow-lg">
       <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold">الخامات</span><MoneyValue>{money(materialTotal)}</MoneyValue></div>
-      {statement.materials.length ? <div className="mt-2 space-y-2">{statement.materials.map(material => <div key={material.id} className="rounded-lg bg-amber-50 p-2"><p className="text-[10px] font-bold text-amber-900">تفاصيل الشهادة</p>{material.items.map((item, index) => <p key={index} className="mt-1 text-[10px] text-slate-600">{item.name} · {item.quantity} {item.unit} × {money(item.unitPriceCents)} = {money(item.totalCents)}</p>)}<div className="mt-2"><AttachmentLinks label="مرفق شهادة الخامات" files={materialFiles.filter(file => file.entityId === material.id)} /></div></div>)}</div> : <p className="mt-2 text-[10px] text-slate-400">لا توجد شهادة خامات.</p>}
+      {statement.materials.length ? <div className="mt-2 space-y-2">{statement.materials.map(material => <div key={material.id} className="rounded-lg bg-amber-50 p-2"><p className="text-[10px] font-bold text-amber-900">تفاصيل الشهادة</p>{material.items.map((item, index) => <p key={index} className="mt-1 text-[10px] text-slate-600">{item.name} · {item.quantity} {item.unit} × {money(item.unitPriceCents)} = {money(item.totalCents)}</p>)}<div className="mt-2"><AttachmentLinks label="مرفق شهادة الخامات" files={materialFiles.filter(file => file.entityId === material.id)} canDelete={false} /></div></div>)}</div> : <p className="mt-2 text-[10px] text-slate-400">لا توجد شهادة خامات.</p>}
       {statement.kind === "FINAL" && memos.length > 0 && <section className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
         <div className="flex items-center justify-between gap-2 text-xs font-bold text-slate-800"><span>مذكرة خفض/رفع</span><Scale className="size-3.5 text-blue-700" /></div>
         <div className="mt-2 grid grid-cols-3 gap-1">
           {adjustmentItems.map(item => <FloatingPanel key={item.label} fullWidth width={210} trigger={<button type="button" className={`w-full rounded-md border px-1 py-1.5 text-center text-[10px] font-bold ${item.tone}`} aria-label={`${item.label}: ${money(item.amount)}`}><span className="block">{item.label}</span><span dir="ltr" className="block">{originalCents > 0 ? (item.amount / originalCents * 100).toFixed(2) : "0.00"}%</span></button>}><div className="p-3 text-xs"><span className="font-bold">{item.label}</span><MoneyValue className="mt-1 block">{money(item.amount)}</MoneyValue></div></FloatingPanel>)}
         </div>
         <p className={`mt-2 text-[10px] font-bold ${netAdjustment >= 0 ? "text-emerald-700" : "text-rose-700"}`}>صافي {netAdjustment >= 0 ? "الزيادة" : "النقصان"}: {money(Math.abs(netAdjustment))}</p>
-        <div className="mt-2"><AttachmentLinks label="مرفق المذكرة" files={memoFiles} /></div>
+        <div className="mt-2"><AttachmentLinks label="مرفق المذكرة" files={memoFiles} canDelete={false} /></div>
       </section>}
       {statement.paidAt && <div className="mt-3 border-t border-slate-200 pt-3 text-[10px]"><b>{statement.paymentMethod === "CHEQUE" ? "شيك" : "تحويل"}</b> · {statement.paidAt.slice(0, 10)}</div>}
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-slate-100 pt-3">
         {canManage && <IconAction label="تغيير المرحلة" icon={RefreshCcw} onClick={onStage} />}
         {canManage && !locked && <IconAction label={`تعديل ${statementLabel(statement)}`} icon={Pencil} onClick={onEdit} />}
-        <AttachmentLinks label="مرفق المستخلص" files={statementFiles} />
-        <AttachmentLinks label="إثبات الصرف" files={paymentProofFiles} />
+        <AttachmentLinks label="مرفق المستخلص" files={statementFiles} canDelete={false} />
+        <AttachmentLinks label="إثبات الصرف" files={paymentProofFiles} canDelete={false} />
       </div>
     </div>}
   </article>;
@@ -899,7 +900,7 @@ export function IncomingEditor({
                 required={Boolean(estimateValue) && Math.round(Number(estimateValue) * 100) !== c?.estimateCents}
                 onFilesChange={setEstimateFiles}
               />
-              <Files files={attachments.filter(f => f.entityId === c?.id && f.entityType === "estimate")} />
+              <Files files={attachments.filter(f => f.entityId === c?.id && f.entityType === "estimate")} deletable={Boolean(e.edit)} />
               {c?.estimateReference && <p className="text-xs text-slate-500">المرجع النصي السابق (محفوظ): {c.estimateReference}</p>}
             </div>
             <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
@@ -1229,7 +1230,7 @@ export function IncomingEditor({
           required={needsFile}
           onFilesChange={setFiles}
         />}
-        {e.edit && <Files files={existingFiles.filter(f => f.entityType !== "estimate")} />}
+        {e.edit && existingFiles.some((file) => file.entityType !== "estimate") && <section className="rounded-lg border border-blue-100 bg-blue-50/40 p-3"><p className="mb-2 text-xs font-bold text-slate-700">المرفقات المرفوعة</p><Files files={existingFiles.filter(f => f.entityType !== "estimate")} deletable /></section>}
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
           <button
             type="button"
@@ -1367,19 +1368,19 @@ function FloatingPanel({ trigger, children, width = 280, clickOnly = false, full
   </span>;
 }
 
-function Files({ files, compact = false }: { files: Attachment[]; compact?: boolean }) {
+function Files({ files, compact = false, deletable = false }: { files: Attachment[]; compact?: boolean; deletable?: boolean }) {
   if (!files.length) return compact ? <span className="inline-grid size-[34px] place-items-center text-slate-300" aria-label="لا توجد مرفقات"><Paperclip className="size-4" /></span> : null;
-  if (compact) return <span className="inline-flex flex-wrap gap-1">{files.map(file => <a key={file.id} className="text-xs font-bold text-blue-700 underline" href={`/api/incoming/attachments/${file.id}`}>{file.label}</a>)}</span>;
+  if (compact) return <details className="relative"><summary className="erp-icon-action relative cursor-pointer list-none" aria-label={`عرض ${files.length} مرفق`}><Paperclip className="size-4" />{files.length > 1 && <span className="absolute -left-1 -top-1 grid size-4 place-items-center rounded-full bg-blue-700 text-[9px] font-bold text-white">{files.length}</span>}</summary><div className="absolute left-0 z-30 mt-2 w-64 rounded-lg border bg-white p-2">{files.map(file => <a key={file.id} className="block px-2 py-2 text-xs text-blue-700" href={`/api/incoming/attachments/${file.id}`}>{file.label}</a>)}</div></details>;
   return (
     <span className="inline-flex flex-wrap gap-2">
-      {files.map((f) => <span key={f.id} className="inline-flex items-center gap-1"><a className="text-[10px] text-blue-700 underline" href={`/api/incoming/attachments/${f.id}`}>{f.label} ({Math.ceil(f.size / 1024)} KB)</a><button type="button" className="text-[10px] font-bold text-rose-700" onClick={async()=>{if(!window.confirm(`مسح ${f.label}؟`))return;const response=await fetch(`/api/incoming/attachments/${f.id}`,{method:"DELETE"});if(response.ok)window.location.reload();else alert("تعذر مسح المرفق.");}}>مسح</button></span>)}
+      {files.map((f) => <span key={f.id} className="inline-flex items-center gap-1"><a className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 underline decoration-blue-200 underline-offset-2" href={`/api/incoming/attachments/${f.id}`} title={f.label}><Paperclip className="size-3" />{f.label} ({(f.size / 1024 / 1024).toFixed(2)} MB)</a>{deletable && <button type="button" className="text-[10px] font-bold text-rose-700 hover:underline" onClick={async () => { if (!window.confirm(`مسح ${f.label}؟`)) return; const response = await fetch(`/api/incoming/attachments/${f.id}`, { method: "DELETE" }); if (response.ok) window.location.reload(); else window.alert("تعذر مسح المرفق."); }}>مسح</button>}</span>)}
     </span>
   );
 }
 
-function AttachmentLinks({ label, files }: { label: string; files: Attachment[] }) {
+function AttachmentLinks({ label, files, canDelete = true }: { label: string; files: Attachment[]; canDelete?: boolean }) {
   if (!files.length) return null;
   return <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-    {files.map((file) => <span key={file.id} className="inline-flex items-center gap-1"><a className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.label}>{file.label || label}</a><button type="button" className="text-rose-700" onClick={async()=>{if(!window.confirm(`مسح ${file.label}؟`))return;const response=await fetch(`/api/incoming/attachments/${file.id}`,{method:"DELETE"});if(response.ok)window.location.reload();else alert("تعذر مسح المرفق.");}}>مسح</button></span>)}
+    {files.map((file, index) => <span key={file.id} className="inline-flex items-center gap-1"><a className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.label}>{label}{files.length > 1 ? ` ${index + 1}` : ""}</a>{canDelete && <button type="button" className="text-rose-700" onClick={async()=>{if(!window.confirm(`مسح ${file.label}؟`))return;const response=await fetch(`/api/incoming/attachments/${file.id}`,{method:"DELETE"});if(response.ok)window.location.reload();else alert("تعذر مسح المرفق.");}}>مسح</button>}</span>)}
   </span>;
 }

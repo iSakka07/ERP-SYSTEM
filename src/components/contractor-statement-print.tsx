@@ -2,8 +2,7 @@
 
 import { FileDown, X } from "lucide-react";
 import { useState } from "react";
-import { previewDataPdf } from "@/components/pdf-data-export";
-import { contractorStatementInvoiceReport } from "@/components/expenses-pdf-report";
+import { createContractorStatementInvoiceUrl } from "@/components/contractor-statement-invoice-pdf";
 import type { ExpenseAccount, ExpenseStatement } from "@/lib/expense-types";
 
 export function ContractorStatementPrint({ account, statement }: { account: ExpenseAccount; statement: ExpenseStatement }) {
@@ -11,13 +10,26 @@ export function ContractorStatementPrint({ account, statement }: { account: Expe
   const [selected, setSelected] = useState<number[]>([]);
 
   function toggle(index: number) { setSelected((current) => current.includes(index) ? current.filter((item) => item !== index) : [...current, index]); }
-  function createPdf() {
+  async function createPdf() {
     setOpen(false);
-    void previewDataPdf(contractorStatementInvoiceReport(account, statement, selected));
+    const preview = window.open("", "_blank");
+    if (!preview) { window.alert("اسمح بالنوافذ المنبثقة لفتح معاينة PDF."); return; }
+    preview.opener = null;
+    preview.document.write("<title>جاري تجهيز مستخلص المقاول</title><body style='font-family:Arial,sans-serif;padding:32px;color:#10192d'>جاري تجهيز المستخلص…</body>");
+    preview.document.close();
+    try {
+      const url = await createContractorStatementInvoiceUrl(account, statement, selected);
+      preview.location.href = url;
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      console.error(error);
+      preview.close();
+      window.alert("تعذّر تجهيز ملف PDF. حاول مرة أخرى.");
+    }
   }
 
   return <>
-    <button type="button" onClick={() => { setSelected(statement.deductions.map((_, index) => index)); setOpen(true); }} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-800 transition hover:bg-blue-100"><FileDown className="size-4" />طباعة مستخلص المقاول</button>
+    <button type="button" onClick={() => { setSelected(statement.deductions.map((_, index) => index)); setOpen(true); }} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-800 transition hover:bg-blue-100"><FileDown className="size-4" />طباعة حساب المقاول</button>
     {open && <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/45 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="contractor-statement-print-title" className="w-full max-w-lg rounded-2xl bg-white p-5 text-right shadow-2xl" dir="rtl">
         <header className="flex items-start justify-between gap-3"><div><h2 id="contractor-statement-print-title" className="text-base font-black text-slate-950">طباعة مستخلص المقاول</h2><p className="mt-1 text-xs text-slate-500">سيُفتح ملف PDF بحجم A4 قابل للطباعة أو الحفظ.</p></div><button type="button" onClick={() => setOpen(false)} aria-label="إغلاق" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="size-4" /></button></header>

@@ -542,7 +542,12 @@ export async function POST(request: Request) {
               tx.employeeAdvance.findMany({ where: { status: "OPEN" } }),
             ]);
           const lineData = employees.flatMap((employee) => {
-            const employeePeriods = statusPeriods.filter((period) => period.employeeId === employee.id);
+            // Legacy employees may not have an explicit status-period row. An active
+            // employee is considered active for the month in that case.
+            const storedPeriods = statusPeriods.filter((period) => period.employeeId === employee.id);
+            const employeePeriods = storedPeriods.length || !employee.active
+              ? storedPeriods
+              : [{ startDate: new Date("1900-01-01T00:00:00.000Z"), endDate: null }];
             const monthlySalaryCents = centsNumber(employee.monthlySalaryCents);
             const distribution = buildPayrollDistribution(
               payrollMonth,

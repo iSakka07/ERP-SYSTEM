@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Building2, Landmark, Plus, ReceiptText, X } from "lucide-react";
+import { Building2, Landmark, Paperclip, Plus, ReceiptText, X } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { ERPSelect } from "@/components/erp-select";
 import { UploadBox } from "@/components/upload-box";
@@ -425,15 +425,7 @@ export function BankCenter() {
                         )}
                       </td>
                       <td>
-                        {item.attachments.length ? (
-                          <span className="flex flex-wrap gap-1">
-                            {item.attachments.map((file) => (
-                              <a key={file.id} className="text-xs font-bold text-blue-700 underline" href={`/api/bank/attachments/${file.id}`} target="_blank">
-                                {file.label}
-                              </a>
-                            ))}
-                          </span>
-                        ) : "—"}
+                        {item.attachments[0] ? <a className="relative inline-flex text-blue-700" href={`/api/bank/attachments/${item.attachments[0].id}`} target="_blank" title={item.attachments[0].label}><Paperclip className="size-4" />{item.attachments.length > 1 && <span className="absolute -left-2 -top-2 rounded-full bg-blue-700 px-1 text-[9px] text-white">{item.attachments.length}</span>}</a> : "—"}
                       </td>
                       <td>{item.actor.name}</td>
                     </tr>

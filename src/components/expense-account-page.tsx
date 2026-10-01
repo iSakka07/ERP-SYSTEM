@@ -50,7 +50,7 @@ export function ExpenseAccountPage({ projects, companies, returnHref }: {
             <label className="text-xs font-bold">وحدة التنفيذ / نطاق العمل<input name="scope" required maxLength={300} placeholder="عمارة 27 — نقاشة الدور الأرضي" className={`${expenseInput} mt-2`} /></label>
           </div>
           <label className="block text-xs font-bold">ملاحظات<textarea name="notes" maxLength={2000} className={`${expenseInput} mt-2`} /></label>
-          <ExpenseFileInput />
+          <ExpenseFileInput required={false} label="مرفق المقاولة (اختياري)" />
           {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
           <div className="flex gap-2"><button disabled={busy || !companies.length || !projects.length} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50"><Save className="size-4" />{busy ? "جارٍ الحفظ…" : "حفظ وفتح جاري 1"}</button><button type="button" className={expenseButton} onClick={() => router.push(returnHref)}>إلغاء</button></div>
         </form>

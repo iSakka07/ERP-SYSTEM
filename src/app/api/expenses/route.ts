@@ -466,8 +466,6 @@ export async function POST(request: Request) {
           )
             throw new Error("اختر مقاول باطن ومشروعًا نشطين.");
           if (!canUseProject(project.id)) throw new Error("غير مصرح لهذا المشروع.");
-          if (!files.length)
-            throw new Error("أعمال المقاول تحتاج مرفق إسناد أو حصر.");
           const account = await tx.subcontractAccount.create({
             data: {
               name: data.name,

@@ -7,6 +7,7 @@ import {
   BadgeMinus,
   ChevronDown,
   FileText,
+  Paperclip,
   Gift,
   Power,
   RotateCcw,
@@ -199,7 +200,10 @@ export function SalariesCenter({
       month,
       employee.monthlySalaryCents,
       allocations.filter((allocation) => allocation.employee.id === employee.id).map((allocation) => ({ projectId: allocation.project?.id ?? null, startDate: new Date(allocation.startDate), endDate: allocation.endDate ? new Date(allocation.endDate) : null })),
-      statusPeriods.filter((period) => period.employeeId === employee.id).map((period) => ({ startDate: new Date(period.startDate), endDate: period.endDate ? new Date(period.endDate) : null })),
+      (() => {
+        const periods = statusPeriods.filter((period) => period.employeeId === employee.id).map((period) => ({ startDate: new Date(period.startDate), endDate: period.endDate ? new Date(period.endDate) : null }));
+        return periods.length || !employee.active ? periods : [{ startDate: new Date("1900-01-01T00:00:00.000Z"), endDate: null }];
+      })(),
       salaryRates.filter((rate) => rate.employeeId === employee.id).map((rate) => ({ startDate: new Date(rate.startDate), monthlySalaryCents: rate.monthlySalaryCents })),
     );
   usePdfDataExport(() => {
@@ -295,7 +299,8 @@ export function SalariesCenter({
   async function send(form: HTMLFormElement, action: string, files = false) {
     setBusy(action);
     setMessage("");
-    const values = Object.fromEntries(new FormData(form));
+    const formData = new FormData(form);
+    const values = Object.fromEntries(formData);
     const body = new FormData();
     body.set("action", action);
     body.set("payload", JSON.stringify(values));
@@ -305,6 +310,12 @@ export function SalariesCenter({
           ?.files ?? [],
       ))
         body.append("files", file);
+    // UploadBox stores one description per selected file in filesLabels.
+    // Forward those fields separately; putting them only in the JSON payload
+    // makes the server think the uploaded file has no description.
+    if (files)
+      for (const label of formData.getAll("filesLabels"))
+        body.append("filesLabels", String(label));
     const financial = [
         "advance",
         "bonus",
@@ -633,7 +644,7 @@ function EmployeesTab({
           <button type="button" onClick={() => setStatusTab("INACTIVE")} className={`rounded-lg px-4 py-2 text-sm font-bold ${statusTab === "INACTIVE" ? "bg-slate-700 text-white" : "bg-white text-slate-600"}`}>غير نشط ({inactiveEmployees.length})</button>
         </div>
         <div className="erp-table-scroll">
-          <table className="erp-data-table erp-responsive-table min-w-[1150px]">
+          <table className="erp-data-table erp-responsive-table min-w-[1050px]">
             <thead>
               <tr>
                 {[
@@ -645,7 +656,6 @@ function EmployeesTab({
                   "المكافآت",
                   "الخصومات",
                   "الحالة",
-                  "المرفقات",
                   "الإجراءات",
                 ].map((head) => (
                   <th key={head}>{head}</th>
@@ -720,7 +730,7 @@ function EmployeesTab({
                       </span>
                     </td>
                     <td data-label="الإجراءات">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-start gap-2">
                         {canManage && employee.active && (
                           <IconAction
                             label="تعديل الراتب"
@@ -1170,7 +1180,7 @@ function PayrollTab({
                       </select>
                     ) : "المدير التنفيذي"}
                   </td>
-                  <td data-label="المرفقات">{run.attachments?.length ? <span className="flex flex-wrap gap-1">{run.attachments.map((file) => <a key={file.id} className="text-xs font-bold text-blue-700 underline" href={`/api/salaries/attachments/${file.id}`}>{file.label}</a>)}</span> : "—"}</td>
+                  <td data-label="المرفقات">{run.attachments?.[0] ? <a className="relative inline-flex text-blue-700" href={`/api/salaries/attachments/${run.attachments[0].id}`} title={run.attachments[0].label}><Paperclip className="size-4" />{run.attachments.length > 1 && <span className="absolute -left-2 -top-2 rounded-full bg-blue-700 px-1 text-[9px] text-white">{run.attachments.length}</span>}</a> : "—"}</td>
                   <td data-label="الإجراءات">
                     {canPay && run.status === "APPROVED" ? (
                       <button
