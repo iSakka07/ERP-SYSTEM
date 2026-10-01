@@ -32,7 +32,8 @@ export async function GET(request: Request) {
   const jobTitle = new URL(request.url).searchParams.get("jobTitle");
   if (!jobTitle || !(jobTitle in employeeJobPrefixes)) return NextResponse.json({ error: "INVALID_JOB_TITLE" }, { status: 400 });
   const prefix = employeeJobPrefixes[jobTitle as keyof typeof employeeJobPrefixes];
-  const employees = await prisma.employee.findMany({ where: { employeeCode: { startsWith: `${prefix}-` } }, select: { employeeCode: true } });
+  const excludeEmployeeId = new URL(request.url).searchParams.get("excludeEmployeeId") || undefined;
+  const employees = await prisma.employee.findMany({ where: { employeeCode: { startsWith: `${prefix}-` }, ...(excludeEmployeeId ? { id: { not: excludeEmployeeId } } : {}) }, select: { employeeCode: true } });
   return NextResponse.json({ employeeCode: nextEmployeeCode(prefix, employees.map(item => item.employeeCode)) });
 }
 
@@ -128,7 +129,17 @@ export async function PATCH(request: Request) {
         const project = data.projectId ? await tx.project.findFirst({ where: { id: data.projectId, active: true } }) : null;
         if (data.projectId && !project) throw new Error("INVALID_PROJECT");
         const now = new Date();
-        await tx.employee.update({ where: { id: data.id }, data: { name: data.name, jobTitle: data.jobTitle, phone: data.phone || null } });
+        const jobTitleChanged = engineer.jobTitle !== data.jobTitle && data.jobTitle in employeeJobPrefixes;
+        const employeeCode = jobTitleChanged
+          ? nextEmployeeCode(
+              employeeJobPrefixes[data.jobTitle as keyof typeof employeeJobPrefixes],
+              (await tx.employee.findMany({
+                where: { id: { not: data.id }, employeeCode: { startsWith: `${employeeJobPrefixes[data.jobTitle as keyof typeof employeeJobPrefixes]}-` } },
+                select: { employeeCode: true },
+              })).map((employee) => employee.employeeCode),
+            )
+          : engineer.employeeCode;
+        await tx.employee.update({ where: { id: data.id }, data: { name: data.name, jobTitle: data.jobTitle, employeeCode, phone: data.phone || null } });
         await tx.projectEngineerAssignment.updateMany({ where: { employeeId: data.id, active: true }, data: { active: false, endDate: now } });
         if (project) await tx.projectEngineerAssignment.create({ data: { employeeId: data.id, projectId: project.id, startDate: now } });
       }

@@ -30,13 +30,12 @@ export async function POST(request: Request) {
   if (!isTrustedMutationOrigin(request)) return json({ error: "مصدر الطلب غير موثوق." }, 403);
   let operationContext: FinancialOperationContext | null = null;
   try {
-    const form = await request.formData(); const input = schema.parse({ action: "create", ...JSON.parse(String(form.get("payload") || "{}")) }); const files = await readIncomingFiles(form);
+    const form = await request.formData(); const payload = JSON.parse(String(form.get("payload") || "{}")); const input = schema.parse(payload.action === "reverse" ? payload : { action: "create", ...payload }); const files = await readIncomingFiles(form);
     const guarded = await guardFinancialOperation(request, { actorId: user.id, operation: input.action === "reverse" ? "bank.transaction.reverse" : "bank.transaction", requestData: input, businessData: input });
     if ("response" in guarded) return guarded.response;
     operationContext = guarded.context;
     const result = await prisma.$transaction(async (tx) => {
       if (input.action === "reverse") {
-        if (!files.length) throw new Error("إلغاء حركة البنك يحتاج مرفق إثبات.");
         const transaction = await tx.bankTransaction.findUnique({ where: { id: input.id } });
         if (!transaction || transaction.status !== "POSTED") throw new Error("الحركة ملغاة بالفعل أو غير موجودة.");
         if (transaction.sourceType || !["OWNER_FUNDING", "MANUAL_DEPOSIT", "MANUAL_EXPENSE"].includes(transaction.type)) throw new Error("هذه الحركة مرتبطة بدورة مالية أخرى وتُلغى من موديولها الأصلي.");

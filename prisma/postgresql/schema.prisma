@@ -7,6 +7,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model ProjectPlan {
+  projectId String @id
+  budgetJson String?
+  progressPercent Float?
+  progressDate String?
+  revision Int @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model ProjectCommitment {
+  id String @id @default(cuid())
+  projectId String
+  name String
+  category String
+  partyType String
+  partyId String
+  totalCents Float
+  active Boolean @default(true)
+  revision Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sources ProjectCommitmentSource[]
+  @@index([projectId, active])
+}
+
+model ProjectCommitmentSource {
+  id String @id @default(cuid())
+  commitmentId String
+  commitment ProjectCommitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  sourceType String
+  sourceId String
+  @@unique([sourceType, sourceId])
+}
+
 model SystemMetadata {
   key       String   @id
   value     String

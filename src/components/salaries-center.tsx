@@ -677,7 +677,7 @@ function EmployeesTab({
                   .reduce((sum, item) => sum + item.amountCents, 0);
                 return (
                   <tr key={employee.id}>
-                    <td data-label="الموظف" className="font-bold">
+                    <td data-label="الموظف" className={`font-bold ${employee.active ? "" : "text-slate-400 line-through"}`}>
                       {employee.name}
                       <p className="mt-1 text-[11px] text-slate-400">
                         {employee.employeeCode} · {employee.jobTitle}
@@ -808,21 +808,30 @@ function EmployeeStatusDialog({
   onSubmit: (event: FormEvent<HTMLFormElement>, action: string) => Promise<void>;
 }) {
   const activating = status === "ACTIVE";
+  const [effectiveMode, setEffectiveMode] = useState<"MONTH_START" | "TODAY">("TODAY");
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const effectiveDate = effectiveMode === "MONTH_START" ? monthStart : today;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
       <form onSubmit={(event) => onSubmit(event, "employee-status")} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
         <h2 className="text-lg font-black">{activating ? "إعادة تفعيل الموظف" : "إيقاف الموظف"}</h2>
         <p className="mt-2 text-sm text-slate-600">
           {activating
-            ? `سيعود «${employee.name}» إلى قوائم التشغيل والرواتب من التاريخ المحدد.`
-            : `سيُحفظ سجل «${employee.name}» بالكامل، ولن يدخل في الرواتب من التاريخ المحدد.`}
+            ? `سيعود «${employee.name}» إلى قوائم الموظفين النشطين والرواتب مباشرة.`
+            : `سيبقى سجل «${employee.name}» محفوظًا وينتقل مباشرة إلى الموظفين غير النشطين.`}
         </p>
         <input type="hidden" name="employeeId" value={employee.id} />
         <input type="hidden" name="status" value={status} />
-        <Field label={activating ? "تاريخ العودة للعمل *" : "تاريخ الإيقاف (أول يوم لا يستحق فيه راتبًا) *"}>
-          <input name="effectiveDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className={expenseInput} />
-        </Field>
-        <p className="mt-3 text-xs text-slate-500">لا يمكن اختيار تاريخ داخل شهر له كشف رواتب قائم، ولا تتغير حالة حساب الدخول.</p>
+        <input type="hidden" name="effectiveDate" value={effectiveDate} />
+        <fieldset className="mt-5">
+          <legend className="text-sm font-bold text-slate-800">{activating ? "تريد احتساب راتبه من متى؟" : "تريد عدم احتساب راتبه من متى؟"}</legend>
+          <div className="mt-3 grid gap-2">
+            <label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm font-bold ${effectiveMode === "MONTH_START" ? "border-blue-500 bg-blue-50 text-blue-900" : "border-slate-200"}`}><input type="radio" name="effectiveMode" value="MONTH_START" checked={effectiveMode === "MONTH_START"} onChange={() => setEffectiveMode("MONTH_START")} className="accent-blue-700" />من أول الشهر</label>
+            <label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm font-bold ${effectiveMode === "TODAY" ? "border-blue-500 bg-blue-50 text-blue-900" : "border-slate-200"}`}><input type="radio" name="effectiveMode" value="TODAY" checked={effectiveMode === "TODAY"} onChange={() => setEffectiveMode("TODAY")} className="accent-blue-700" />من أول اليوم</label>
+          </div>
+        </fieldset>
+        <p className="mt-3 text-xs text-slate-500">لن تتغير حالة حساب الدخول. إذا كان الشهر مقفلاً بكشف رواتب معتمد، ستظهر رسالة توضح أقرب تاريخ مسموح.</p>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-bold">إلغاء</button>
           <button disabled={busy === "employee-status"} className={`rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${activating ? "bg-emerald-700" : "bg-rose-700"}`}>{activating ? "إعادة التفعيل" : "إيقاف الموظف"}</button>

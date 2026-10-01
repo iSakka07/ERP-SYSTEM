@@ -273,11 +273,17 @@ export async function POST(request: Request) {
               orderBy: { startDate: "desc" },
             });
             if (!openPeriod) throw new Error("لا توجد فترة نشاط مفتوحة لهذا الموظف.");
-            if (effectiveDate <= openPeriod.startDate)
-              throw new Error("تاريخ الإيقاف يجب أن يكون بعد بداية فترة نشاط الموظف.");
+            if (effectiveDate < openPeriod.startDate)
+              throw new Error("لا يمكن أن يسبق تاريخ الإيقاف بداية فترة نشاط الموظف.");
             const lastActiveDate = new Date(effectiveDate);
             lastActiveDate.setUTCDate(lastActiveDate.getUTCDate() - 1);
-            await tx.employeeStatusPeriod.update({ where: { id: openPeriod.id }, data: { endDate: lastActiveDate, endedById: session.user.id } });
+            // When an employee is stopped on the exact day their active period began,
+            // there is no valid one-day activity interval to preserve.
+            if (effectiveDate.getTime() === openPeriod.startDate.getTime()) {
+              await tx.employeeStatusPeriod.delete({ where: { id: openPeriod.id } });
+            } else {
+              await tx.employeeStatusPeriod.update({ where: { id: openPeriod.id }, data: { endDate: lastActiveDate, endedById: session.user.id } });
+            }
             await tx.employee.update({ where: { id: employeeId }, data: { active: false } });
             await audit("salary.employee.deactivate", employeeId, { effectiveDate: effectiveDate.toISOString(), lastActiveDate: lastActiveDate.toISOString() });
           } else {

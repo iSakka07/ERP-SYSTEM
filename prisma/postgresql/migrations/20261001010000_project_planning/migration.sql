@@ -1,0 +1,7 @@
+CREATE TABLE "ProjectPlan" ("projectId" TEXT NOT NULL PRIMARY KEY, "budgetJson" TEXT, "progressPercent" DOUBLE PRECISION, "progressDate" TEXT, "revision" INTEGER NOT NULL DEFAULT 0, "updatedAt" TIMESTAMP NOT NULL);
+CREATE TABLE "ProjectCommitment" ("id" TEXT NOT NULL PRIMARY KEY, "projectId" TEXT NOT NULL, "name" TEXT NOT NULL, "category" TEXT NOT NULL, "partyType" TEXT NOT NULL, "partyId" TEXT NOT NULL, "totalCents" DOUBLE PRECISION NOT NULL, "active" BOOLEAN NOT NULL DEFAULT true, "revision" INTEGER NOT NULL DEFAULT 0, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP NOT NULL);
+CREATE INDEX "ProjectCommitment_projectId_active_idx" ON "ProjectCommitment"("projectId", "active");
+CREATE TABLE "ProjectCommitmentSource" ("id" TEXT NOT NULL PRIMARY KEY, "commitmentId" TEXT NOT NULL, "sourceType" TEXT NOT NULL, "sourceId" TEXT NOT NULL, CONSTRAINT "ProjectCommitmentSource_commitmentId_fkey" FOREIGN KEY ("commitmentId") REFERENCES "ProjectCommitment"("id") ON DELETE CASCADE ON UPDATE CASCADE);
+CREATE UNIQUE INDEX "ProjectCommitmentSource_sourceType_sourceId_key" ON "ProjectCommitmentSource"("sourceType", "sourceId");
+INSERT INTO "Permission" ("id","key","name","module") VALUES ('project-plan-manage','project_cost_control.manage','إدارة ميزانية والتزامات المشروع','project_cost_control') ON CONFLICT DO NOTHING;
+INSERT INTO "RolePermission" ("roleId","permissionId") SELECT "id",'project-plan-manage' FROM "Role" WHERE "key" IN ('admin','executive_director','accountant') ON CONFLICT DO NOTHING;

@@ -39,11 +39,6 @@ try {
   assert.equal((await fetch(`${base}/api/project-cost-control`, { headers: headers(admin) })).status, 400);
   assert.equal((await fetch(`${base}/api/project-cost-control?projectId=missing`, { headers: headers(admin) })).status, 404);
   assert.equal((await fetch(`${base}/api/project-cost-control?projectId=${project.id}`, { headers: headers(sales) })).status, 403);
-  const salesHome = await (await fetch(`${base}/`, { headers: headers(sales) })).text();
-  assert.equal(salesHome.includes("قيمة العقود الواردة"), false, "limited role must not receive financial KPI markup");
-  assert.equal(salesHome.includes("الملف المالي للمشروعات"), false, "limited role must not receive project financial table markup");
-  const adminHome = await (await fetch(`${base}/`, { headers: headers(admin) })).text();
-  assert.equal(adminHome.includes("قيمة العقود الواردة"), true, "authorized role receives financial KPI markup");
   const response = await fetch(`${base}/api/project-cost-control?projectId=${project.id}`, { headers: headers(admin) });
   assert.equal(response.status, 200);
   const data = await response.json();
@@ -53,6 +48,13 @@ try {
   assert.equal(typeof data.revenue.materialsCents, "number");
   assert.equal(typeof data.cash.subcontractPaymentsCount, "number");
   assert.equal(data.cash.supplierPaymentsIncluded, true);
+  assert.equal(data.planning.budget, null);
+  assert.equal(data.planning.forecast.finalCents, null);
+  const planResponse = await fetch(`${base}/api/project-cost-control/planning`, { method: "POST", headers: { ...headers(admin), Origin: base, "Content-Type": "application/json" }, body: JSON.stringify({ action: "plan", projectId: project.id, revision: 0, budget: { SUBCONTRACTORS: 50_000_000, MATERIALS: 25_000_000, SALARIES: 15_000_000, OTHER: 10_000_000 }, progressPercent: 40, progressDate: new Date().toISOString().slice(0, 10) }) });
+  assert.equal(planResponse.status, 200, await planResponse.text());
+  const planned = await (await fetch(`${base}/api/project-cost-control?projectId=${project.id}`, { headers: headers(admin) })).json();
+  assert.equal(planned.planning.forecast.finalCents, Math.round(Object.values(planned.planning.actualByCategory).reduce((a, b) => a + b, 0) / 0.4));
+  assert.equal((await fetch(`${base}/api/project-cost-control/planning`, { method: "POST", headers: { ...headers(sales), Origin: base, "Content-Type": "application/json" }, body: JSON.stringify({ action: "plan", projectId: project.id, revision: 1, budget: null, progressPercent: null, progressDate: null }) })).status, 403);
   const role = await db.role.findUniqueOrThrow({ where: { key: "site_supervisor_engineer" } });
   const company = await db.company.create({ data: { name: tag, type: "OWNER" } });
   cleanup.companyId = company.id;

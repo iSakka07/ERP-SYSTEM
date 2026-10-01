@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { buildCostControlTotals } from "../src/lib/project-cost-control-math.ts";
+import { projectForecast } from "../src/lib/project-planning-math.ts";
 
 // عقدان: يؤخذ آخر جاري تراكمي لكل عقد، لا مجموع الجواري القديمة.
 const result = buildCostControlTotals({
@@ -28,3 +29,9 @@ assert.equal(result.revenue.executionPercent, 8_000_000 / 15_000_000 * 100);
 assert.equal(result.revenue.collectionPercent, 75);
 assert.equal(buildCostControlTotals({ contractValueCents: 0, certifiedRevenueCents: 0, collectedCents: 0, subcontractorsCents: 0, subcontractorCashCents: 0, purchasesCents: 0, salariesCents: 0, paidSalariesCents: 0, pettyCashCents: 0, bankExpensesCents: 0, ownerMaterialsCents: 0, supplierPaymentsCents: 0 }).revenue.collectionPercent, null);
 console.log("Project Cost Control business logic tests passed.");
+const forecast = projectForecast(40_000_000, 130_000_000, { SUBCONTRACTORS: 50_000_000, MATERIALS: 25_000_000, SALARIES: 15_000_000, OTHER: 10_000_000 }, 40, 70_000_000);
+assert.equal(forecast.finalCents, 100_000_000);
+assert.equal(forecast.remainingCents, 60_000_000);
+assert.equal(forecast.commitmentGapCents, 10_000_000);
+assert.equal(forecast.profitCents, 30_000_000);
+assert.equal(projectForecast(0, 0, null, null, 0).finalCents, null);

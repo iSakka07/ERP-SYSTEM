@@ -47,7 +47,8 @@ export function BankCenter() {
     [type, setType] = useState("OWNER_FUNDING"),
     [open, setOpen] = useState(false),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [reverseId, setReverseId] = useState<string | null>(null);
   const load = async () => {
     const response = await fetch("/api/bank");
     const body = await response.json();
@@ -168,6 +169,10 @@ export function BankCenter() {
     } finally {
       setBusy(false);
     }
+  }
+  async function reverse(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!reverseId) return; setBusy(true); setError("");
+    try { const form = event.currentTarget; const body = new FormData(form); const payload = { action: "reverse", id: reverseId, reason: String(body.get("reason") || "") }; body.set("payload", JSON.stringify(payload)); await financialResult(await fetch("/api/bank", { method: "POST", body, headers: financialHeaders(`bank-reverse-${reverseId}`) }), `bank-reverse-${reverseId}`); await load(); setReverseId(null); } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إلغاء الحركة."); } finally { setBusy(false); }
   }
   if (!data) return <p role="status">{error || "جارٍ تحميل دفتر البنك…"}</p>;
   const inflow = data.transactions
@@ -354,6 +359,7 @@ export function BankCenter() {
           </section>
         </div>
       )}
+      {reverseId && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4"><section className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl" dir="rtl"><div className="flex items-center justify-between"><h2 className="font-black text-red-700">إلغاء الحركة البنكية</h2><button type="button" className="erp-icon-action" onClick={() => setReverseId(null)}><X className="size-4" /></button></div><p className="mt-2 text-sm text-slate-600">سيتم الاحتفاظ بالحركة في السجل وتسجيل قيد عكسي. المرفق اختياري.</p><form onSubmit={reverse} className="mt-4 space-y-3"><label className="grid gap-2 text-xs font-bold">سبب الإلغاء *<textarea name="reason" required minLength={2} className="erp-control min-h-24" /></label><UploadBox name="files" label="مرفق إثبات الإلغاء — اختياري" /><div className="flex gap-2"><button disabled={busy} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white">تأكيد إلغاء الحركة</button><button type="button" className="erp-back-tab" onClick={() => setReverseId(null)}>تراجع</button></div></form></section></div>}
       {error && (
         <p className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">
           {error}
@@ -378,6 +384,7 @@ export function BankCenter() {
                   "منصرف",
                   "المرفق",
                   "المسجل",
+                  "الإجراء",
                 ].map((item) => (
                   <th key={item}>{item}</th>
                 ))}
@@ -395,7 +402,7 @@ export function BankCenter() {
                     "OPENING_BALANCE",
                   ].includes(item.type);
                   return (
-                    <tr key={item.id}>
+                    <tr key={item.id} className={item.status === "REVERSED" ? "bg-red-50 text-red-700" : ""}>
                       <td>{item.transactionDate.slice(0, 10)}</td>
                       <td>
                         {bankTypes[item.type as keyof typeof bankTypes] ||
@@ -427,13 +434,14 @@ export function BankCenter() {
                       <td>
                         {item.attachments[0] ? <a className="relative inline-flex text-blue-700" href={`/api/bank/attachments/${item.attachments[0].id}`} target="_blank" title={item.attachments[0].label}><Paperclip className="size-4" />{item.attachments.length > 1 && <span className="absolute -left-2 -top-2 rounded-full bg-blue-700 px-1 text-[9px] text-white">{item.attachments.length}</span>}</a> : "—"}
                       </td>
-                      <td>{item.actor.name}</td>
+                      <td>{item.actor.name}{item.status === "REVERSED" && <p className="text-xs font-bold">ملغاة: {item.reversalReason}</p>}</td>
+                      <td>{data.canManage && item.status === "POSTED" && !item.sourceType ? <button type="button" className="text-xs font-bold text-red-700 underline" onClick={() => setReverseId(item.id)}>إلغاء الحركة</button> : item.status === "REVERSED" ? <span className="text-xs font-bold text-red-700">ملغاة</span> : "—"}</td>
                     </tr>
                   );
                 })}
               {!data.transactions.length && (
                 <tr>
-                  <td colSpan={8} className="p-10 text-center text-slate-400">
+                  <td colSpan={9} className="p-10 text-center text-slate-400">
                     لا توجد حركات بنكية بعد.
                   </td>
                 </tr>

@@ -46,9 +46,11 @@ function DetailList({ children }: { children: ReactNode }) {
 export function ProjectCostControlCenter({
   projects,
   initial,
+  canManage,
 }: {
   projects: Project[];
   initial: ProjectCostControl | null;
+  canManage: boolean;
 }) {
   const [data, setData] = useState(initial);
   const [selected, setSelected] = useState(
@@ -93,8 +95,12 @@ export function ProjectCostControlCenter({
           value: pdfMoney(data.cost.totalCostCents),
           tone: "rose",
         },
+        { label: "الميزانية", value: data.planning.forecast.budgetCents === null ? "لم تُسجل" : pdfMoney(data.planning.forecast.budgetCents), tone: "blue" },
+        { label: "التكلفة المتوقعة", value: data.planning.forecast.finalCents === null ? "لا يمكن حسابها" : pdfMoney(data.planning.forecast.finalCents), tone: "amber" },
+        { label: "الالتزامات المتبقية", value: pdfMoney(data.planning.commitmentsCents), tone: "violet" },
       ],
       tables: [
+        { title: "الميزانية والتوقع", columns: pdfColumns(["البيان", 3], ["القيمة", 2]), rows: [["نسبة الإنجاز", data.planning.progressPercent == null ? "لم تُسجل" : `${data.planning.progressPercent}%`], ["المتبقي المتوقع", data.planning.forecast.remainingCents == null ? "—" : pdfMoney(data.planning.forecast.remainingCents)], ["الربح المتوقع", data.planning.forecast.profitCents == null ? "—" : pdfMoney(data.planning.forecast.profitCents)], ["مستحقات منفذة غير مدفوعة", pdfMoney(data.planning.unpaidExecutedCents)]] },
         {
           title: "تفصيل تكلفة المشروع",
           columns: pdfColumns(

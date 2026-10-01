@@ -3,6 +3,11 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Keep numeric fields clean; currency and percentage inputs use text-like controls. */
+input.no-number-spinner::-webkit-outer-spin-button,
+input.no-number-spinner::-webkit-inner-spin-button { margin: 0; -webkit-appearance: none; }
+input.no-number-spinner { -moz-appearance: textfield; appearance: textfield; }
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

@@ -25,6 +25,7 @@ const navGroups = [
     { label: "صندوق النثريات", icon: Vault, href: "/petty-cash", permission: "pettycash.view" },
     { label: "البنك", icon: Landmark, href: "/bank", permission: "bank.view" },
     { label: "المحاسبة", icon: BookOpenCheck, href: "/accounting", permission: "accounting.view" },
+    { label: "Cost Control", beta: true, icon: ChartNoAxesCombined, href: "/cost-control", permission: "project_cost_control.view" },
   ] },
   { title: "الإدارة", items: [
     { label: "الإدارة والمشروعات", icon: Building2, href: "/management", permission: "masterdata.view" },
@@ -96,7 +97,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
               {(!isExpanded || !collapsed) && items.map((item) => {
                 const Icon = item.icon;
                 const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-                return <Link key={item.label} href={item.href} title={item.label} aria-label={item.label} onClick={() => setOpen(false)} className={`flex h-9 items-center gap-3 rounded-lg border-r-2 text-[13px] font-medium transition ${isExpanded ? "px-3" : "justify-center px-0"} ${active ? "border-blue-400 bg-blue-500/15 text-blue-100" : "border-transparent text-slate-300 hover:bg-white/7 hover:text-white"}`}><Icon className="size-4 shrink-0" />{isExpanded && <span className="flex-1">{item.label}</span>}</Link>;
+                return <Link key={item.label} href={item.href} title={item.label} aria-label={item.label} onClick={() => setOpen(false)} className={`flex h-9 items-center gap-3 rounded-lg border-r-2 text-[13px] font-medium transition ${isExpanded ? "px-3" : "justify-center px-0"} ${active ? "border-blue-400 bg-blue-500/15 text-blue-100" : "border-transparent text-slate-300 hover:bg-white/7 hover:text-white"}`}><Icon className="size-4 shrink-0" />{isExpanded && <span className="flex flex-1 items-center gap-2">{item.label}{item.beta && <small className="rounded bg-amber-400/20 px-1 text-[9px] text-amber-200">Beta</small>}</span>}</Link>;
               })}
             </section>;
           })}

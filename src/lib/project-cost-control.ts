@@ -5,6 +5,8 @@ import { expenseSummary } from "@/lib/expenses";
 import { isProjectCost } from "@/lib/petty-cash";
 import { buildCostControlTotals } from "@/lib/project-cost-control-math";
 import { centsNumber, type CentsValue } from "@/lib/money";
+import { getProjectPlanning } from "@/lib/project-planning";
+import { projectForecast } from "@/lib/project-planning-math";
 
 const sum = (values: CentsValue[]) => Math.round(values.reduce<number>((total, value) => total + centsNumber(value), 0));
 
@@ -14,6 +16,7 @@ export type ProjectCostControl = {
   cost: { subcontractorsCents: number; purchasesCents: number; salariesCents: number; pettyCashCents: number; bankExpensesCents: number; ownerMaterialsCents: number; totalCostCents: number; subcontractorsCount: number; subcontractStatementsCount: number; purchaseInvoicesCount: number; payrollRunsCount: number; pettyExpensesCount: number };
   performance: { profitToDateCents: number; marginPercent: number | null; costRatioPercent: number | null };
   cash: { cashInCents: number; cashOutCents: number; netCashPositionCents: number; companyFinancingCents: number; supplierPaymentsIncluded: true; subcontractPaymentsCount: number; paidPayrollRunsCount: number; pettyExpensesCount: number };
+  planning: Awaited<ReturnType<typeof getProjectPlanning>> & { forecast: ReturnType<typeof projectForecast>; actualByCategory: Record<string, number>; commitmentsCents: number; unpaidExecutedCents: number };
 };
 
 function payrollShare(lines: { allocationJson: string }[], projectId: string) {
@@ -23,7 +26,7 @@ function payrollShare(lines: { allocationJson: string }[], projectId: string) {
 export async function getProjectCostControl(projectId: string): Promise<ProjectCostControl | null> {
   const project = await prisma.project.findFirst({ where: { id: projectId, active: true }, select: { id: true, code: true, name: true } });
   if (!project) return null;
-  const [contracts, accounts, purchases, stockIssues, stockReturns, petty, payrollRuns, bankExpenses, supplierPayments, ownerMaterialJournals] = await Promise.all([
+  const [contracts, accounts, purchases, stockIssues, stockReturns, petty, payrollRuns, bankExpenses, supplierPayments, ownerMaterialJournals, planning] = await Promise.all([
     prisma.incomingContract.findMany({ where: { projectId, active: true }, include: { memos: true, statements: { include: { materials: true }, orderBy: { sequence: "asc" } } } }),
     prisma.subcontractAccount.findMany({ where: { projectId }, include: { statements: { include: { payments: true } } } }),
     prisma.purchaseInvoice.findMany({ where: { projectId, status: "POSTED", stockMode: "LEGACY_DIRECT" }, select: { totalCents: true } }),
@@ -34,6 +37,7 @@ export async function getProjectCostControl(projectId: string): Promise<ProjectC
     prisma.bankTransaction.findMany({ where: { projectId, status: "POSTED", type: "MANUAL_EXPENSE" }, select: { amountCents: true } }),
     prisma.purchasePayment.findMany({ where: { status: "POSTED", invoice: { projectId } }, select: { amountCents: true } }),
     prisma.journalEntry.findMany({ where: { sourceType: "OWNER_MATERIAL_COST", status: "POSTED", projectId }, select: { sourceId: true, lines: { select: { debitCents: true, account: { select: { systemKey: true } } } } } }),
+    getProjectPlanning(projectId),
   ]);
   const contractValueCents = sum(contracts.map((contract) => financials(contract).value));
   const certifiedRevenueCents = sum(contracts.map((contract) => contract.statements.at(-1)?.grossCents ?? 0));
@@ -54,5 +58,9 @@ export async function getProjectCostControl(projectId: string): Promise<ProjectC
   const paidStatementsCount = statements.filter((statement) => statement.stage === "PAID").length;
   const pettyExpensesCount = petty.filter((transaction) => isProjectCost(transaction.type)).length;
   const subcontractPaymentsCount = accounts.flatMap((account) => account.statements).reduce((total, statement) => total + statement.payments.length, 0);
-  return { project, ...base, revenue: { ...base.revenue, contractsCount: contracts.length, statementsCount: statements.length, paidStatementsCount, pendingStatementsCount: statements.length - paidStatementsCount, materialsCount: statements.reduce((total, statement) => total + statement.materials.length, 0), materialsCents: sum(statements.flatMap((statement) => statement.materials.map((material) => material.totalCents))) }, cost: { ...base.cost, subcontractorsCount: accounts.length, subcontractStatementsCount: accounts.reduce((total, account) => total + account.statements.length, 0), purchaseInvoicesCount: purchases.length + stockIssues.length + stockReturns.length, payrollRunsCount: payrollRuns.length, pettyExpensesCount }, cash: { ...base.cash, subcontractPaymentsCount, paidPayrollRunsCount: payrollRuns.filter((run) => run.status === "PAID").length, pettyExpensesCount } };
+  const actualByCategory = { SUBCONTRACTORS: subcontractorsCents, MATERIALS: purchasesCents + ownerMaterialsCents, SALARIES: salariesCents, OTHER: pettyCashCents + bankExpensesCents };
+  const commitmentsCents = planning.commitments.reduce((total, item) => total + item.remainingCents, 0);
+  const unpaidExecutedCents = planning.sources.reduce((total, source) => total + source.payableCents, 0);
+  const forecast = projectForecast(Object.values(actualByCategory).reduce((a, b) => a + b, 0), contractValueCents, planning.budget, planning.progressPercent, commitmentsCents);
+  return { project, ...base, planning: { ...planning, actualByCategory, commitmentsCents, unpaidExecutedCents, forecast }, revenue: { ...base.revenue, contractsCount: contracts.length, statementsCount: statements.length, paidStatementsCount, pendingStatementsCount: statements.length - paidStatementsCount, materialsCount: statements.reduce((total, statement) => total + statement.materials.length, 0), materialsCents: sum(statements.flatMap((statement) => statement.materials.map((material) => material.totalCents))) }, cost: { ...base.cost, subcontractorsCount: accounts.length, subcontractStatementsCount: accounts.reduce((total, account) => total + account.statements.length, 0), purchaseInvoicesCount: purchases.length + stockIssues.length + stockReturns.length, payrollRunsCount: payrollRuns.length, pettyExpensesCount }, cash: { ...base.cash, subcontractPaymentsCount, paidPayrollRunsCount: payrollRuns.filter((run) => run.status === "PAID").length, pettyExpensesCount } };
 }
