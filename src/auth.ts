@@ -4,7 +4,7 @@ import { compare, hash } from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { clearLoginFailures, loginIsBlocked, recordLoginFailure } from "@/lib/login-rate-limit";
-import { assertSecureRuntimeConfig } from "@/lib/runtime-config";
+import { assertSecureRuntimeConfig, getConfiguredPublicOrigin } from "@/lib/runtime-config";
 import { applyPermissionOverrides } from "@/lib/access-control";
 
 const credentialsSchema = z.object({
@@ -13,7 +13,8 @@ const credentialsSchema = z.object({
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // Required for the explicitly approved HTTPS preview behind Cloudflare.
+  // Auth.js requires this behind a reverse proxy. proxy.ts verifies Host and
+  // X-Forwarded-Host against AUTH_URL before any request reaches Auth.js.
   trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
@@ -124,6 +125,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const isLoginPage = request.nextUrl.pathname === "/login";
 
       if (request.nextUrl.pathname === "/api/health") return true;
+      if (request.nextUrl.pathname.startsWith("/api/auth")) return true;
 
       if (request.nextUrl.pathname.startsWith("/api/") && !isLoggedIn) {
         return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
@@ -133,7 +135,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       if (isLoginPage) {
-        return isLoggedIn ? Response.redirect(new URL("/", request.nextUrl)) : true;
+        const publicOrigin = getConfiguredPublicOrigin();
+        return isLoggedIn ? Response.redirect(new URL("/", publicOrigin ?? request.nextUrl)) : true;
       }
 
       return isLoggedIn;

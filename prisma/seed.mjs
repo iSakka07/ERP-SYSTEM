@@ -64,7 +64,7 @@ try {
         create: { name, email, passwordHash, roleId: role.id },
       });
     }
-    const company = await prisma.company.upsert({ where: { name: "إدارة الأشغال العسكرية" }, update: { active: true }, create: { name: "إدارة الأشغال العسكرية", type: "OWNER" } });
+    const company = await prisma.company.upsert({ where: { name: "إدارة الأشغال العسكرية" }, update: { active: true, isEngineeringAuthority: true }, create: { name: "إدارة الأشغال العسكرية", type: "OWNER", isEngineeringAuthority: true } });
     const project = await prisma.project.upsert({ where: { code: "MAYAN-27" }, update: { companyId: company.id }, create: { code: "MAYAN-27", name: "عمارة 27 - كمبوند مايان", companyId: company.id } });
     await prisma.company.upsert({ where: { name: "مورد خامات تجريبي" }, update: { type: "SUPPLIER", active: true }, create: { name: "مورد خامات تجريبي", type: "SUPPLIER", phone: "01000000000" } });
     const engineer = await prisma.employee.upsert({ where: { employeeCode: "ENG-001" }, update: { active: true }, create: { employeeCode: "ENG-001", name: "أحمد محمد", jobTitle: "مهندس موقع" } });

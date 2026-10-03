@@ -1,19 +1,19 @@
 import "server-only";
 import { NextResponse } from "next/server";
+import { getConfiguredPublicOrigin } from "@/lib/runtime-config";
 
 /**
- * Mutation requests may originate from the current host or the configured
- * public host behind a trusted reverse proxy. A missing Origin is allowed for
- * server-side clients and the isolated acceptance suite.
+ * Browser mutations must come from the configured public origin. We do not
+ * compare Origin with Host because Host is supplied by the requester and may
+ * be spoofed before the reverse proxy. A missing Origin remains supported for
+ * non-browser server-to-server clients.
  */
 export function isTrustedMutationOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
   try {
-    const originHost = new URL(origin).host;
-    const requestHost = request.headers.get("host");
-    const configuredHost = process.env.AUTH_URL ? new URL(process.env.AUTH_URL).host : null;
-    return originHost === requestHost || originHost === configuredHost;
+    const configuredOrigin = getConfiguredPublicOrigin();
+    return Boolean(configuredOrigin && new URL(origin).origin === configuredOrigin.origin);
   } catch {
     return false;
   }
@@ -36,4 +36,3 @@ export function assertMutation(request: Request): NextResponse | null {
   }
   return null;
 }
-

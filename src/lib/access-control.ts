@@ -12,6 +12,8 @@ export function applyPermissionOverrides(base: string[], overrides: { enabled: b
   return [...effective];
 }
 
+export type AccessProfile = NonNullable<Awaited<ReturnType<typeof accessProfile>>>;
+
 export async function accessProfile(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },

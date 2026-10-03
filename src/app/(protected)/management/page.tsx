@@ -1,20 +1,13 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { ManagementCenter } from "@/components/management-center";
-import { accessProfile, projectWhere } from "@/lib/access-control";
-import { can } from "@/lib/permissions";
+import { requireAccess } from "@/lib/server-access";
 import { prisma } from "@/lib/prisma";
 
 export default async function ManagementPage() {
-  const session = await auth();
-  if (!session?.user?.id || !can(session.user, "masterdata.view")) redirect("/");
-
-  const profile = await accessProfile(session.user.id);
+  const profile = await requireAccess("masterdata.view");
   if (!profile) redirect("/");
 
-  const pWhere = profile.isProjectScoped
-    ? { active: true, id: { in: profile.projectIds } }
-    : { active: true };
+  const pWhere = { active: true, ...profile.projectWhere() };
 
   const eWhere = profile.isProjectScoped
     ? { active: true, supervisors: { some: { active: true, projectId: { in: profile.projectIds } } } }
@@ -97,5 +90,5 @@ export default async function ManagementPage() {
     }),
   ]);
 
-  return <ManagementCenter canManage={can(session.user, "masterdata.manage")} companies={companies} projects={projects} engineers={engineers} />;
+  return <ManagementCenter canManage={profile.can("masterdata.manage")} companies={companies} projects={projects} engineers={engineers} />;
 }

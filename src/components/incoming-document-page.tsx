@@ -10,6 +10,7 @@ export function IncomingDocumentPage({ editor, projects, attachments = [], isAdm
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  if (!projects.length) return <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900" role="status">لا توجد مشروعات متاحة لحسابك لإنشاء هذا المستند.</section>;
   async function save(payload: object, files: File[], estimateFiles: File[] = []) {
     setBusy(true); setMessage("");
     try {

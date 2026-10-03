@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
-import { accessProfile } from "@/lib/access-control";
+import { currentAccess } from "@/lib/server-access";
 import { prisma } from "@/lib/prisma";
 import { AttachmentsDirectory, type AttachmentRow } from "@/components/attachments-directory";
 
@@ -8,9 +7,8 @@ const moduleLabels: Record<string, string> = { incoming: "العقود والو�
 const day = (date: Date) => date.toLocaleDateString("en-GB");
 
 export default async function AttachmentsPage() {
-  const session = await auth(); if (!session?.user?.id) redirect("/login");
-  const profile = await accessProfile(session.user.id); if (!profile) redirect("/login");
-  const can = (key: string) => profile.permissions.includes(key) && !(profile.isProjectScoped && ["pettycash.view", "bank.view", "salaries.view"].includes(key));
+  const profile = await currentAccess(); if (!profile) redirect("/login");
+  const can = profile.can;
   if (!["incoming.view","expenses.view","purchases.view","pettycash.view","bank.view","salaries.view"].some(can)) redirect("/");
   const projectWhere = profile.isProjectScoped ? { projectId: { in: profile.projectIds } } : {};
   const [contracts, subcontract, invoices, petty, bank, salaries] = await Promise.all([

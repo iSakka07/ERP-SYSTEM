@@ -60,6 +60,7 @@ export function PurchaseInvoicePage({
   const [rows, setRows] = useState<Row[]>([blankRow()]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const noProjects = projects.length === 0;
   const [paidAmount, setPaidAmount] = useState<number | null>(null);
   const [stockMode, setStockMode] = useState<
     "WAREHOUSE" | "DIRECT_PROJECT" | "LEGACY_DIRECT"
@@ -121,6 +122,7 @@ export function PurchaseInvoicePage({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (noProjects) return;
     if (
       stockMode !== "LEGACY_DIRECT" &&
       rows.some((row) => !row.inventoryItem)
@@ -248,6 +250,7 @@ export function PurchaseInvoicePage({
         onSubmit={submit}
         className="space-y-5 rounded-2xl border bg-white p-5 shadow-sm"
       >
+        {noProjects && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">لا توجد مشروعات متاحة لحسابك لإنشاء فاتورة مشتريات.</p>}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="text-xs font-bold">
             اسم الفاتورة *
@@ -615,7 +618,7 @@ export function PurchaseInvoicePage({
         )}
         <div className="flex flex-wrap gap-2">
           <button
-            disabled={busy}
+            disabled={busy || noProjects}
             className={`${expenseButton} bg-blue-700 text-white`}
           >
             <Save className="size-4" />

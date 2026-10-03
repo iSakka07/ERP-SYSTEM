@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { accessProfile } from "@/lib/access-control";
+import { requireAccess } from "@/lib/server-access";
 import { getAttentionAlerts } from "@/lib/attention-alerts";
 import { prisma } from "@/lib/prisma";
 
@@ -29,17 +28,15 @@ function auditSummary(details: string | null) {
 }
 
 export async function GET(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  const profile = await accessProfile(session.user.id);
-  if (!profile || !profile.permissions.includes("dashboard.view")) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  const profile = await requireAccess("dashboard.view");
+  if (!profile) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   try {
     const requestedProject = new URL(request.url).searchParams.get("project");
     const requestedAuditPage = Number(new URL(request.url).searchParams.get("auditPage") || "1");
-    const selectedProject = requestedProject ? await prisma.project.findFirst({ where: { id: requestedProject, active: true, ...(profile.isProjectScoped ? { id: { in: profile.projectIds } } : {}) }, select: { id: true } }) : null;
+    const selectedProject = requestedProject ? await prisma.project.findFirst({ where: { id: requestedProject, active: true, ...profile.projectWhere() }, select: { id: true } }) : null;
     const projectId = selectedProject?.id;
     const alerts = await getAttentionAlerts(profile, projectId);
-    if (profile.user.role?.key !== "admin") return NextResponse.json({ alerts, count: alerts.length }, { headers: { "Cache-Control": "private, no-store" } });
+    if (!profile.admin) return NextResponse.json({ alerts, count: alerts.length }, { headers: { "Cache-Control": "private, no-store" } });
     const page = Number.isSafeInteger(requestedAuditPage) && requestedAuditPage > 0 ? requestedAuditPage : 1;
     const pageSize = 10;
     const [logs, total] = await Promise.all([

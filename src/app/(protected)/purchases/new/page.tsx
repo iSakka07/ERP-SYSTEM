@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { PurchaseInvoicePage } from "@/components/purchase-invoice-page";
 import { incomingUser } from "@/lib/incoming-server";
+import { projectWhere } from "@/lib/access-control";
 import { prisma } from "@/lib/prisma";
 
 function safeReturn(value?: string) {
@@ -12,9 +13,10 @@ export default async function NewPurchaseInvoicePage({
 }: {
   searchParams: Promise<{ return?: string }>;
 }) {
-  if (!(await incomingUser("purchases.manage"))) redirect("/purchases");
+  const user = await incomingUser("purchases.manage");
+  if (!user) redirect("/purchases");
   const [projects, suppliers, warehouses] = await Promise.all([
-    prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.project.findMany({ where: { active: true, ...projectWhere(user) }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.company.findMany({ where: { active: true, type: "SUPPLIER" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.warehouse.findMany({ where: { active: true, type: { not: "PROJECT" } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);

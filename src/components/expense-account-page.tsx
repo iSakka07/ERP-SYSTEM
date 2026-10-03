@@ -15,6 +15,7 @@ export function ExpenseAccountPage({ projects, companies, returnHref }: {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const noProjects = projects.length === 0;
   async function submit(form: HTMLFormElement) {
     const data = new FormData(form);
     setBusy(true);
@@ -51,8 +52,9 @@ export function ExpenseAccountPage({ projects, companies, returnHref }: {
           </div>
           <label className="block text-xs font-bold">ملاحظات<textarea name="notes" maxLength={2000} className={`${expenseInput} mt-2`} /></label>
           <ExpenseFileInput required={false} label="مرفق المقاولة (اختياري)" />
+          {noProjects && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">لا توجد مشروعات متاحة لحسابك لإنشاء حساب مقاول.</p>}
           {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-          <div className="flex gap-2"><button disabled={busy || !companies.length || !projects.length} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50"><Save className="size-4" />{busy ? "جارٍ الحفظ…" : "حفظ وفتح جاري 1"}</button><button type="button" className={expenseButton} onClick={() => router.push(returnHref)}>إلغاء</button></div>
+          <div className="flex gap-2"><button disabled={busy || !companies.length || noProjects} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50"><Save className="size-4" />{busy ? "جارٍ الحفظ…" : "حفظ وفتح جاري 1"}</button><button type="button" className={expenseButton} onClick={() => router.push(returnHref)}>إلغاء</button></div>
         </form>
       </DocumentLayout>
     </div>

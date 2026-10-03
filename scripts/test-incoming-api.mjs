@@ -42,7 +42,7 @@ async function login(email) {
 }
 async function post(payload, files = true, jar = cookieMap) {
   const key = randomUUID();
-  const send = async (confirmation) => { const form = new FormData(); form.set("payload", JSON.stringify(payload)); if (files) form.append("files", new Blob([proof], { type: "application/pdf" }), "AUTOMATED-TEST-ONLY.pdf"); const r = await fetch(`${base}/api/incoming`, { method: "POST", headers: { Cookie: cookies(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form }); const result = await r.json(); if (r.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: r.status, ...result }; };
+  const send = async (confirmation) => { const form = new FormData(); form.set("payload", JSON.stringify(payload)); if (files) { form.append("files", new Blob([proof], { type: "application/pdf" }), "AUTOMATED-TEST-ONLY.pdf"); form.append("filesLabels", "إثبات اختبار آلي"); } const r = await fetch(`${base}/api/incoming`, { method: "POST", headers: { Cookie: cookies(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form }); const result = await r.json(); if (r.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: r.status, ...result }; };
   return send();
 }
 async function remove(id, jar = cookieMap) {

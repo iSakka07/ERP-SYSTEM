@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const user = await incomingUser("project_cost_control.view");
   if (!user) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
   const projectId = new URL(request.url).searchParams.get("projectId") || "";
-  if (user.isProjectScoped && !user.projectIds.includes(projectId)) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  if (!user.canUseProject(projectId)) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
   if (!await prisma.project.findFirst({ where: { id: projectId, active: true } })) return NextResponse.json({ error: "المشروع غير موجود" }, { status: 404 });
   return NextResponse.json(await getProjectPlanning(projectId));
 }
@@ -25,6 +25,7 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "راجع القيم والتاريخ المدخل." }, { status: 400 });
   const input = parsed.data;
+  if (!user.canUseProject(input.projectId)) return NextResponse.json({ error: "غير مصرح لهذا المشروع." }, { status: 403 });
   try {
     await prisma.$transaction(async tx => {
       if (!await tx.project.findFirst({ where: { id: input.projectId, active: true } })) throw new Error("المشروع غير موجود");
@@ -75,4 +76,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error && !("code" in error) ? error.message : "تعارض في البيانات؛ حدّث الصفحة وحاول مجددًا." }, { status: 409 });
   }
 }
-

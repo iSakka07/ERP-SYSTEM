@@ -15,11 +15,12 @@ const databaseUrl = postgres
 if (!databaseUrl) throw new Error("اختبار PostgreSQL المعزول يحتاج POSTGRES_DATABASE_URL.");
 const testUrl = `http://127.0.0.1:${port}`;
 const adminPassword = "IsolatedDemo@123456";
-const env = { ...process.env, DATABASE_URL: databaseUrl, AUTH_SECRET: "isolated-test-secret-with-at-least-32-characters", AUTH_URL: testUrl, ERP_ISOLATED_TEST: "true", ERP_ISOLATED_POSTGRES: postgres ? "true" : undefined, BOOTSTRAP_ADMIN_EMAIL: "admin@erp.local", BOOTSTRAP_ADMIN_PASSWORD: adminPassword, DEMO_USER_PASSWORD: adminPassword, ERP_TEST_ADMIN_PASSWORD: adminPassword, BOOTSTRAP_ADMIN_NAME: "مدير النظام", ERP_TEST_URL: testUrl };
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const apiTests = ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:warehouse-receipts-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:accounting-period-api", "test:project-cost-control-api", "test:security-financial-acceptance"];
 const selectedTest = process.env.ERP_TEST_ONLY;
-if (selectedTest && !apiTests.includes(selectedTest)) throw new Error(`اختبار العزل غير معروف: ${selectedTest}`);
+if (selectedTest && ![...apiTests, "test:runtime-smoke", "test:project-scope-acceptance", "test:host-origin-acceptance"].includes(selectedTest)) throw new Error(`اختبار العزل غير معروف: ${selectedTest}`);
+const publicOrigin = selectedTest === "test:host-origin-acceptance" ? "https://erp.local.test" : testUrl;
+const env = { ...process.env, DATABASE_URL: databaseUrl, AUTH_SECRET: "isolated-test-secret-with-at-least-32-characters", AUTH_URL: publicOrigin, ERP_ISOLATED_TEST: "true", ERP_ISOLATED_POSTGRES: postgres ? "true" : undefined, BOOTSTRAP_ADMIN_EMAIL: "admin@erp.local", BOOTSTRAP_ADMIN_PASSWORD: adminPassword, DEMO_USER_PASSWORD: adminPassword, ERP_TEST_ADMIN_PASSWORD: adminPassword, BOOTSTRAP_ADMIN_NAME: "مدير النظام", ERP_TEST_URL: testUrl, ERP_TEST_PUBLIC_ORIGIN: publicOrigin };
 const windowsPnpm = process.platform === "win32" ? (() => {
   const located = spawnSync("where.exe", ["pnpm.cmd"], { encoding: "utf8" });
   const command = located.stdout.split(/\r?\n/).find(Boolean);
