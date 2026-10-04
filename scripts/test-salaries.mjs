@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { activeDaysInMonth, allocateMonthlySalary, buildPayrollDistribution, intersectSalaryPeriods, monthDays } from "../src/lib/salary-payroll.ts";
+import { activeDaysInMonth, allocateMonthlySalary, assertAdvanceWithinSalary, assertDeductionWithinSalary, assertPayrollMonthAvailable, buildPayrollDistribution, followingMonth, intersectSalaryPeriods, monthDays, nextPayrollMonth } from "../src/lib/salary-payroll.ts";
 
 const date = (value) => new Date(`${value}T00:00:00.000Z`);
 assert.equal(monthDays("2026-02"), 28);
@@ -26,4 +26,14 @@ assert.deepEqual(
   buildPayrollDistribution("2026-04", 3_000_000, [{ projectId: "a", startDate: date("2026-04-01"), endDate: null }], [{ startDate: date("2026-04-01"), endDate: null }], [{ startDate: date("2026-04-16"), monthlySalaryCents: 4_000_000 }]),
   [{ projectId: "a", days: 15, cents: 1_500_000 }, { projectId: "a", days: 15, cents: 2_000_000 }],
 );
+assert.equal(followingMonth("2026-12"), "2027-01");
+assert.equal(nextPayrollMonth([], "2026-11"), "2026-11");
+assert.equal(nextPayrollMonth(["2026-10", "2026-11"], "2026-11"), "2026-12");
+assert.doesNotThrow(() => assertPayrollMonthAvailable("2026-11", ["2026-10"], "2026-10"));
+assert.throws(() => assertPayrollMonthAvailable("2026-10", ["2026-10"], "2026-10"), /معتمد بالفعل/);
+assert.throws(() => assertPayrollMonthAvailable("2026-12", ["2026-10"], "2026-10"), /2026-11/);
+assert.doesNotThrow(() => assertAdvanceWithinSalary(500_000, 100_000, 400_000));
+assert.throws(() => assertAdvanceWithinSalary(500_000, 100_000, 400_001), /إجمالي السلف/);
+assert.doesNotThrow(() => assertDeductionWithinSalary("2026-11", 500_000, 100_000, 400_000));
+assert.throws(() => assertDeductionWithinSalary("2026-11", 500_000, 100_000, 400_001), /إجمالي خصومات/);
 console.log("Salary payroll business logic tests passed.");

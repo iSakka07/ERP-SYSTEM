@@ -30,7 +30,7 @@ import {
   previewDataPdf,
   usePdfDataExport,
 } from "@/components/pdf-data-export";
-import { buildPayrollDistribution } from "@/lib/salary-payroll";
+import { buildPayrollDistribution, followingMonth, nextPayrollMonth } from "@/lib/salary-payroll";
 
 type Employee = {
   id: string;
@@ -176,6 +176,15 @@ export function SalariesCenter({
     status: "ACTIVE" | "INACTIVE";
   } | null>(null);
   const [salaryEditEmployee, setSalaryEditEmployee] = useState<Employee | null>(null);
+  const [salaryOverrides, setSalaryOverrides] = useState<Record<string, number>>({});
+  const employeesForDisplay = employees.map((employee) => ({
+    ...employee,
+    monthlySalaryCents: salaryOverrides[employee.id] ?? employee.monthlySalaryCents,
+  }));
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const payrollMonth = nextPayrollMonth(runs.map((run) => run.month), currentMonth);
+  const latestRunMonth = [...runs.map((run) => run.month)].sort().at(-1);
+  const earliestSalaryMonth = latestRunMonth ? followingMonth(latestRunMonth) : currentMonth;
   const currentAllocations = useMemo(
     () =>
       new Map(
@@ -198,7 +207,7 @@ export function SalariesCenter({
   const salaryDistribution = (employee: Employee) =>
     buildPayrollDistribution(
       month,
-      employee.monthlySalaryCents,
+      salaryOverrides[employee.id] ?? employee.monthlySalaryCents,
       allocations.filter((allocation) => allocation.employee.id === employee.id).map((allocation) => ({ projectId: allocation.project?.id ?? null, startDate: new Date(allocation.startDate), endDate: allocation.endDate ? new Date(allocation.endDate) : null })),
       (() => {
         const periods = statusPeriods.filter((period) => period.employeeId === employee.id).map((period) => ({ startDate: new Date(period.startDate), endDate: period.endDate ? new Date(period.endDate) : null }));
@@ -322,6 +331,7 @@ export function SalariesCenter({
         "deduction",
         "create-payroll",
         "payroll-pay",
+        "payroll-revert",
       ].includes(action),
       scope = `salary-${action}-${String(values.employeeId || values.id || values.month || "new")}`;
     try {
@@ -359,9 +369,14 @@ export function SalariesCenter({
         }
       };
       await submitRequest();
-      setMessage(
-        replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم حفظ العملية بنجاح.",
-      );
+      if (action === "employee-salary-update" && !replayed) {
+        const employeeId = String(values.employeeId || "");
+        const salaryCents = Math.round(Number(values.amount) * 100);
+        setSalaryOverrides((current) => ({ ...current, [employeeId]: salaryCents }));
+        setMessage(`تم تعديل راتب الموظف إلى ${Number(values.amount).toLocaleString("ar-EG")} ج.م وسيظهر فورًا في جدول الموظفين النشطين.`);
+      } else {
+        setMessage(replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم حفظ العملية بنجاح.");
+      }
       form.reset();
       setAdvanceEmployee(null);
       setAdjustment(null);
@@ -411,6 +426,29 @@ export function SalariesCenter({
       setBusy("");
     }
   }
+  async function revertPayroll(id: string, monthValue: string) {
+    const reason = window.prompt(`اكتب سبب إرجاع كشف رواتب ${monthValue}:`, "تصحيح بيانات كشف المرتبات");
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setMessage("اكتب سببًا واضحًا لإرجاع كشف المرتبات.");
+      return;
+    }
+    const form = new FormData();
+    form.set("action", "payroll-revert");
+    form.set("payload", JSON.stringify({ id, reason: reason.trim() }));
+    const scope = `salary-payroll-revert-${id}`;
+    setBusy(`revert-${id}`);
+    setMessage("");
+    try {
+      await financialResult(await fetch("/api/salaries", { method: "POST", body: form, headers: financialHeaders(scope) }), scope);
+      setMessage(`تم إرجاع كشف شهر ${monthValue}. عادت خصومات السلف كما كانت ويمكنك الآن تعديل البيانات وإعادة إنشاء الكشف.`);
+      router.refresh();
+    } catch (reasonError) {
+      setMessage(reasonError instanceof Error ? reasonError.message : "تعذر إرجاع كشف المرتبات.");
+    } finally {
+      setBusy("");
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -455,7 +493,7 @@ export function SalariesCenter({
 
       {tab === "employees" ? (
         <EmployeesTab
-          employees={employees}
+          employees={employeesForDisplay}
           projects={projects}
           salaryDistribution={salaryDistribution}
           currentAllocations={currentAllocations}
@@ -519,12 +557,14 @@ export function SalariesCenter({
             busy={busy}
             onSubmit={submit}
             onPay={pay}
+            onRevert={revertPayroll}
+            payrollMonth={payrollMonth}
           />
         </>
       )}
       {advanceEmployee && (
         <AdvanceDialog
-          employee={advanceEmployee}
+          employee={{ ...advanceEmployee, monthlySalaryCents: salaryOverrides[advanceEmployee.id] ?? advanceEmployee.monthlySalaryCents }}
           busy={busy}
           onClose={() => setAdvanceEmployee(null)}
           onSubmit={submit}
@@ -532,8 +572,9 @@ export function SalariesCenter({
       )}
       {adjustment && (
         <AdjustmentDialog
-          employee={adjustment.employee}
+          employee={{ ...adjustment.employee, monthlySalaryCents: salaryOverrides[adjustment.employee.id] ?? adjustment.employee.monthlySalaryCents }}
           type={adjustment.type}
+          defaultMonth={runs.some((run) => run.month === month) ? payrollMonth : month}
           busy={busy}
           onClose={() => setAdjustment(null)}
           onSubmit={submit}
@@ -548,7 +589,7 @@ export function SalariesCenter({
           onSubmit={submit}
         />
       )}
-      {salaryEditEmployee && <SalaryEditDialog employee={salaryEditEmployee} busy={busy} onClose={() => setSalaryEditEmployee(null)} onSubmit={submit} />}
+      {salaryEditEmployee && <SalaryEditDialog employee={{ ...salaryEditEmployee, monthlySalaryCents: salaryOverrides[salaryEditEmployee.id] ?? salaryEditEmployee.monthlySalaryCents }} earliestMonth={earliestSalaryMonth} busy={busy} onClose={() => setSalaryEditEmployee(null)} onSubmit={submit} />}
     </div>
   );
 }
@@ -843,11 +884,13 @@ function EmployeeStatusDialog({
 
 function SalaryEditDialog({
   employee,
+  earliestMonth,
   busy,
   onClose,
   onSubmit,
 }: {
   employee: Employee;
+  earliestMonth: string;
   busy: string;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>, action: string) => Promise<void>;
@@ -868,7 +911,7 @@ function SalaryEditDialog({
             </ERPSelect>
           </Field>
           <Field label={effectiveMode === "MONTH_START" ? "الشهر الذي يسري منه الراتب" : "يوم بدء حساب الراتب الجديد"}>
-            <input name="effectiveDate" type={effectiveMode === "MONTH_START" ? "month" : "date"} required defaultValue={effectiveMode === "MONTH_START" ? new Date().toISOString().slice(0, 7) : new Date().toISOString().slice(0, 10)} className={expenseInput} />
+            <input name="effectiveDate" type={effectiveMode === "MONTH_START" ? "month" : "date"} min={effectiveMode === "MONTH_START" ? earliestMonth : `${earliestMonth}-01`} required defaultValue={effectiveMode === "MONTH_START" ? earliestMonth : `${earliestMonth}-01`} className={expenseInput} />
           </Field>
         </div>
         <p className="mt-3 text-xs text-slate-500">اختر هل يُحسب الراتب الجديد من أول الشهر كاملًا أم من يوم التعديل بنسبة أيام العمل. إذا كان كشف الشهر الحالي قد اعتُمد، يجب أن يبدأ التعديل من الشهر التالي.</p>
@@ -921,7 +964,8 @@ function AdvanceDialog({
         <input type="hidden" name="employeeId" value={employee.id} />
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <Field label="قيمة السلفة *">
-            <CurrencyInput name="amount" required min="0.01" />
+            <CurrencyInput name="amount" required min="0.01" max={String(employee.monthlySalaryCents / 100)} />
+            <p className="mt-1 text-[10px] text-slate-500">الحد الأقصى لإجمالي السلف القائمة هو الراتب الشهري: {money(employee.monthlySalaryCents)} ج.م.</p>
           </Field>
           <Field label="تاريخ الصرف *">
             <input
@@ -979,12 +1023,14 @@ function AdvanceDialog({
 function AdjustmentDialog({
   employee,
   type,
+  defaultMonth,
   busy,
   onClose,
   onSubmit,
 }: {
   employee: Employee;
   type: "bonus" | "deduction";
+  defaultMonth: string;
   busy: string;
   onClose: () => void;
   onSubmit: (
@@ -1021,10 +1067,12 @@ function AdjustmentDialog({
         <input type="hidden" name="employeeId" value={employee.id} />
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <Field label="الشهر *">
-            <MonthInput />
+            <input value={defaultMonth} readOnly className={`${expenseInput} bg-slate-50 font-bold`} />
+            <input type="hidden" name="month" value={defaultMonth} />
+            <p className="mt-1 text-[10px] text-slate-500">لا يمكن إضافة تعديل على شهر له كشف معتمد.</p>
           </Field>
           <Field label="القيمة *">
-            <CurrencyInput name="amount" required min="0.01" />
+            <CurrencyInput name="amount" required min="0.01" max={isBonus ? undefined : String(employee.monthlySalaryCents / 100)} />
           </Field>
           <Field label="الاسم *">
             <input
@@ -1065,6 +1113,8 @@ function PayrollTab({
   busy,
   onSubmit,
   onPay,
+  onRevert,
+  payrollMonth,
 }: {
   runs: Run[];
   projects: Project[];
@@ -1077,6 +1127,8 @@ function PayrollTab({
     files?: boolean,
   ) => Promise<void>;
   onPay: (id: string, source?: string) => Promise<void>;
+  onRevert: (id: string, month: string) => Promise<void>;
+  payrollMonth: string;
 }) {
   const [sources, setSources] = useState<Record<string, string>>({});
   const approvedCost = runs
@@ -1131,7 +1183,9 @@ function PayrollTab({
             className="mt-4 grid gap-3 md:grid-cols-[220px_1fr_auto]"
           >
             <Field label="الشهر *">
-              <MonthInput />
+              <input value={payrollMonth} readOnly className={`${expenseInput} bg-slate-50 font-bold`} />
+              <input type="hidden" name="month" value={payrollMonth} />
+              <p className="mt-1 text-[10px] text-slate-500">يعرض النظام الشهر التالي فقط لمنع تكرار كشف معتمد أو تخطي شهر.</p>
             </Field>
             <UploadBox
               name="files"
@@ -1161,6 +1215,7 @@ function PayrollTab({
                   "إجمالي الكشف",
                   "الحالة",
                   "مصدر الصرف",
+                  "المرفقات",
                   "الإجراءات",
                 ].map((head) => (
                   <th key={head}>{head}</th>
@@ -1191,17 +1246,27 @@ function PayrollTab({
                   </td>
                   <td data-label="المرفقات">{run.attachments?.[0] ? <a className="relative inline-flex text-blue-700" href={`/api/salaries/attachments/${run.attachments[0].id}`} title={run.attachments[0].label}><Paperclip className="size-4" />{run.attachments.length > 1 && <span className="absolute -left-2 -top-2 rounded-full bg-blue-700 px-1 text-[9px] text-white">{run.attachments.length}</span>}</a> : "—"}</td>
                   <td data-label="الإجراءات">
-                    {canPay && run.status === "APPROVED" ? (
-                      <button
-                        disabled={busy === `pay-${run.id}`}
-                        onClick={() => onPay(run.id, sources[run.id] || "EXECUTIVE_DIRECTOR")}
-                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-                      >
-                        تسجيل الصرف
-                      </button>
-                    ) : (
-                      "—"
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {canPay && run.status === "APPROVED" && (
+                        <button
+                          disabled={busy === `pay-${run.id}` || busy === `revert-${run.id}`}
+                          onClick={() => onPay(run.id, sources[run.id] || "EXECUTIVE_DIRECTOR")}
+                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                        >
+                          تسجيل الصرف
+                        </button>
+                      )}
+                      {canManage && run.status === "APPROVED" && (
+                        <button
+                          disabled={busy === `revert-${run.id}` || busy === `pay-${run.id}`}
+                          onClick={() => onRevert(run.id, run.month)}
+                          className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 disabled:opacity-50"
+                        >
+                          {busy === `revert-${run.id}` ? "جارٍ الإرجاع…" : "إرجاع الكشف"}
+                        </button>
+                      )}
+                      {run.status !== "APPROVED" && "—"}
+                    </div>
                   </td>
                 </tr>
               ))}

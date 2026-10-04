@@ -11,6 +11,7 @@ import {
   postExecutiveAdvance,
   postPayrollApproval,
   postPayrollPayment,
+  reversePostedJournal,
 } from "@/lib/accounting-posting";
 import {
   completeFinancialOperation,
@@ -22,6 +23,9 @@ import { assertMutation } from "@/lib/request-security";
 import { arabicErrorMessage } from "@/lib/api-error";
 import { centsNumber } from "@/lib/money";
 import {
+  assertAdvanceWithinSalary,
+  assertDeductionWithinSalary,
+  assertPayrollMonthAvailable,
   buildPayrollDistribution,
 } from "@/lib/salary-payroll";
 
@@ -127,6 +131,17 @@ export async function POST(request: Request) {
     const requiredFiles = new Set(["create-payroll", "advance"]);
     if (requiredFiles.has(action) && !files.length)
       throw new Error("المرفق إلزامي لهذه العملية.");
+    if (action === "create-payroll") {
+      const requestedMonth = monthSchema.parse(payload.month);
+      if (await prisma.payrollRun.findUnique({ where: { month: requestedMonth } }))
+        throw new Error(`لا يمكن إنشاء كشف رواتب شهر ${requestedMonth} لأنه معتمد بالفعل. استخدم زر «إرجاع الكشف» أولًا إذا كنت تريد تعديله.`);
+    }
+    if (action === "bonus" || action === "deduction") {
+      const requestedMonth = monthSchema.parse(payload.month);
+      const run = await prisma.payrollRun.findUnique({ where: { month: requestedMonth }, select: { status: true } });
+      if (run)
+        throw new Error(`لا يمكن إضافة ${action === "bonus" ? "مكافأة" : "خصم"} على شهر ${requestedMonth} لأن كشفه ${run.status === "PAID" ? "مصروف" : "معتمد"}. أرجع الكشف أولًا إذا كنت تريد تعديله.`);
+    }
     if (
       [
         "advance",
@@ -134,6 +149,7 @@ export async function POST(request: Request) {
         "deduction",
         "create-payroll",
         "payroll-pay",
+        "payroll-revert",
       ].includes(action)
     ) {
       const guarded = await guardFinancialOperation(request, {
@@ -382,6 +398,13 @@ export async function POST(request: Request) {
           });
           if (!employee) throw new Error("اختر موظفًا صحيحًا.");
           const amountCents = money(payload.amount);
+          const salaryCents = centsNumber(employee.monthlySalaryCents);
+          const openAdvances = await tx.employeeAdvance.aggregate({
+            where: { employeeId: employee.id, status: "OPEN" },
+            _sum: { remainingCents: true },
+          });
+          const outstandingAdvanceCents = centsNumber(openAdvances._sum.remainingCents || 0);
+          assertAdvanceWithinSalary(salaryCents, outstandingAdvanceCents, amountCents);
           const repaymentMode =
             payload.repaymentMode === "INSTALLMENTS"
               ? "INSTALLMENTS"
@@ -487,12 +510,37 @@ export async function POST(request: Request) {
           const reason = String(payload.reason || "").trim();
           if (!employee || label.length < 2 || reason.length < 2)
             throw new Error("الموظف والاسم والسبب مطلوبون.");
+          const adjustmentMonth = monthSchema.parse(payload.month);
+          const existingRun = await tx.payrollRun.findUnique({ where: { month: adjustmentMonth }, select: { status: true } });
+          if (existingRun)
+            throw new Error(`لا يمكن إضافة ${action === "bonus" ? "مكافأة" : "خصم"} على شهر ${adjustmentMonth} لأن كشفه ${existingRun.status === "PAID" ? "مصروف" : "معتمد"}. أرجع الكشف أولًا إذا كنت تريد تعديله.`);
+          const adjustmentCents = money(payload.amount);
+          if (action === "deduction") {
+            const [employeeAllocations, employeePeriods, employeeRates, priorDeductions] = await Promise.all([
+              tx.employeeSalaryAllocation.findMany({ where: { employeeId: employee.id } }),
+              tx.employeeStatusPeriod.findMany({ where: { employeeId: employee.id } }),
+              tx.employeeSalaryRate.findMany({ where: { employeeId: employee.id } }),
+              tx.employeeDeduction.aggregate({ where: { employeeId: employee.id, month: adjustmentMonth }, _sum: { amountCents: true } }),
+            ]);
+            const periods = employeePeriods.length
+              ? employeePeriods
+              : [{ startDate: new Date("1900-01-01T00:00:00.000Z"), endDate: null }];
+            const salaryForMonth = buildPayrollDistribution(
+              adjustmentMonth,
+              centsNumber(employee.monthlySalaryCents),
+              employeeAllocations,
+              periods,
+              employeeRates.map((rate) => ({ startDate: rate.startDate, monthlySalaryCents: centsNumber(rate.monthlySalaryCents) })),
+            ).reduce((sum, part) => sum + part.cents, 0);
+            const priorDeductionCents = centsNumber(priorDeductions._sum.amountCents || 0);
+            assertDeductionWithinSalary(adjustmentMonth, salaryForMonth, priorDeductionCents, adjustmentCents);
+          }
           const data = {
             employeeId: employee.id,
-            month: monthSchema.parse(payload.month),
+            month: adjustmentMonth,
             name: label.slice(0, 150),
             reason: reason.slice(0, 1000),
-            amountCents: money(payload.amount),
+            amountCents: adjustmentCents,
           };
           const record =
             action === "bonus"
@@ -527,10 +575,8 @@ export async function POST(request: Request) {
         }
         if (action === "create-payroll") {
           const payrollMonth = monthSchema.parse(payload.month);
-          if (
-            await tx.payrollRun.findUnique({ where: { month: payrollMonth } })
-          )
-            throw new Error("تم إنشاء كشف هذا الشهر بالفعل.");
+          const existingRuns = await tx.payrollRun.findMany({ select: { month: true } });
+          assertPayrollMonthAvailable(payrollMonth, existingRuns.map((run) => run.month), new Date().toISOString().slice(0, 7));
           const [employees, allocations, statusPeriods, salaryRates, bonuses, deductions, advances] =
             await Promise.all([
               tx.employee.findMany(),
@@ -664,6 +710,37 @@ export async function POST(request: Request) {
             totalCents,
             status: "APPROVED",
           });
+        }
+        if (action === "payroll-revert") {
+          const id = String(payload.id || "");
+          const reason = String(payload.reason || "تصحيح كشف الرواتب").trim().slice(0, 500);
+          const run = await tx.payrollRun.findUnique({
+            where: { id },
+            include: { lines: { include: { installments: true } } },
+          });
+          if (!run) throw new Error("كشف المرتبات غير موجود أو تم إرجاعه بالفعل.");
+          if (run.status === "PAID")
+            throw new Error(`لا يمكن إرجاع كشف شهر ${run.month} لأنه تم صرفه بالفعل. يجب عكس عملية الصرف أولًا بواسطة مسؤول الحسابات.`);
+          if (run.status !== "APPROVED")
+            throw new Error(`لا يمكن إرجاع كشف شهر ${run.month} في حالته الحالية.`);
+          const laterRun = await tx.payrollRun.findFirst({ where: { month: { gt: run.month } }, orderBy: { month: "asc" }, select: { month: true } });
+          if (laterRun)
+            throw new Error(`لا يمكن إرجاع كشف شهر ${run.month} قبل إرجاع كشف الشهر اللاحق ${laterRun.month}. أرجع الكشوف من الأحدث إلى الأقدم.`);
+          const installments = run.lines.flatMap((line) => line.installments);
+          for (const installment of installments) {
+            await tx.employeeAdvance.update({
+              where: { id: installment.advanceId },
+              data: { remainingCents: { increment: centsNumber(installment.appliedCents) }, status: "OPEN" },
+            });
+          }
+          if (installments.length)
+            await tx.advanceInstallment.deleteMany({ where: { id: { in: installments.map((installment) => installment.id) } } });
+          const [year, monthNumber] = run.month.split("-").map(Number);
+          const entryDate = new Date(Date.UTC(year, monthNumber, 0));
+          await reversePostedJournal(tx, "PAYROLL_APPROVAL", run.id, entryDate, session.user.id, `إرجاع كشف رواتب ${run.month}: ${reason}`);
+          await audit("salary.payroll.revert", run.id, { month: run.month, reason, restoredInstallments: installments.length });
+          await tx.payrollRun.delete({ where: { id: run.id } });
+          return finish({ id: run.id }, "payrollRunReversal", { month: run.month, status: "REVERTED", reason });
         }
         if (action === "payroll-pay") {
           const id = String(payload.id);

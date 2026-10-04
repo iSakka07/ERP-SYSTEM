@@ -30,6 +30,7 @@
     "test:expenses": "node scripts/test-expenses.mjs",
     "test:petty-cash": "node scripts/test-petty-cash.mjs",
     "test:salaries": "node scripts/test-salaries.mjs",
+    "test:salaries-api": "node scripts/test-salaries-api.mjs",
     "test:petty-cash-api": "node scripts/test-petty-cash-api.mjs",
     "test:project-cost-control": "node scripts/test-project-cost-control.mjs",
     "test:project-cost-control-api": "node scripts/test-project-cost-control-api.mjs",

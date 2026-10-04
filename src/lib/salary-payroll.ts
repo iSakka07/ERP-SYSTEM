@@ -3,6 +3,35 @@ export type EmployeeStatusPeriodInput = { startDate: Date; endDate: Date | null 
 export type SalaryDistribution = { projectId: string | null; days: number; cents: number };
 export type SalaryRateInput = { startDate: Date; monthlySalaryCents: number };
 
+export function followingMonth(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7);
+}
+
+export function nextPayrollMonth(existingMonths: string[], currentMonth: string) {
+  if (!existingMonths.length) return currentMonth;
+  return followingMonth([...existingMonths].sort().at(-1)!);
+}
+
+export function assertPayrollMonthAvailable(requestedMonth: string, existingMonths: string[], currentMonth: string) {
+  if (existingMonths.includes(requestedMonth))
+    throw new Error(`لا يمكن إنشاء كشف رواتب شهر ${requestedMonth} لأنه معتمد بالفعل. أرجع الكشف أولًا إذا كنت تريد تعديله.`);
+  const expectedMonth = nextPayrollMonth(existingMonths, currentMonth);
+  if (requestedMonth !== expectedMonth)
+    throw new Error(`لا يمكن اعتماد شهر ${requestedMonth} الآن. الشهر التالي المطلوب بالترتيب هو ${expectedMonth}. يجب اعتماد الشهور بالترتيب دون تخطي شهر.`);
+}
+
+export function assertAdvanceWithinSalary(salaryCents: number, outstandingAdvanceCents: number, requestedCents: number) {
+  if (salaryCents < 1) throw new Error("لا يمكن إضافة سلفة قبل تسجيل راتب شهري للموظف.");
+  if (outstandingAdvanceCents + requestedCents > salaryCents)
+    throw new Error(`لا يمكن أن يتجاوز إجمالي السلف القائمة راتب الموظف الشهري (${(salaryCents / 100).toFixed(2)} ج.م). المتاح لسلفة جديدة هو ${Math.max(0, salaryCents - outstandingAdvanceCents) / 100} ج.م.`);
+}
+
+export function assertDeductionWithinSalary(month: string, salaryCents: number, priorDeductionCents: number, requestedCents: number) {
+  if (priorDeductionCents + requestedCents > salaryCents)
+    throw new Error(`لا يمكن أن يتجاوز إجمالي خصومات شهر ${month} راتب الموظف المستحق (${(salaryCents / 100).toFixed(2)} ج.م). المتاح للخصم هو ${Math.max(0, salaryCents - priorDeductionCents) / 100} ج.م.`);
+}
+
 export function monthDays(value: string) {
   const [year, month] = value.split("-").map(Number);
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
