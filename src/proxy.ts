@@ -11,6 +11,14 @@ const withAuth = auth((request: NextAuthRequest, event: NextFetchEvent) => {
 
 export function proxy(request: NextRequest, event: NextFetchEvent) {
   assertSecureRuntimeConfig();
+
+  // Railway probes the container over its private network with an internal
+  // Host header. The health endpoint exposes no user data and must remain
+  // reachable before the public-domain host check can succeed.
+  if (request.nextUrl.pathname === "/api/health") {
+    return NextResponse.next();
+  }
+
   if (!hasTrustedRequestHost(request.headers)) {
     return NextResponse.json({ error: "UNTRUSTED_HOST" }, { status: 421 });
   }

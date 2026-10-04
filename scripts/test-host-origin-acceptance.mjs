@@ -62,6 +62,10 @@ const fakeForwardedHost = await request("/api/auth/csrf", new Map(), { headers: 
 assert.equal(fakeForwardedHost.status, 421, "a forged X-Forwarded-Host must be rejected");
 const mismatchedHost = await request("/api/auth/csrf", new Map(), { headers: { Host: attackerHost } });
 assert.equal(mismatchedHost.status, 421, "Host and X-Forwarded-Host must both match the configured domain");
+const privateHealthcheck = await request("/api/health", new Map(), {
+  headers: { Host: "healthcheck.railway.app", "X-Forwarded-Host": "healthcheck.railway.app" },
+});
+assert.equal(privateHealthcheck.status, 200, "the platform healthcheck must bypass the public Host restriction");
 console.log("PASS forged Host and X-Forwarded-Host are rejected before Auth.js");
 
 const jar = await login();
