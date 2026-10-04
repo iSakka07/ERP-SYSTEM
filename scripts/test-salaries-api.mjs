@@ -45,15 +45,32 @@ try {
   const tag = randomUUID().slice(0, 8);
   const employee = await db.employee.create({ data: { employeeCode: `SAL-${tag}`, name: `موظف رواتب ${tag}`, jobTitle: "accountant", monthlySalaryCents: 100_000 } });
   const currentMonth = new Date().toISOString().slice(0, 7);
+  const latestExistingRun = await db.payrollRun.findFirst({ orderBy: { month: "desc" }, select: { month: true } });
+  const today = latestExistingRun
+    ? (() => { const [year, month] = latestExistingRun.month.split("-").map(Number); return new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10); })()
+    : new Date().toISOString().slice(0, 10);
 
-  const tooLargeAdvance = await salaryRequest(cookie, "advance", { employeeId: employee.id, amount: 1000.01, issuedAt: `${currentMonth}-01`, repaymentMode: "NEXT_PAYROLL", source: "EXECUTIVE_DIRECTOR" }, true);
+  const firstRate = await salaryRequest(cookie, "employee-salary-update", { employeeId: employee.id, amount: 1000, effectiveMode: "DATE", effectiveDate: today });
+  assert.equal(firstRate.status, 201, JSON.stringify(firstRate.body));
+  const rateHistory = await db.employeeSalaryRate.findMany({ where: { employeeId: employee.id }, orderBy: { startDate: "asc" } });
+  assert.equal(rateHistory.length, 2);
+  assert.equal(rateHistory[0].monthlySalaryCents, 100_000);
+  const latestRate = await db.employeeSalaryRate.findFirstOrThrow({ where: { employeeId: employee.id }, orderBy: { startDate: "desc" } });
+  const correctedRate = await salaryRequest(cookie, "employee-salary-update", { employeeId: employee.id, amount: 1100, effectiveMode: "DATE", effectiveDate: today, correctionRateId: latestRate.id });
+  assert.equal(correctedRate.status, 201, JSON.stringify(correctedRate.body));
+  assert.equal((await db.employeeSalaryRate.findUniqueOrThrow({ where: { id: latestRate.id } })).monthlySalaryCents, 110_000);
+  const duplicateRate = await salaryRequest(cookie, "employee-salary-update", { employeeId: employee.id, amount: 1200, effectiveMode: "DATE", effectiveDate: today });
+  assert.equal(duplicateRate.status, 400);
+  assert.match(duplicateRate.body.error, /تصحيح آخر تعديل/);
+
+  const tooLargeAdvance = await salaryRequest(cookie, "advance", { employeeId: employee.id, amount: 1100.01, issuedAt: `${currentMonth}-01`, repaymentMode: "NEXT_PAYROLL", source: "EXECUTIVE_DIRECTOR" }, true);
   assert.equal(tooLargeAdvance.status, 400);
   assert.match(tooLargeAdvance.body.error, /إجمالي السلف/);
 
   const advance = await salaryRequest(cookie, "advance", { employeeId: employee.id, amount: 200, issuedAt: `${currentMonth}-01`, repaymentMode: "NEXT_PAYROLL", source: "EXECUTIVE_DIRECTOR" }, true);
   assert.equal(advance.status, 201, JSON.stringify(advance.body));
 
-  const tooLargeDeduction = await salaryRequest(cookie, "deduction", { employeeId: employee.id, month: currentMonth, amount: 1000.01, name: "خصم اختبار", reason: "اختبار الحد الأقصى" });
+  const tooLargeDeduction = await salaryRequest(cookie, "deduction", { employeeId: employee.id, month: currentMonth, amount: 1100.01, name: "خصم اختبار", reason: "اختبار الحد الأقصى" });
   assert.equal(tooLargeDeduction.status, 400);
   assert.match(tooLargeDeduction.body.error, /إجمالي خصومات/);
 
@@ -76,7 +93,7 @@ try {
   assert.equal(restoredAdvance.status, "OPEN");
   assert.equal(await db.journalEntry.count({ where: { sourceType: "PAYROLL_APPROVAL_REVERSAL" } }), 1);
 
-  console.log("PASS: salary API limits, duplicate-month guard, and payroll reversal.");
+  console.log("PASS: salary correction, API limits, duplicate-month guard, and payroll reversal.");
 } finally {
   await db.$disconnect();
 }

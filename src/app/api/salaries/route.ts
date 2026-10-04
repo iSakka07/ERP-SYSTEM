@@ -53,6 +53,7 @@ const salaryChangeSchema = z.object({
   amount: z.coerce.number().positive(),
   effectiveMode: z.enum(["MONTH_START", "DATE"]),
   effectiveDate: z.string(),
+  correctionRateId: z.string().min(1).optional(),
 });
 
 export async function GET() {
@@ -329,14 +330,27 @@ export async function POST(request: Request) {
             if (effectiveDate < earliestAllowed) throw new Error(`لا يمكن تعديل الراتب بتاريخ ${effectiveDate.toISOString().slice(0, 10)} لأن كشف رواتب شهر ${latestRun.month} موجود. اختر تاريخًا من ${earliestAllowed.toISOString().slice(0, 10)} أو بعده.`);
           }
           const latestRate = await tx.employeeSalaryRate.findFirst({ where: { employeeId: employee.id }, orderBy: { startDate: "desc" } });
-          if (latestRate && effectiveDate < latestRate.startDate) throw new Error("تاريخ تعديل الراتب يجب أن يكون بعد آخر تعديل محفوظ للموظف.");
-          await tx.employeeSalaryRate.upsert({
-            where: { employeeId_startDate: { employeeId: employee.id, startDate: effectiveDate } },
-            create: { employeeId: employee.id, startDate: effectiveDate, monthlySalaryCents: value, changedById: session.user.id },
-            update: { monthlySalaryCents: value, changedById: session.user.id },
-          });
+          if (input.correctionRateId) {
+            if (!latestRate || latestRate.id !== input.correctionRateId)
+              throw new Error("لا يمكن تصحيح هذا السجل لأنه ليس آخر تعديل راتب محفوظ للموظف.");
+            if (effectiveDate.getTime() !== latestRate.startDate.getTime())
+              throw new Error("تاريخ تصحيح الراتب يجب أن يطابق تاريخ آخر تعديل محفوظ.");
+            await tx.employeeSalaryRate.update({
+              where: { id: latestRate.id },
+              data: { monthlySalaryCents: value, changedById: session.user.id },
+            });
+          } else {
+            if (latestRate && effectiveDate <= latestRate.startDate)
+              throw new Error("تاريخ تعديل الراتب يجب أن يكون بعد آخر تعديل محفوظ للموظف. لتصحيح آخر تعديل استخدم خيار «تصحيح آخر تعديل راتب».");
+            if (!latestRate) {
+              await tx.employeeSalaryRate.create({
+                data: { employeeId: employee.id, startDate: new Date("1900-01-01T00:00:00.000Z"), monthlySalaryCents: employee.monthlySalaryCents, changedById: session.user.id },
+              });
+            }
+            await tx.employeeSalaryRate.create({ data: { employeeId: employee.id, startDate: effectiveDate, monthlySalaryCents: value, changedById: session.user.id } });
+          }
           await tx.employee.update({ where: { id: employee.id }, data: { monthlySalaryCents: value } });
-          await audit("salary.employee.rate.update", employee.id, { monthlySalaryCents: value, effectiveDate: effectiveDate.toISOString(), effectiveMode: input.effectiveMode });
+          await audit(input.correctionRateId ? "salary.employee.rate.correct" : "salary.employee.rate.update", employee.id, { monthlySalaryCents: value, effectiveDate: effectiveDate.toISOString(), effectiveMode: input.effectiveMode, correctionRateId: input.correctionRateId || null });
           return { id: employee.id };
         }
         if (action === "allocation") {

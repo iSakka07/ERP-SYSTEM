@@ -26,6 +26,14 @@ assert.deepEqual(
   buildPayrollDistribution("2026-04", 3_000_000, [{ projectId: "a", startDate: date("2026-04-01"), endDate: null }], [{ startDate: date("2026-04-01"), endDate: null }], [{ startDate: date("2026-04-16"), monthlySalaryCents: 4_000_000 }]),
   [{ projectId: "a", days: 15, cents: 1_500_000 }, { projectId: "a", days: 15, cents: 2_000_000 }],
 );
+assert.deepEqual(
+  buildPayrollDistribution("2026-10", 6_000_000, [{ projectId: "a", startDate: date("2026-01-01"), endDate: null }], [{ startDate: date("2026-01-01"), endDate: null }], [{ startDate: date("1900-01-01"), monthlySalaryCents: 5_000_000 }, { startDate: date("2026-12-01"), monthlySalaryCents: 6_000_000 }]),
+  [{ projectId: "a", days: 31, cents: 5_000_000 }],
+);
+assert.deepEqual(
+  buildPayrollDistribution("2026-12", 6_000_000, [{ projectId: "a", startDate: date("2026-01-01"), endDate: null }], [{ startDate: date("2026-01-01"), endDate: null }], [{ startDate: date("1900-01-01"), monthlySalaryCents: 5_000_000 }, { startDate: date("2026-12-01"), monthlySalaryCents: 6_000_000 }]),
+  [{ projectId: "a", days: 31, cents: 6_000_000 }],
+);
 assert.equal(followingMonth("2026-12"), "2027-01");
 assert.equal(nextPayrollMonth([], "2026-11"), "2026-11");
 assert.equal(nextPayrollMonth(["2026-10", "2026-11"], "2026-11"), "2026-12");

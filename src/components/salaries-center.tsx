@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { ERPSelect } from "@/components/erp-select";
+import { ERPToast, type ERPToastTone } from "@/components/erp-toast";
 import { UploadBox } from "@/components/upload-box";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
@@ -49,7 +50,7 @@ type Allocation = {
   endDate: string | Date | null;
 };
 type StatusPeriod = { employeeId: string; startDate: string | Date; endDate: string | Date | null };
-type SalaryRate = { employeeId: string; startDate: string | Date; monthlySalaryCents: number };
+type SalaryRate = { id: string; employeeId: string; startDate: string | Date; monthlySalaryCents: number };
 type Run = {
   id: string;
   month: string;
@@ -164,7 +165,7 @@ export function SalariesCenter({
   const router = useRouter();
   const [tab, setTab] = useState<"employees" | "payroll">("employees");
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [message, setMessage] = useState("");
+  const [toast, setToast] = useState<{ message: string; tone: ERPToastTone } | null>(null);
   const [busy, setBusy] = useState("");
   const [advanceEmployee, setAdvanceEmployee] = useState<Employee | null>(null);
   const [adjustment, setAdjustment] = useState<{
@@ -176,11 +177,8 @@ export function SalariesCenter({
     status: "ACTIVE" | "INACTIVE";
   } | null>(null);
   const [salaryEditEmployee, setSalaryEditEmployee] = useState<Employee | null>(null);
-  const [salaryOverrides, setSalaryOverrides] = useState<Record<string, number>>({});
-  const employeesForDisplay = employees.map((employee) => ({
-    ...employee,
-    monthlySalaryCents: salaryOverrides[employee.id] ?? employee.monthlySalaryCents,
-  }));
+  const [salaryOverrides, setSalaryOverrides] = useState<Record<string, { startDate: Date; monthlySalaryCents: number }>>({});
+  const notify = (message: string, tone: ERPToastTone = "info") => setToast({ message, tone });
   const currentMonth = new Date().toISOString().slice(0, 7);
   const payrollMonth = nextPayrollMonth(runs.map((run) => run.month), currentMonth);
   const latestRunMonth = [...runs.map((run) => run.month)].sort().at(-1);
@@ -207,13 +205,16 @@ export function SalariesCenter({
   const salaryDistribution = (employee: Employee) =>
     buildPayrollDistribution(
       month,
-      salaryOverrides[employee.id] ?? employee.monthlySalaryCents,
+      employee.monthlySalaryCents,
       allocations.filter((allocation) => allocation.employee.id === employee.id).map((allocation) => ({ projectId: allocation.project?.id ?? null, startDate: new Date(allocation.startDate), endDate: allocation.endDate ? new Date(allocation.endDate) : null })),
       (() => {
         const periods = statusPeriods.filter((period) => period.employeeId === employee.id).map((period) => ({ startDate: new Date(period.startDate), endDate: period.endDate ? new Date(period.endDate) : null }));
         return periods.length || !employee.active ? periods : [{ startDate: new Date("1900-01-01T00:00:00.000Z"), endDate: null }];
       })(),
-      salaryRates.filter((rate) => rate.employeeId === employee.id).map((rate) => ({ startDate: new Date(rate.startDate), monthlySalaryCents: rate.monthlySalaryCents })),
+      [
+        ...salaryRates.filter((rate) => rate.employeeId === employee.id).map((rate) => ({ startDate: new Date(rate.startDate), monthlySalaryCents: rate.monthlySalaryCents })),
+        ...(salaryOverrides[employee.id] ? [salaryOverrides[employee.id]] : []),
+      ],
     );
   usePdfDataExport(() => {
     if (tab === "payroll") {
@@ -279,7 +280,7 @@ export function SalariesCenter({
             return [
               `${employee.name} · ${employee.employeeCode}`,
               allocation?.project ? "مشروع" : "عام الشركة",
-              pdfMoney(employee.monthlySalaryCents),
+              pdfMoney(distribution.reduce((sum, part) => sum + part.cents, 0)),
               allocation?.project?.name || "عام الشركة",
               pdfMoney(
                 currentAdvances
@@ -307,7 +308,7 @@ export function SalariesCenter({
 
   async function send(form: HTMLFormElement, action: string, files = false) {
     setBusy(action);
-    setMessage("");
+    setToast(null);
     const formData = new FormData(form);
     const values = Object.fromEntries(formData);
     const body = new FormData();
@@ -372,10 +373,13 @@ export function SalariesCenter({
       if (action === "employee-salary-update" && !replayed) {
         const employeeId = String(values.employeeId || "");
         const salaryCents = Math.round(Number(values.amount) * 100);
-        setSalaryOverrides((current) => ({ ...current, [employeeId]: salaryCents }));
-        setMessage(`تم تعديل راتب الموظف إلى ${Number(values.amount).toLocaleString("ar-EG")} ج.م وسيظهر فورًا في جدول الموظفين النشطين.`);
+        const effectiveDate = String(values.effectiveMode) === "MONTH_START"
+          ? new Date(`${String(values.effectiveDate)}-01T00:00:00.000Z`)
+          : new Date(`${String(values.effectiveDate)}T00:00:00.000Z`);
+        setSalaryOverrides((current) => ({ ...current, [employeeId]: { startDate: effectiveDate, monthlySalaryCents: salaryCents } }));
+        notify(`تم تعديل راتب الموظف إلى ${Number(values.amount).toLocaleString("ar-EG")} ج.م وسيظهر فورًا في جدول الموظفين النشطين.`, "success");
       } else {
-        setMessage(replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم حفظ العملية بنجاح.");
+        notify(replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم حفظ العملية بنجاح.", replayed ? "info" : "success");
       }
       form.reset();
       setAdvanceEmployee(null);
@@ -384,7 +388,7 @@ export function SalariesCenter({
       setSalaryEditEmployee(null);
       router.refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "تعذر حفظ العملية.");
+      notify(error instanceof Error ? error.message : "تعذر حفظ العملية.", "error");
     } finally {
       setBusy("");
     }
@@ -412,15 +416,17 @@ export function SalariesCenter({
         }),
         scope,
       );
-      setMessage(
+      notify(
         result.replayed
           ? "الصرف مسجل بالفعل ولم يتكرر."
           : "تم تسجيل صرف المدير التنفيذي.",
+        result.replayed ? "info" : "success",
       );
       router.refresh();
     } catch (reason) {
-      setMessage(
+      notify(
         reason instanceof Error ? reason.message : "تعذر تسجيل الصرف.",
+        "error",
       );
     } finally {
       setBusy("");
@@ -430,7 +436,7 @@ export function SalariesCenter({
     const reason = window.prompt(`اكتب سبب إرجاع كشف رواتب ${monthValue}:`, "تصحيح بيانات كشف المرتبات");
     if (reason === null) return;
     if (reason.trim().length < 3) {
-      setMessage("اكتب سببًا واضحًا لإرجاع كشف المرتبات.");
+      notify("اكتب سببًا واضحًا لإرجاع كشف المرتبات.", "error");
       return;
     }
     const form = new FormData();
@@ -438,13 +444,13 @@ export function SalariesCenter({
     form.set("payload", JSON.stringify({ id, reason: reason.trim() }));
     const scope = `salary-payroll-revert-${id}`;
     setBusy(`revert-${id}`);
-    setMessage("");
+    setToast(null);
     try {
       await financialResult(await fetch("/api/salaries", { method: "POST", body: form, headers: financialHeaders(scope) }), scope);
-      setMessage(`تم إرجاع كشف شهر ${monthValue}. عادت خصومات السلف كما كانت ويمكنك الآن تعديل البيانات وإعادة إنشاء الكشف.`);
+      notify(`تم إرجاع كشف شهر ${monthValue}. عادت خصومات السلف كما كانت ويمكنك الآن تعديل البيانات وإعادة إنشاء الكشف.`, "success");
       router.refresh();
     } catch (reasonError) {
-      setMessage(reasonError instanceof Error ? reasonError.message : "تعذر إرجاع كشف المرتبات.");
+      notify(reasonError instanceof Error ? reasonError.message : "تعذر إرجاع كشف المرتبات.", "error");
     } finally {
       setBusy("");
     }
@@ -482,18 +488,11 @@ export function SalariesCenter({
           كشوف المرتبات
         </button>
       </nav>
-      {message && (
-        <p
-          role="status"
-          className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800"
-        >
-          {message}
-        </p>
-      )}
+      {toast && <ERPToast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
 
       {tab === "employees" ? (
         <EmployeesTab
-          employees={employeesForDisplay}
+          employees={employees}
           projects={projects}
           salaryDistribution={salaryDistribution}
           currentAllocations={currentAllocations}
@@ -564,7 +563,7 @@ export function SalariesCenter({
       )}
       {advanceEmployee && (
         <AdvanceDialog
-          employee={{ ...advanceEmployee, monthlySalaryCents: salaryOverrides[advanceEmployee.id] ?? advanceEmployee.monthlySalaryCents }}
+          employee={advanceEmployee}
           busy={busy}
           onClose={() => setAdvanceEmployee(null)}
           onSubmit={submit}
@@ -572,7 +571,7 @@ export function SalariesCenter({
       )}
       {adjustment && (
         <AdjustmentDialog
-          employee={{ ...adjustment.employee, monthlySalaryCents: salaryOverrides[adjustment.employee.id] ?? adjustment.employee.monthlySalaryCents }}
+          employee={adjustment.employee}
           type={adjustment.type}
           defaultMonth={runs.some((run) => run.month === month) ? payrollMonth : month}
           busy={busy}
@@ -589,7 +588,7 @@ export function SalariesCenter({
           onSubmit={submit}
         />
       )}
-      {salaryEditEmployee && <SalaryEditDialog employee={{ ...salaryEditEmployee, monthlySalaryCents: salaryOverrides[salaryEditEmployee.id] ?? salaryEditEmployee.monthlySalaryCents }} earliestMonth={earliestSalaryMonth} busy={busy} onClose={() => setSalaryEditEmployee(null)} onSubmit={submit} />}
+      {salaryEditEmployee && <SalaryEditDialog employee={salaryEditEmployee} latestRate={[...salaryRates].filter((rate) => rate.employeeId === salaryEditEmployee.id).sort((left, right) => +new Date(right.startDate) - +new Date(left.startDate))[0] ?? null} earliestMonth={earliestSalaryMonth} busy={busy} onClose={() => setSalaryEditEmployee(null)} onSubmit={submit} />}
     </div>
   );
 }
@@ -729,7 +728,7 @@ function EmployeesTab({
                     </td>
                     <td data-label="الراتب الشهري" className="text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <MoneyValue>{money(employee.monthlySalaryCents)} ج.م</MoneyValue>
+                        <MoneyValue>{money(distribution.reduce((sum, part) => sum + part.cents, 0))} ج.م</MoneyValue>
                         {distribution.length > 1 && (
                           <button
                             type="button"
@@ -884,18 +883,23 @@ function EmployeeStatusDialog({
 
 function SalaryEditDialog({
   employee,
+  latestRate,
   earliestMonth,
   busy,
   onClose,
   onSubmit,
 }: {
   employee: Employee;
+  latestRate: SalaryRate | null;
   earliestMonth: string;
   busy: string;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>, action: string) => Promise<void>;
 }) {
   const [effectiveMode, setEffectiveMode] = useState<"MONTH_START" | "DATE">("MONTH_START");
+  const [editMode, setEditMode] = useState<"NEW" | "CORRECT_LAST">("NEW");
+  const correctingLastRate = editMode === "CORRECT_LAST" && latestRate !== null;
+  const latestRateDate = latestRate ? new Date(latestRate.startDate).toISOString().slice(0, 10) : "";
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
       <form onSubmit={(event) => onSubmit(event, "employee-salary-update")} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
@@ -903,18 +907,26 @@ function SalaryEditDialog({
         <p className="mt-2 text-sm text-slate-600">{employee.name} · الراتب الحالي {money(employee.monthlySalaryCents)} ج.م</p>
         <input type="hidden" name="employeeId" value={employee.id} />
         <div className="mt-4 grid gap-3">
-          <Field label="الراتب الشهري الجديد *"><CurrencyInput name="amount" required min="0.01" /></Field>
-          <Field label="يسري التعديل *">
-            <ERPSelect name="effectiveMode" value={effectiveMode} onValueChange={(value) => setEffectiveMode(value as "MONTH_START" | "DATE")} className={expenseInput}>
-              <option value="MONTH_START">من أول الشهر الحالي (راتب الشهر كاملًا)</option>
-              <option value="DATE">من يوم تعديل الراتب (حساب نسبي)</option>
-            </ERPSelect>
-          </Field>
-          <Field label={effectiveMode === "MONTH_START" ? "الشهر الذي يسري منه الراتب" : "يوم بدء حساب الراتب الجديد"}>
-            <input name="effectiveDate" type={effectiveMode === "MONTH_START" ? "month" : "date"} min={effectiveMode === "MONTH_START" ? earliestMonth : `${earliestMonth}-01`} required defaultValue={effectiveMode === "MONTH_START" ? earliestMonth : `${earliestMonth}-01`} className={expenseInput} />
-          </Field>
+          {latestRate && <Field label="نوع العملية"><div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setEditMode("NEW")} className={`rounded-lg border px-3 py-2 text-sm font-bold ${editMode === "NEW" ? "border-blue-700 bg-blue-50 text-blue-800" : "border-slate-200 text-slate-600"}`}>تعديل جديد</button><button type="button" onClick={() => setEditMode("CORRECT_LAST")} className={`rounded-lg border px-3 py-2 text-sm font-bold ${correctingLastRate ? "border-amber-500 bg-amber-50 text-amber-900" : "border-slate-200 text-slate-600"}`}>تصحيح آخر تعديل</button></div></Field>}
+          <Field label="الراتب الشهري الجديد *"><CurrencyInput key={editMode} name="amount" defaultValue={correctingLastRate ? latestRate.monthlySalaryCents / 100 : ""} required min="0.01" /></Field>
+          {correctingLastRate ? <>
+            <input type="hidden" name="correctionRateId" value={latestRate.id} />
+            <input type="hidden" name="effectiveMode" value="DATE" />
+            <input type="hidden" name="effectiveDate" value={latestRateDate} />
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-900">سيتم تصحيح آخر سجل مؤرخ في {latestRateDate} فقط. لا يمكن تصحيح سجل يقع ضمن شهر كشف رواتب معتمد.</p>
+          </> : <>
+            <Field label="يسري التعديل *">
+              <ERPSelect name="effectiveMode" value={effectiveMode} onValueChange={(value) => setEffectiveMode(value as "MONTH_START" | "DATE")} className={expenseInput}>
+                <option value="MONTH_START">من أول الشهر الحالي (راتب الشهر كاملًا)</option>
+                <option value="DATE">من يوم تعديل الراتب (حساب نسبي)</option>
+              </ERPSelect>
+            </Field>
+            <Field label={effectiveMode === "MONTH_START" ? "الشهر الذي يسري منه الراتب" : "يوم بدء حساب الراتب الجديد"}>
+              <input name="effectiveDate" type={effectiveMode === "MONTH_START" ? "month" : "date"} min={effectiveMode === "MONTH_START" ? earliestMonth : `${earliestMonth}-01`} required defaultValue={effectiveMode === "MONTH_START" ? earliestMonth : `${earliestMonth}-01`} className={expenseInput} />
+            </Field>
+          </>}
         </div>
-        <p className="mt-3 text-xs text-slate-500">اختر هل يُحسب الراتب الجديد من أول الشهر كاملًا أم من يوم التعديل بنسبة أيام العمل. إذا كان كشف الشهر الحالي قد اعتُمد، يجب أن يبدأ التعديل من الشهر التالي.</p>
+        <p className="mt-3 text-xs text-slate-500">التعديل الجديد يضيف سجلًا بتاريخ لاحق. أما التصحيح فيغيّر آخر سجل فقط. إذا كان كشف الشهر قد اعتُمد، يجب إرجاعه أولًا قبل أي تعديل يؤثر عليه.</p>
         <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-bold">إلغاء</button><button disabled={busy === "employee-salary-update"} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">حفظ تعديل الراتب</button></div>
       </form>
     </div>
