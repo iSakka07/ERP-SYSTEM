@@ -7,6 +7,7 @@ import { incomingUser } from "@/lib/incoming-server";
 import { assertAccountingPeriodOpen, postInventoryAdjustment, postStockIssueJournal, postStockReturnJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
 import { assertMutation } from "@/lib/request-security";
+import { apiError, arabicErrorMessage } from "@/lib/api-error";
 import { centsNumber } from "@/lib/money";
 
 type Tx = Prisma.TransactionClient;
@@ -69,18 +70,17 @@ async function balances(tx: Tx) {
   return map;
 }
 
-async function assertProject(tx: Tx, user: { isProjectScoped: boolean; projectIds: string[] }, projectId: string) {
+async function assertProject(tx: Tx, user: { canUseProject: (projectId: string | null | undefined) => boolean }, projectId: string) {
   const project = await tx.project.findFirst({ where: { id: projectId, active: true }, select: { id: true } });
-  if (!project || (user.isProjectScoped && !user.projectIds.includes(projectId))) {
+  if (!project || !user.canUseProject(projectId)) {
     throw new Error("المشروع غير متاح أو خارج نطاق صلاحياتك.");
   }
 }
 
-async function assertWarehouseProject(tx: Tx, user: { isProjectScoped: boolean; projectIds: string[] }, warehouseId: string) {
-  if (!user.isProjectScoped) return;
+async function assertWarehouseProject(tx: Tx, user: { canUseProject: (projectId: string | null | undefined) => boolean }, warehouseId: string) {
   const warehouse = await tx.warehouse.findFirst({ where: { id: warehouseId, active: true }, select: { id: true, projectId: true } });
   if (!warehouse) throw new Error("المخزن غير متاح.");
-  if (warehouse.projectId && !user.projectIds.includes(warehouse.projectId)) {
+  if (warehouse.projectId && !user.canUseProject(warehouse.projectId)) {
     throw new Error("المخزن خارج نطاق مشاريعك المسموحة.");
   }
 }
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
   const mutationErr = assertMutation(request);
   if (mutationErr) return mutationErr;
   const user = await incomingUser("warehouse.manage");
-  if (!user) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!user) return apiError("FORBIDDEN", 403);
   let operationContext: FinancialOperationContext | null = null;
   try {
     const data = schema.parse(await request.json());
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
         if (data.directProjectId) await assertProject(tx, user, data.directProjectId);
         const invoice = await tx.purchaseInvoice.findUnique({ where: { id: data.invoiceId }, include: { items: true, stockMovements: { where: { status: "POSTED", type: "RECEIPT" }, include: { lines: true } } } });
         if (!invoice || invoice.status !== "POSTED") throw new Error("الفاتورة غير متاحة للاستلام.");
-        if (user.isProjectScoped && !user.projectIds.includes(invoice.projectId)) throw new Error("الفاتورة خارج مشروعاتك.");
+        if (!user.canUseProject(invoice.projectId)) throw new Error("الفاتورة خارج مشروعاتك.");
         rejectDuplicateLineIds(data.lines.map((line) => line.purchaseItemId), "لا يُسمح بتكرار نفس بند الفاتورة في طلب الاستلام الواحد.");
         const received = new Map<string, number>();
         for (const move of invoice.stockMovements) for (const row of move.lines) if (row.sourcePurchaseItemId) received.set(row.sourcePurchaseItemId, (received.get(row.sourcePurchaseItemId) || 0) + row.quantity);
@@ -258,6 +258,6 @@ export async function POST(request: Request) {
     }
     const replay = await replayAfterConflict(error, operationContext);
     if (replay) return replay;
-    return NextResponse.json({ error: error instanceof Error ? error.message : "تعذر حفظ حركة المخزن." }, { status: 400 });
+    return NextResponse.json({ error: arabicErrorMessage(error, "تعذر حفظ حركة المخزن. راجع البيانات وحاول مرة أخرى.") }, { status: 400 });
   }
 }

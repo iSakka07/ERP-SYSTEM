@@ -3,6 +3,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { assertMutation } from "@/lib/request-security";
 
 type Tx = Prisma.TransactionClient;
 type JsonRecord = Record<string, unknown>;
@@ -41,6 +42,8 @@ function sameToken(left: string, right: string) {
 }
 
 export async function guardFinancialOperation(request: Request, input: { actorId: string; operation: string; requestData: unknown; businessData: unknown }) {
+  const mutationError = assertMutation(request);
+  if (mutationError) return { response: mutationError } as const;
   const key = request.headers.get("idempotency-key")?.trim() || "";
   if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(key)) return { response: NextResponse.json({ error: "تعذر تأمين العملية المالية. أعد فتح النموذج وحاول مرة أخرى.", code: "IDEMPOTENCY_KEY_REQUIRED" }, { status: 400 }) } as const;
   const requestHash = hash(input.requestData);

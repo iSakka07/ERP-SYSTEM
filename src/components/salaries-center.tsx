@@ -863,15 +863,15 @@ function SalaryEditDialog({
           <Field label="الراتب الشهري الجديد *"><CurrencyInput name="amount" required min="0.01" /></Field>
           <Field label="يسري التعديل *">
             <ERPSelect name="effectiveMode" value={effectiveMode} onValueChange={(value) => setEffectiveMode(value as "MONTH_START" | "DATE")} className={expenseInput}>
-              <option value="MONTH_START">من أول الشهر المحدد</option>
-              <option value="DATE">من تاريخ محدد داخل الشهر</option>
+              <option value="MONTH_START">من أول الشهر الحالي (راتب الشهر كاملًا)</option>
+              <option value="DATE">من يوم تعديل الراتب (حساب نسبي)</option>
             </ERPSelect>
           </Field>
-          <Field label={effectiveMode === "MONTH_START" ? "الشهر الذي يسري منه الراتب" : "تاريخ بدء الراتب الجديد"}>
+          <Field label={effectiveMode === "MONTH_START" ? "الشهر الذي يسري منه الراتب" : "يوم بدء حساب الراتب الجديد"}>
             <input name="effectiveDate" type={effectiveMode === "MONTH_START" ? "month" : "date"} required defaultValue={effectiveMode === "MONTH_START" ? new Date().toISOString().slice(0, 7) : new Date().toISOString().slice(0, 10)} className={expenseInput} />
           </Field>
         </div>
-        <p className="mt-3 text-xs text-slate-500">عند اختيار تاريخ محدد، يحسب كشف الشهر الراتب القديم حتى اليوم السابق والجديد من التاريخ المختار. لا يمكن تعديل شهر له كشف رواتب قائم.</p>
+        <p className="mt-3 text-xs text-slate-500">اختر هل يُحسب الراتب الجديد من أول الشهر كاملًا أم من يوم التعديل بنسبة أيام العمل. إذا كان كشف الشهر الحالي قد اعتُمد، يجب أن يبدأ التعديل من الشهر التالي.</p>
         <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-bold">إلغاء</button><button disabled={busy === "employee-salary-update"} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">حفظ تعديل الراتب</button></div>
       </form>
     </div>

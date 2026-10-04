@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { arabicErrorMessage } from "@/lib/api-error";
 import { incomingUser } from "@/lib/incoming-server";
 import { parseReceiptFilters, receiptFilterSummary, receiptRegister } from "@/lib/warehouse-receipts";
 
@@ -32,6 +33,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "تعذر تحميل سجل الاستلام." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ error: arabicErrorMessage(error, "تعذر تحميل سجل الاستلام. حاول مرة أخرى.") }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
 }

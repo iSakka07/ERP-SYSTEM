@@ -16,7 +16,7 @@ if (!databaseUrl) throw new Error("اختبار PostgreSQL المعزول يحت
 const testUrl = `http://127.0.0.1:${port}`;
 const adminPassword = "IsolatedDemo@123456";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const apiTests = ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:warehouse-receipts-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:accounting-period-api", "test:project-cost-control-api", "test:security-financial-acceptance"];
+const apiTests = ["test:login-rate-limit", "test:incoming-api", "test:expenses-api", "test:expense-corrections-api", "test:purchases-api", "test:warehouse-receipts-api", "test:warehouse-movements-api", "test:petty-cash-api", "test:financial-idempotency-api", "test:accounting-period-api", "test:project-cost-control-api", "test:security-financial-acceptance"];
 const selectedTest = process.env.ERP_TEST_ONLY;
 if (selectedTest && ![...apiTests, "test:runtime-smoke", "test:project-scope-acceptance", "test:host-origin-acceptance"].includes(selectedTest)) throw new Error(`اختبار العزل غير معروف: ${selectedTest}`);
 const publicOrigin = selectedTest === "test:host-origin-acceptance" ? "https://erp.local.test" : testUrl;

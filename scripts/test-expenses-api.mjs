@@ -48,7 +48,7 @@ async function login(email) {
 }
 async function post(payload, jar, files = true, origin = base) {
   const key = randomUUID();
-  const send = async (confirmation) => { const f = new FormData(); f.set("payload", JSON.stringify(payload)); if (files) f.append("files", new Blob([proof]), "AUTOMATED-TEST-ONLY.pdf"); const r = await fetch(`${base}/api/expenses`, { method: "POST", headers: { ...headers(jar), Origin: origin, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: f }); const result = await r.json(); if (r.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: r.status, ...result }; };
+  const send = async (confirmation) => { const f = new FormData(); f.set("payload", JSON.stringify(payload)); if (files) { f.append("files", new Blob([proof]), "AUTOMATED-TEST-ONLY.pdf"); f.append("filesLabels", "إثبات اختبار مصروفات آلي"); } const r = await fetch(`${base}/api/expenses`, { method: "POST", headers: { ...headers(jar), Origin: origin, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: f }); const result = await r.json(); if (r.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: r.status, ...result }; };
   return send();
 }
 async function remove(id, jar, origin = base) {
@@ -812,7 +812,7 @@ try {
   assert.ok(!html.includes("إضافة مقاولة جديدة</button>"));
   const paidBeforeReversal = expenseSummary(await db.subcontractStatement.findMany({ where: { accountId }, include: { payments: true } })).paidCents;
   const originalPaymentJournal = await db.journalEntry.findFirstOrThrow({ where: { sourceType: "SUBCONTRACT_PAYMENT", sourceId: firstPaymentId } });
-  r = await post({ action: "reversePayment", paymentId: firstPaymentId, reason: "اختبار إلغاء دفعة موثق" }, jars.accounting);
+  r = await post({ action: "reversePayment", paymentId: firstPaymentId, reason: "اختبار إلغاء دفعة موثق" }, jars.accounting, false);
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.equal((await db.subcontractPayment.findUniqueOrThrow({ where: { id: firstPaymentId } })).status, "REVERSED");
   assert.ok(await db.journalEntry.findFirst({ where: { reversalOfId: originalPaymentJournal.id } }), "payment reversal must balance the payment journal");
@@ -892,8 +892,9 @@ try {
     });
   if (destinationCompanyId)
     await db.company.delete({ where: { id: destinationCompanyId } });
-  await db.user.deleteMany({ where: { id: { in: users } } });
-  await db.role.deleteMany({ where: { id: { in: roles } } });
+  await db.financialOperationRequest.deleteMany({ where: { actorId: { in: users } } });
+  // The isolated database is deleted after the test. Keep temporary actors here
+  // because immutable journal/audit rows intentionally retain their actor FKs.
   await db.$disconnect();
   console.log(
     "Only exact temporary test records removed; demonstration, client data and audit retained.",

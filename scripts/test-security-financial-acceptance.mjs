@@ -25,7 +25,7 @@ async function login(email, password) {
 async function request(cookie, path, data, {key=randomUUID(), origin=base, form=false, contentType='application/json'}={}) {
   const headers = {Cookie:cookie,Origin:origin,'Idempotency-Key':key};
   let body;
-  if (form) { body=new FormData(); body.set('payload',JSON.stringify(data)); body.append('files',new File(['%PDF-1.4\nAudit fixture'], 'audit.pdf',{type:'application/pdf'})); }
+  if (form) { body=new FormData(); body.set('payload',JSON.stringify(data)); body.append('files',new File(['%PDF-1.4\nAudit fixture'], 'audit.pdf',{type:'application/pdf'})); body.append('filesLabels','مرفق اختبار تدقيق العملية'); }
   else { headers['Content-Type']=contentType;body=JSON.stringify(data); }
   const r=await fetch(base+path,{method:'POST',headers,body});
   const text=await r.text();let value;try{value=JSON.parse(text)}catch{value=text.slice(0,300)};
@@ -108,8 +108,8 @@ try {
   if(purchase.status<300){
     const purchaseId=purchase.body.id;
     const saved=await db.purchaseInvoice.findUniqueOrThrow({where:{id:purchaseId}});
-    const movement=await db.pettyCashTransaction.findFirstOrThrow({where:{documentNumber:saved.number,type:'PURCHASE_PAYMENT'}});
-    const form=new FormData();form.set('action','reverse');form.set('id',movement.id);form.set('reason','Audit reversal of linked purchase');form.append('files',new File(['%PDF-1.4\nAudit'], 'audit.pdf'));
+    const movement=await db.pettyCashTransaction.findFirstOrThrow({where:{operationId:saved.id,type:'SETTLEMENT_PAYMENT'}});
+    const form=new FormData();form.set('action','reverse');form.set('id',movement.id);form.set('reason','Audit reversal of linked purchase');form.append('files',new File(['%PDF-1.4\nAudit'], 'audit.pdf'));form.append('filesLabels','مرفق اختبار عكس حركة المخزن');
     const response=await fetch(base+'/api/petty-cash',{method:'POST',headers:{Cookie:admin,Origin:base,'Idempotency-Key':randomUUID()},body:form});
     const body=await response.json();
     const after=await db.purchaseInvoice.findUniqueOrThrow({where:{id:purchaseId},include:{payments:true}});

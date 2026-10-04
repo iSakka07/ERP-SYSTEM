@@ -7,7 +7,8 @@ import { financials, incomingStages, isValidIncomingStageTransition } from "@/li
 import { assertMaterialCertificateTotals, createMaterialCertificate, incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import { incomingCollectionCashCents, postIncomingAccrual, postIncomingCollection, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
-import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { assertMutation } from "@/lib/request-security";
+import { arabicErrorMessage } from "@/lib/api-error";
 
 const text = z.string().trim().min(1).max(300);
 const amount = z.coerce
@@ -78,10 +79,6 @@ const include = {
 };
 const deleteSchema = z.object({ id: z.string().min(1) });
 
-function validOrigin(request: Request) {
-  return isTrustedMutationOrigin(request);
-}
-
 export async function POST(request: Request) {
   const user = await incomingUser("incoming.manage");
   if (!user)
@@ -91,8 +88,8 @@ export async function POST(request: Request) {
     );
   let operationContext: FinancialOperationContext | null = null;
   try {
-    if (!validOrigin(request))
-      return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
+    const mutationError = assertMutation(request);
+    if (mutationError) return mutationError;
     if (Number(request.headers.get("content-length") || 0) > 55 * 1024 * 1024)
       return NextResponse.json(
         { error: "حجم الطلب أكبر من الحد المسموح." },
@@ -106,7 +103,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     const d = parsed.data;
-    const canUseProject = (projectId: string) => !user.isProjectScoped || user.projectIds.includes(projectId);
+    const canUseProject = user.canUseProject;
     const contractFileLimits = d.action === "contract"
       ? { maxFileBytes: 50 * 1024 * 1024, maxTotalBytes: 50 * 1024 * 1024 }
       : undefined;
@@ -479,7 +476,7 @@ export async function POST(request: Request) {
       e instanceof Prisma.PrismaClientKnownRequestError
         ? "الرقم مكرر أو الربط غير صالح. راجع البيانات."
         : e instanceof Error
-          ? e.message
+          ? arabicErrorMessage(e, "تعذر حفظ بيانات الوارد. راجع البيانات وحاول مرة أخرى.")
           : "تعذر الحفظ.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
@@ -488,7 +485,8 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const user = await incomingUser("incoming.manage");
   if (!user) return NextResponse.json({ error: "غير مسموح بإدارة الوارد." }, { status: 403 });
-  if (!validOrigin(request)) return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
   const parsed = deleteSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "العقد غير صالح." }, { status: 400 });
   const result = await prisma.$transaction(async (tx) => {

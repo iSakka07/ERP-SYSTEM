@@ -707,7 +707,7 @@ export function ExpensesCenter({
                         placeholder="سبب الإلغاء"
                         className={expenseInput}
                       />
-                      <ExpenseFileInput />
+                      <ExpenseFileInput required={false} label="إثبات الإلغاء — اختياري" />
                       <div className="flex gap-2">
                         <button
                           disabled={busy}

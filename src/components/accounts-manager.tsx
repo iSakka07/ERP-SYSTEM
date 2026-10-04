@@ -31,7 +31,7 @@ export function AccountsManager({ users, roles, permissions, employees, currentU
     const response = await fetch("/api/admin/accounts", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const result = await response.json();
     setBusy("");
-    if (!response.ok) { setMessage(result.error === "EMAIL_EXISTS" ? "البريد الإلكتروني مستخدم بالفعل." : result.error === "SELF_DELETE" ? "لا يمكن حذف حسابك الحالي." : "تعذر حفظ التغيير."); return false; }
+    if (!response.ok) { setMessage(result.error || "تعذر حفظ التغيير."); return false; }
     setMessage("تم حفظ التغيير بنجاح."); router.refresh(); return true;
   }
 

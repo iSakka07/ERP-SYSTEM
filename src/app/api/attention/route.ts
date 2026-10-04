@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api-error";
 import { requireAccess } from "@/lib/server-access";
 import { getAttentionAlerts } from "@/lib/attention-alerts";
 import { prisma } from "@/lib/prisma";
@@ -18,6 +19,7 @@ function auditSummary(details: string | null) {
       const value = values[key];
       if (value === undefined || value === null || value === "") return [];
       if (typeof value === "boolean") return value ? [`${label}: نعم`] : [];
+      if (key === "paymentSource" && typeof value === "string") return [`${label}: ${value === "EMPLOYEE_CUSTODY" ? "عهدة موظف" : value === "PETTY_CASH" ? "الخزنة الرئيسية" : "المدير التنفيذي"}`];
       return typeof value === "string" || typeof value === "number" ? [`${label}: ${String(value).slice(0, 90)}`] : [];
     });
     const money = (value: unknown) => typeof value === "number" ? `${(value / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م` : null;
@@ -29,7 +31,7 @@ function auditSummary(details: string | null) {
 
 export async function GET(request: Request) {
   const profile = await requireAccess("dashboard.view");
-  if (!profile) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!profile) return apiError("FORBIDDEN", 403);
   try {
     const requestedProject = new URL(request.url).searchParams.get("project");
     const requestedAuditPage = Number(new URL(request.url).searchParams.get("auditPage") || "1");
@@ -50,6 +52,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ alerts, count: alerts.length, activities: logs.map((log) => { const destination = auditLink(log.action); return { id: log.id, actor: names.get(log.actorId) || "حساب غير متاح", action: log.action, target: log.target, summary: auditSummary(log.details), href: destination.href, hrefLabel: `فتح ${destination.label}`, createdAt: log.createdAt.toISOString() }; }), activityPagination: { page: Math.min(page, pages), total } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Unable to load attention alerts", error);
-    return NextResponse.json({ error: "ATTENTION_UNAVAILABLE" }, { status: 503 });
+    return apiError("ATTENTION_UNAVAILABLE", 503);
   }
 }

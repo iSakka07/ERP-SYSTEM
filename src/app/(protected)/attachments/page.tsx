@@ -10,7 +10,7 @@ export default async function AttachmentsPage() {
   const profile = await currentAccess(); if (!profile) redirect("/login");
   const can = profile.can;
   if (!["incoming.view","expenses.view","purchases.view","pettycash.view","bank.view","salaries.view"].some(can)) redirect("/");
-  const projectWhere = profile.isProjectScoped ? { projectId: { in: profile.projectIds } } : {};
+  const projectWhere = profile.projectIdWhere();
   const [contracts, subcontract, invoices, petty, bank, salaries] = await Promise.all([
     can("incoming.view") ? prisma.incomingContract.findMany({ where: projectWhere, select: { id: true, name: true, statements: { select: { id: true, sequence: true, materials: { select: { id: true } } } }, memos: { select: { id: true } } } }) : Promise.resolve([]),
     can("expenses.view") ? prisma.subcontractAccount.findMany({ where: projectWhere, select: { id: true, name: true, withdrawals: { select: { id: true, itemName: true, effectiveDate: true } }, statements: { select: { id: true, sequence: true, payments: { select: { id: true } } } } } }) : Promise.resolve([]),

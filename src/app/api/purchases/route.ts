@@ -3,6 +3,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { assertMutation } from "@/lib/request-security";
+import { apiError, arabicErrorMessage } from "@/lib/api-error";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import {
   postPurchaseJournal,
@@ -10,7 +11,7 @@ import {
   postStockIssueJournal,
   reversePostedJournal,
 } from "@/lib/accounting-posting";
-import { settleThroughMainCash } from "@/lib/cash-settlement";
+import { reverseCashSettlement, settleThroughMainCash } from "@/lib/cash-settlement";
 import { centsNumber } from "@/lib/money";
 import {
   completeFinancialOperation,
@@ -44,7 +45,8 @@ const invoiceSchema = z.object({
     }),
   name: z.string().trim().min(1).max(160),
   notes: z.string().trim().max(2000).optional(),
-  paymentSource: z.enum(["EXECUTIVE_DIRECTOR", "PETTY_CASH"]),
+  paymentSource: z.enum(["EXECUTIVE_DIRECTOR", "PETTY_CASH", "EMPLOYEE_CUSTODY"]),
+  paymentAccountId: z.string().trim().optional().nullable(),
   paidAmount: z.number().finite().min(0).max(1e10),
   stockMode: z
     .enum(["WAREHOUSE", "DIRECT_PROJECT", "LEGACY_DIRECT"])
@@ -65,7 +67,8 @@ const schema = z.discriminatedUnion("action", [
     id: z.string().trim().min(1),
     amount: z.number().finite().positive().max(1e10),
     paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    paymentSource: z.enum(["EXECUTIVE_DIRECTOR", "PETTY_CASH"]),
+    paymentSource: z.enum(["EXECUTIVE_DIRECTOR", "PETTY_CASH", "EMPLOYEE_CUSTODY"]),
+    paymentAccountId: z.string().trim().optional().nullable(),
     notes: z.string().trim().max(1000).optional(),
   }),
 ]);
@@ -88,7 +91,7 @@ function nextNumber() {
 
 export async function POST(request: Request) {
   const user = await incomingUser("purchases.manage");
-  if (!user) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!user) return apiError("FORBIDDEN", 403);
   let operationContext: FinancialOperationContext | null = null;
   try {
     const mutationErr = assertMutation(request);
@@ -132,13 +135,11 @@ export async function POST(request: Request) {
     )
       throw new Error("المبلغ المسدد يجب ألا يزيد عن منزلتين عشريتين.");
     const files = await readIncomingFiles(form);
-    if (!files.length)
+    if (!files.length && data.action !== "reverse")
       throw new Error(
         data.action === "payment"
           ? "سداد المورد يحتاج مرفق إثبات."
-          : data.action === "reverse"
-            ? "إلغاء فاتورة المشتريات يحتاج مرفق إثبات."
-            : "فاتورة المشتريات تحتاج مرفق إثبات.",
+          : "فاتورة المشتريات تحتاج مرفق إثبات.",
       );
     if (data.action === "reverse") {
       const guarded = await guardFinancialOperation(request, {
@@ -163,10 +164,7 @@ export async function POST(request: Request) {
           throw new Error(
             "لا يمكن إلغاء فاتورة لها حركات مخزن. اعكس حركات المخزن أولًا للحفاظ على الأرصدة.",
           );
-        if (
-          user.isProjectScoped &&
-          !user.projectIds.includes(invoice.projectId)
-        )
+        if (!user.canUseProject(invoice.projectId))
           throw new Error("غير مصرح لهذا المشروع.");
         const reversedAt = new Date();
         await reversePostedJournal(
@@ -190,45 +188,9 @@ export async function POST(request: Request) {
           where: { invoiceId: invoice.id, status: "POSTED" },
           data: { status: "REVERSED", reversedAt, reversalReason: data.reason },
         });
-        const cashReferences = [
-          invoice.number,
-          ...invoice.payments
-            .filter((payment) => payment.paymentSource === "PETTY_CASH")
-            .map((payment) => payment.number),
-        ];
-        const pettyMovements = await tx.pettyCashTransaction.findMany({
-          where: {
-            type: "PURCHASE_PAYMENT",
-            documentNumber: { in: cashReferences },
-            status: "POSTED",
-          },
-        });
-        if (
-          invoice.paymentSource === "PETTY_CASH" &&
-          centsNumber(invoice.paidCents) > 0 &&
-          !pettyMovements.some(
-            (movement) => movement.documentNumber === invoice.number,
-          )
-        )
-          throw new Error(
-            "تعذر إيجاد حركة الصندوق المرتبطة بالفاتورة؛ لا يمكن إلغاؤها بأمان.",
-          );
-        for (const movement of pettyMovements)
-          await tx.pettyCashTransaction.update({
-            where: { id: movement.id },
-            data: {
-              status: "REVERSED",
-              reversedAt,
-              reversalReason: `إلغاء فاتورة مشتريات: ${data.reason}`,
-              attachments: {
-                create: files.map((file) => ({
-                  ...file,
-                  name: `إثبات إلغاء فاتورة - ${file.name}`,
-                  actorId: user.id,
-                })),
-              },
-            },
-          });
+        await reverseCashSettlement(tx, invoice.id, user.id, `إلغاء فاتورة مشتريات: ${data.reason}`);
+        for (const payment of invoice.payments)
+          await reverseCashSettlement(tx, payment.id, user.id, `إلغاء دفعة فاتورة مشتريات: ${data.reason}`);
         const updated = await tx.purchaseInvoice.update({
           where: { id: invoice.id },
           data: { status: "REVERSED", reversedAt, reversalReason: data.reason },
@@ -284,6 +246,7 @@ export async function POST(request: Request) {
           amountCents,
           paymentDate: data.paymentDate,
           paymentSource: data.paymentSource,
+          paymentAccountId: data.paymentSource === "EMPLOYEE_CUSTODY" ? data.paymentAccountId : null,
         },
       });
       if ("response" in guarded) return guarded.response;
@@ -295,10 +258,7 @@ export async function POST(request: Request) {
         });
         if (!invoice || invoice.status !== "POSTED")
           throw new Error("الفاتورة غير متاحة للسداد.");
-        if (
-          user.isProjectScoped &&
-          !user.projectIds.includes(invoice.projectId)
-        )
+        if (!user.canUseProject(invoice.projectId))
           throw new Error("غير مصرح لهذا المشروع.");
         if (!invoice.paymentTrackingStarted)
           throw new Error(
@@ -330,11 +290,12 @@ export async function POST(request: Request) {
             amountCents,
             paymentDate: new Date(data.paymentDate),
             paymentSource: data.paymentSource,
+            paymentAccountId: data.paymentSource === "EMPLOYEE_CUSTODY" ? data.paymentAccountId : null,
             notes: data.notes || null,
             actorId: user.id,
           },
         });
-        await settleThroughMainCash(tx, { source: data.paymentSource, amountCents, date: new Date(data.paymentDate), actorId: user.id, projectId: invoice.projectId, documentNumber: number, description: `دفعة مورد عن فاتورة: ${invoice.name}`, operationId: created.id });
+        await settleThroughMainCash(tx, { source: data.paymentSource, accountId: data.paymentAccountId, amountCents, date: new Date(data.paymentDate), actorId: user.id, projectId: invoice.projectId, documentNumber: number, description: `دفعة مورد عن فاتورة: ${invoice.name}`, operationId: created.id });
         await postPurchasePaymentJournal(tx, {
           id: created.id,
           amountCents,
@@ -365,6 +326,7 @@ export async function POST(request: Request) {
               number,
               amountCents,
               paymentSource: data.paymentSource,
+              paymentAccountId: data.paymentSource === "EMPLOYEE_CUSTODY" ? data.paymentAccountId : null,
               paymentDate: data.paymentDate,
             }),
           },
@@ -396,7 +358,7 @@ export async function POST(request: Request) {
       select: { id: true, code: true, name: true },
     });
     if (!project) throw new Error("اختر مشروعًا صحيحًا.");
-    if (user.isProjectScoped && !user.projectIds.includes(project.id))
+    if (!user.canUseProject(project.id))
       throw new Error("غير مصرح لهذا المشروع.");
     if (data.supplierId) {
       const supplier = await prisma.company.findFirst({
@@ -500,6 +462,7 @@ export async function POST(request: Request) {
           paidCents,
           paymentTrackingStarted: true,
           paymentSource: data.paymentSource,
+          paymentAccountId: data.paymentSource === "EMPLOYEE_CUSTODY" ? data.paymentAccountId : null,
           stockMode: data.stockMode,
           warehouseId:
             data.stockMode === "LEGACY_DIRECT" ? null : data.warehouseId,
@@ -507,7 +470,7 @@ export async function POST(request: Request) {
           items: { createMany: { data: items } },
         },
       });
-      if (paidCents > 0) await settleThroughMainCash(tx, { source: data.paymentSource, amountCents: paidCents, date: new Date(data.invoiceDate), actorId: user.id, projectId: data.projectId, documentNumber: number, description: `سداد فاتورة مشتريات: ${data.name}`, operationId: created.id });
+      if (paidCents > 0) await settleThroughMainCash(tx, { source: data.paymentSource, accountId: data.paymentAccountId, amountCents: paidCents, date: new Date(data.invoiceDate), actorId: user.id, projectId: data.projectId, documentNumber: number, description: `سداد فاتورة مشتريات: ${data.name}`, operationId: created.id });
       if (paidCents > 0)
         await tx.purchasePayment.create({
           data: {
@@ -516,6 +479,7 @@ export async function POST(request: Request) {
             amountCents: paidCents,
             paymentDate: new Date(data.invoiceDate),
             paymentSource: data.paymentSource,
+            paymentAccountId: data.paymentSource === "EMPLOYEE_CUSTODY" ? data.paymentAccountId : null,
             notes: "دفعة عند تسجيل الفاتورة",
             actorId: user.id,
           },
@@ -680,7 +644,7 @@ export async function POST(request: Request) {
     const replay = await replayAfterConflict(error, operationContext);
     if (replay) return replay;
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "تعذر حفظ الفاتورة." },
+      { error: arabicErrorMessage(error, "تعذر حفظ الفاتورة. راجع البيانات وحاول مرة أخرى.") },
       { status: 400 },
     );
   }

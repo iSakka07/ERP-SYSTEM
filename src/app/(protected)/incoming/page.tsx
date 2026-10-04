@@ -34,7 +34,7 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
 
   const [contracts, projects] = await Promise.all([
     prisma.incomingContract.findMany({
-      where: { active: true, ...(viewer.isProjectScoped ? { projectId: { in: viewer.projectIds } } : {}) },
+      where: { active: true, ...viewer.projectIdWhere() },
       include: {
         project: {
           include: {
@@ -65,7 +65,7 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
       orderBy: { createdAt: "desc" },
     }),
     prisma.project.findMany({
-      where: { active: true, company: { active: true, type: "OWNER" }, ...(viewer.isProjectScoped ? { id: { in: viewer.projectIds } } : {}) },
+      where: { active: true, company: { active: true, type: "OWNER" }, ...viewer.projectWhere() },
       include: { company: true },
       orderBy: { name: "asc" },
     }),

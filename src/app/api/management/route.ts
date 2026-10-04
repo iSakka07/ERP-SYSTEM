@@ -3,8 +3,9 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { assertMutation } from "@/lib/request-security";
 import { employeeJobPrefixes, nextEmployeeCode } from "@/lib/employee-codes";
+import { apiError } from "@/lib/api-error";
 
 const createSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("company"), name: z.string().trim().min(2).max(200), companyType: z.enum(["OWNER", "SUBCONTRACTOR", "SUPPLIER"]), isEngineeringAuthority: z.preprocess(value => value === true || value === "true" || value === "on", z.boolean()), workNature: z.string().trim().max(200).optional(), phone: z.string().trim().max(50).optional() }),
@@ -22,15 +23,11 @@ async function manager() {
   const session = await auth();
   return session?.user && can(session.user, "masterdata.manage") ? session : null;
 }
-function sameOrigin(request: Request) {
-  return isTrustedMutationOrigin(request);
-}
-
 export async function GET(request: Request) {
   const session = await manager();
-  if (!session) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!session) return apiError("FORBIDDEN", 403);
   const jobTitle = new URL(request.url).searchParams.get("jobTitle");
-  if (!jobTitle || !(jobTitle in employeeJobPrefixes)) return NextResponse.json({ error: "INVALID_JOB_TITLE" }, { status: 400 });
+  if (!jobTitle || !(jobTitle in employeeJobPrefixes)) return apiError("INVALID_JOB_TITLE", 400);
   const prefix = employeeJobPrefixes[jobTitle as keyof typeof employeeJobPrefixes];
   const excludeEmployeeId = new URL(request.url).searchParams.get("excludeEmployeeId") || undefined;
   const employees = await prisma.employee.findMany({ where: { employeeCode: { startsWith: `${prefix}-` }, ...(excludeEmployeeId ? { id: { not: excludeEmployeeId } } : {}) }, select: { employeeCode: true } });
@@ -39,10 +36,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const session = await manager();
-  if (!session) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  if (!sameOrigin(request)) return NextResponse.json({ error: "INVALID_ORIGIN" }, { status: 403 });
+  if (!session) return apiError("FORBIDDEN", 403);
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
   const parsed = createSchema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "INVALID_DATA" }, { status: 400 });
+  if (!parsed.success) return apiError("INVALID_DATA", 400);
   const data = parsed.data;
   try {
     const create = () => prisma.$transaction(async (tx) => {
@@ -87,17 +85,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, id: target }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (message === "INVALID_OWNER" || message === "INVALID_PROJECT") return NextResponse.json({ error: message }, { status: 400 });
-    return NextResponse.json({ error: "DUPLICATE_OR_INVALID" }, { status: 409 });
+    if (message === "INVALID_OWNER" || message === "INVALID_PROJECT") return apiError(message, 400);
+    return apiError("DUPLICATE_OR_INVALID", 409);
   }
 }
 
 export async function PATCH(request: Request) {
   const session = await manager();
-  if (!session) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  if (!sameOrigin(request)) return NextResponse.json({ error: "INVALID_ORIGIN" }, { status: 403 });
+  if (!session) return apiError("FORBIDDEN", 403);
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
   const parsed = updateSchema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "INVALID_DATA" }, { status: 400 });
+  if (!parsed.success) return apiError("INVALID_DATA", 400);
   const data = parsed.data;
   try {
     await prisma.$transaction(async (tx) => {
@@ -148,17 +147,18 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (["INVALID_ENGINEER", "INVALID_PROJECT", "INVALID_COMPANY", "INVALID_OWNER"].includes(message)) return NextResponse.json({ error: message }, { status: 400 });
-    return NextResponse.json({ error: "DUPLICATE_OR_INVALID" }, { status: 409 });
+    if (["INVALID_ENGINEER", "INVALID_PROJECT", "INVALID_COMPANY", "INVALID_OWNER"].includes(message)) return apiError(message, 400);
+    return apiError("DUPLICATE_OR_INVALID", 409);
   }
 }
 
 export async function DELETE(request: Request) {
   const session = await manager();
-  if (!session) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  if (!sameOrigin(request)) return NextResponse.json({ error: "INVALID_ORIGIN" }, { status: 403 });
+  if (!session) return apiError("FORBIDDEN", 403);
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
   const parsed = deleteSchema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "INVALID_DATA" }, { status: 400 });
+  if (!parsed.success) return apiError("INVALID_DATA", 400);
   const { entity, id } = parsed.data;
   try {
     await prisma.$transaction(async (tx) => {
@@ -178,6 +178,6 @@ export async function DELETE(request: Request) {
     });
     return NextResponse.json({ ok: true });
   } catch {
-    return NextResponse.json({ error: "NOT_FOUND_OR_INVALID" }, { status: 404 });
+    return apiError("NOT_FOUND_OR_INVALID", 404);
   }
 }

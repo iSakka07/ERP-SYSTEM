@@ -8,9 +8,9 @@ import { readIncomingFiles } from "@/lib/incoming-server";
 import { assertBalances } from "@/lib/petty-cash";
 import { fundMainCash, settleThroughMainCash } from "@/lib/cash-settlement";
 import {
+  postExecutiveAdvance,
   postPayrollApproval,
   postPayrollPayment,
-  postPettyCashJournal,
 } from "@/lib/accounting-posting";
 import {
   completeFinancialOperation,
@@ -19,6 +19,7 @@ import {
   type FinancialOperationContext,
 } from "@/lib/financial-idempotency";
 import { assertMutation } from "@/lib/request-security";
+import { arabicErrorMessage } from "@/lib/api-error";
 import { centsNumber } from "@/lib/money";
 import {
   buildPayrollDistribution,
@@ -305,8 +306,6 @@ export async function POST(request: Request) {
           const effectiveDate = input.effectiveMode === "MONTH_START"
             ? new Date(`${z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).parse(input.effectiveDate)}-01T00:00:00.000Z`)
             : dateSchema.parse(input.effectiveDate);
-          const today = new Date(); today.setUTCHours(0, 0, 0, 0);
-          if (effectiveDate > today) throw new Error("لا يمكن تعديل الراتب بتاريخ مستقبلي.");
           const latestRun = await tx.payrollRun.findFirst({ orderBy: { month: "desc" }, select: { month: true } });
           if (latestRun) {
             const [year, month] = latestRun.month.split("-").map(Number);
@@ -430,29 +429,24 @@ export async function POST(request: Request) {
               (account) => account.type === "MAIN" && account.active,
             );
             if (!main) throw new Error("لم يتم إعداد الخزنة الرئيسية لصرف السلفة.");
-            const custody = await tx.pettyCashAccount.create({
-              data: {
-                name: `سلفة ${employee.name} — ${payload.issuedAt}`,
-                type: "CUSTODY",
-                employeeId: employee.id,
-              },
-            });
             const id = randomUUID();
             const movement = {
               id,
-              number: `PC-${id}`,
-              type: "CUSTODY_ISSUE",
+              number: `PC-ADV-${id}`,
+              type: "EMPLOYEE_ADVANCE_PAYMENT",
               status: "POSTED",
               amountCents,
               transactionDate: issuedAt,
               sourceAccountId: main.id,
-              destinationAccountId: custody.id,
+              destinationAccountId: null,
               projectId: null,
               categoryId: null,
               description: `سلفة موظف: ${employee.name}`,
               documentNumber: `SALADV-${created.id}`,
               fundingSource: null,
               recordedById: session.user.id,
+              operationId: created.id,
+              linkedEntityType: "EMPLOYEE_ADVANCE",
             };
             assertBalances([...movements, movement]);
             await tx.pettyCashTransaction.create({
@@ -466,8 +460,8 @@ export async function POST(request: Request) {
                 },
               },
             });
-            await postPettyCashJournal(tx, movement);
-            await audit("pettycash.custody_issue", id, {
+            await postExecutiveAdvance(tx, created, session.user.id);
+            await audit("pettycash.employee_advance_payment", id, {
               advanceId: created.id,
               amountCents,
               employeeId: employee.id,
@@ -712,7 +706,7 @@ export async function POST(request: Request) {
     const replay = await replayAfterConflict(error, operationContext);
     if (replay) return replay;
     return json(
-      { error: error instanceof Error ? error.message : "تعذر حفظ العملية." },
+      { error: arabicErrorMessage(error, "تعذر حفظ عملية الرواتب. راجع البيانات وحاول مرة أخرى.") },
       400,
     );
   }

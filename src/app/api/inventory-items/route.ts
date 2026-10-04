@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { incomingUser } from "@/lib/incoming-server";
 import { assertMutation } from "@/lib/request-security";
+import { apiError, arabicErrorMessage } from "@/lib/api-error";
 
 const itemSchema = z.object({
   name: z.string().trim().min(2).max(200),
@@ -51,7 +52,7 @@ async function permitted(...permissions: string[]) {
 
 export async function GET(request: Request) {
   const user = await permitted("warehouse.view", "purchases.view");
-  if (!user) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!user) return apiError("FORBIDDEN", 403);
   const params = new URL(request.url).searchParams;
   const rawQuery = (params.get("q") || "").trim().slice(0, 100);
   const query = normalizeArabic(rawQuery);
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
   const mutationErr = assertMutation(request);
   if (mutationErr) return mutationErr;
   const user = await permitted("purchases.manage", "warehouse.manage");
-  if (!user) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!user) return apiError("FORBIDDEN", 403);
   try {
     const data = itemSchema.parse(await request.json());
     const exact = await prisma.inventoryItem.findUnique({ where: { name_unit: { name: data.name, unit: data.unit } } });
@@ -122,6 +123,6 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "راجع اسم الصنف والوحدة والبيانات المدخلة." }, { status: 400 });
     if (error instanceof Error && "code" in error && error.code === "P2002") return NextResponse.json({ error: "الصنف موجود بالفعل بنفس الاسم والوحدة." }, { status: 409 });
-    return NextResponse.json({ error: error instanceof Error ? error.message : "تعذر حفظ الصنف." }, { status: 400 });
+    return NextResponse.json({ error: arabicErrorMessage(error, "تعذر حفظ الصنف. راجع البيانات وحاول مرة أخرى.") }, { status: 400 });
   }
 }

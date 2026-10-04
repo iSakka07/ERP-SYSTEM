@@ -2,21 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { assertMutation } from "@/lib/request-security";
+import { apiError } from "@/lib/api-error";
 
 const profileSchema = z.object({ name: z.string().trim().min(2).max(80) });
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const maxAvatarSize = 2 * 1024 * 1024;
-
-function sameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-  try {
-    return isTrustedMutationOrigin(request);
-  } catch {
-    return false;
-  }
-}
 
 export async function GET() {
   const session = await auth();
@@ -28,16 +19,17 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  if (!sameOrigin(request)) return NextResponse.json({ error: "INVALID_ORIGIN" }, { status: 403 });
+  if (!session?.user?.id) return apiError("UNAUTHORIZED", 401);
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
 
   const form = await request.formData();
   const parsed = profileSchema.safeParse({ name: form.get("name") });
-  if (!parsed.success) return NextResponse.json({ error: "INVALID_NAME" }, { status: 400 });
+  if (!parsed.success) return apiError("INVALID_NAME", 400);
   const uploaded = form.get("avatar");
   const avatar = uploaded instanceof File && uploaded.size ? uploaded : null;
   if (avatar && (!allowedImageTypes.has(avatar.type) || avatar.size > maxAvatarSize))
-    return NextResponse.json({ error: "INVALID_AVATAR" }, { status: 400 });
+    return apiError("INVALID_AVATAR", 400);
 
   const avatarData = avatar ? Buffer.from(await avatar.arrayBuffer()) : undefined;
   const user = await prisma.$transaction(async (tx) => {

@@ -56,7 +56,7 @@ export function AccountMenu({ name, email, hasAvatar }: AccountMenuProps) {
       const body = new FormData(); body.set("name", draftName); if (avatarFile) body.set("avatar", avatarFile);
       const response = await fetch("/api/profile", { method: "PATCH", body });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error === "INVALID_AVATAR" ? "تعذر حفظ الصورة. تأكد من النوع والحجم." : "تعذر حفظ التعديلات.");
+      if (!response.ok) throw new Error(result.error || "تعذر حفظ التعديلات.");
       setDisplayName(result.name); if (result.avatarUrl) setAvatarUrl(result.avatarUrl);
       closeEditor(); setOpen(false); router.refresh();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "تعذر حفظ التعديلات."); }

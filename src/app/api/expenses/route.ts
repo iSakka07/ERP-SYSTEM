@@ -20,8 +20,9 @@ import {
 } from "@/lib/expenses";
 import { postSubcontractApproval, postSubcontractPayment, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
-import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { assertMutation } from "@/lib/request-security";
 import { settleThroughMainCash, reverseCashSettlement } from "@/lib/cash-settlement";
+import { arabicErrorMessage } from "@/lib/api-error";
 
 const text = z.string().trim().min(1).max(300);
 const date = z
@@ -126,17 +127,13 @@ const relations = {
 };
 const deleteSchema = z.object({ id: text });
 
-function validOrigin(request: Request) {
-  return isTrustedMutationOrigin(request);
-}
-
 export async function POST(request: Request) {
   let operationContext: FinancialOperationContext | null = null;
   try {
     if (!(await incomingUser("expenses.view")))
       return NextResponse.json({ error: "غير مسموح." }, { status: 403 });
-    if (!validOrigin(request))
-      return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
+    const mutationError = assertMutation(request);
+    if (mutationError) return mutationError;
     if (Number(request.headers.get("content-length") || 0) > 11 * 1024 * 1024)
       return NextResponse.json(
         { error: "الطلب أكبر من الحد المسموح." },
@@ -170,7 +167,7 @@ export async function POST(request: Request) {
         { error: "ليس لديك صلاحية لهذه العملية." },
         { status: 403 },
       );
-    const canUseProject = (projectId: string) => !user.isProjectScoped || user.projectIds.includes(projectId);
+    const canUseProject = user.canUseProject;
     if (user.isProjectScoped) {
       let projectId: string | null = null;
       if (data.action === "account") projectId = data.projectId;
@@ -455,6 +452,7 @@ export async function POST(request: Request) {
           id = change.id;
           entityType = "withdrawal";
         } else if (data.action === "account") {
+          if (!files.length) throw new Error("إنشاء حساب المقاول يحتاج مرفق إثبات.");
           const [company, project] = await Promise.all([
             tx.company.findUnique({ where: { id: data.companyId } }),
             tx.project.findUnique({ where: { id: data.projectId } }),
@@ -680,7 +678,6 @@ export async function POST(request: Request) {
             },
           });
         } else if (data.action === "reversePayment") {
-          if (!files.length) throw new Error("إلغاء دفعة المقاول يحتاج مرفق إثبات.");
           const payment = await tx.subcontractPayment.findUnique({
             where: { id: data.paymentId },
             include: { statement: { include: { account: true } } },
@@ -918,8 +915,8 @@ export async function POST(request: Request) {
         error:
           error instanceof Error &&
           !(error instanceof Prisma.PrismaClientKnownRequestError)
-            ? error.message
-            : "تعذر حفظ العملية.",
+            ? arabicErrorMessage(error, "تعذر حفظ العملية. راجع البيانات وحاول مرة أخرى.")
+            : "تعذر حفظ العملية. راجع البيانات وحاول مرة أخرى.",
       },
       { status: 400 },
     );
@@ -930,15 +927,15 @@ export async function DELETE(request: Request) {
   const user = await incomingUser("expenses.manage");
   if (!user)
     return NextResponse.json({ error: "ليس لديك صلاحية مسح أعمال المقاول." }, { status: 403 });
-  if (!validOrigin(request))
-    return NextResponse.json({ error: "طلب غير مسموح." }, { status: 403 });
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
   try {
     const parsed = deleteSchema.safeParse(await request.json());
     if (!parsed.success)
       return NextResponse.json({ error: "أعمال المقاول غير صالحة." }, { status: 400 });
     await prisma.$transaction(async (tx) => {
       const account = await tx.subcontractAccount.findUnique({ where: { id: parsed.data.id }, select: { projectId: true } });
-      if (!account || (user.isProjectScoped && !user.projectIds.includes(account.projectId))) throw new Error("غير مصرح لهذا المشروع.");
+      if (!account || !user.canUseProject(account.projectId)) throw new Error("غير مصرح لهذا المشروع.");
       const updated = await tx.subcontractAccount.updateMany({
         where: { id: parsed.data.id, active: true },
         data: { active: false },
@@ -956,7 +953,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "تعذر مسح أعمال المقاول." },
+      { error: arabicErrorMessage(error, "تعذر مسح أعمال المقاول. حاول مرة أخرى.") },
       { status: 400 },
     );
   }

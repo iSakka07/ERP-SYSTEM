@@ -5,8 +5,9 @@ import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
 import { assertBalances, balanceForAccount, cents, isProjectCost, validatePettyInput } from "@/lib/petty-cash";
 import { postPettyCashJournal, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
-import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { assertMutation } from "@/lib/request-security";
 import { centsNumber } from "@/lib/money";
+import { arabicErrorMessage } from "@/lib/api-error";
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status });
 export async function GET() {
@@ -25,7 +26,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await incomingUser("pettycash.manage");
   if (!user) return json({ error: "غير مصرح" }, 403);
-  if (!isTrustedMutationOrigin(req)) return json({ error: "مصدر الطلب غير موثوق." }, 403);
+  const mutationError = assertMutation(req); if (mutationError) return mutationError;
   if (Number(req.headers.get("content-length") || 0) > 11 * 1024 * 1024) return json({ error: "حجم الطلب كبير" }, 413);
   let operationContext: FinancialOperationContext | null = null;
   try {
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
       const finish = async (body: { id: string }, entityType: string, summary: Record<string, unknown>) => { if (operationContext) await completeFinancialOperation(tx, operationContext, { body: { ok: true, ...body }, entityType, entityId: body.id, summary }); return body; };
       if (action === "category") {
         const name = str("name"); if (!name || name.length > 150) throw new Error("اسم التصنيف مطلوب وبحد أقصى 150 حرفًا.");
-        const data = { name, active: str("active") === "true", requiresAttachment: str("requiresAttachment") === "true" };
+        const data = { name, active: str("active") === "true", requiresDocument: str("requiresDocument") === "true", requiresAttachment: str("requiresAttachment") === "true" };
         const id = str("id");
         const category = id ? await tx.pettyCashCategory.update({ where: { id }, data }) : await tx.pettyCashCategory.create({ data: { ...data, key: randomUUID() } });
         await audit("category", category.id, data); return { id: category.id };
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
       }
       if (action === "reverse") {
         const id = str("id"), reason = str("reason");
-        if (!reason || !files.length) throw new Error("سبب الإلغاء ومرفقه مطلوبان.");
+        if (reason.length < 2) throw new Error("سبب الإلغاء مطلوب ويجب أن يكون واضحًا.");
         const original = movements.find(t => t.id === id && t.status === "POSTED"); if (!original) throw new Error("الحركة ملغاة بالفعل أو غير موجودة.");
         const EXTERNAL_TYPES = ["PURCHASE_PAYMENT", "SALARY_ADVANCE", "SALARY_PAYMENT"];
         if (EXTERNAL_TYPES.includes(original.type))
@@ -104,6 +105,8 @@ export async function POST(req: Request) {
             if (!project) throw new Error("اختر مشروعًا صحيحًا."); projectId = project.id;
           } else if (str("projectId")) throw new Error("المصروف العام لا يرتبط بمشروع.");
           categoryId = category!.id;
+          documentNumber = str("documentNumber") || null;
+          if (category!.requiresDocument && !documentNumber) throw new Error("رقم المستند مطلوب لهذا التصنيف.");
         } else if (str("projectId") || str("categoryId")) throw new Error("التحميل والتصنيف للمصروف الفعلي فقط.");
         amountCents = validatePettyInput({ type, amount: str("amount"), projectId, allocation: str("allocation"), description, hasAttachment: files.length > 0, requiresAttachment: category?.requiresAttachment ?? true });
         if (type === "OPENING_BALANCE" && movements.some(t => t.status === "POSTED" && (t.sourceAccountId === main.id || t.destinationAccountId === main.id))) throw new Error("الرصيد الافتتاحي يسبق جميع حركات الصندوق.");
@@ -136,5 +139,5 @@ export async function POST(req: Request) {
       return finish({ id }, "pettyCashTransaction", { number: movement.number, type, amountCents, date: str("date") });
     }, { maxWait: 10000, timeout: 20000 });
     return json({ ok: true, ...result });
-  } catch (e) { const replay = await replayAfterConflict(e, operationContext); if (replay) return replay; return json({ error: e instanceof Error ? e.message : "تعذر حفظ الحركة." }, 400); }
+  } catch (e) { const replay = await replayAfterConflict(e, operationContext); if (replay) return replay; return json({ error: arabicErrorMessage(e, "تعذر حفظ حركة العهدة. راجع البيانات وحاول مرة أخرى.") }, 400); }
 }

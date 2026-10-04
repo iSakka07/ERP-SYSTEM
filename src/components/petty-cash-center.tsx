@@ -1053,7 +1053,7 @@ export function PettyCashCenter() {
                 <Field label="سبب الإلغاء *">
                   <input name="reason" required className={expenseInput} />
                 </Field>
-                <UploadBox name="files" label="إثبات الإلغاء" required />
+                <UploadBox name="files" label="إثبات الإلغاء — اختياري" />
               </>
             )}
             {drawer === "category" && (

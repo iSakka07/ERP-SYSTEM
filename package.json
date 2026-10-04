@@ -44,6 +44,7 @@
     "test:expense-corrections-api": "node scripts/test-expense-corrections-api.mjs",
     "test:purchases-api": "node scripts/test-purchases-api.mjs",
     "test:warehouse-receipts-api": "node scripts/test-warehouse-receipts-api.mjs",
+    "test:warehouse-movements-api": "node scripts/test-warehouse-movements-api.mjs",
     "db:expenses-permissions": "node scripts/expenses-permissions.mjs",
     "db:project-cost-control-permissions": "node scripts/project-cost-control-permissions.mjs",
     "db:accounting-setup": "node scripts/accounting-setup.mjs",

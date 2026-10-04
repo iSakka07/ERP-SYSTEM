@@ -30,6 +30,7 @@ import {
 
 type Project = { id: string; name: string; code: string };
 type Supplier = { id: string; name: string };
+type EmployeeCustody = { id: string; name: string; balanceCents: number };
 type PurchaseItem = {
   id: string;
   name: string;
@@ -45,6 +46,8 @@ type PurchaseInvoice = {
   notes?: string | null;
   totalCents: number;
   paidCents: number;
+  paymentSource: string;
+  paymentAccountId?: string | null;
   paymentTrackingStarted: boolean;
   stockMode: string;
   status: string;
@@ -62,6 +65,7 @@ type PurchaseInvoice = {
     amountCents: number;
     paymentDate: string;
     paymentSource: string;
+    paymentAccountId?: string | null;
     status: string;
     notes?: string | null;
     actorId: string;
@@ -80,6 +84,7 @@ export function PurchasesCenter({
   projects,
   suppliers,
   attachments,
+  employeeCustodies,
   canManage,
   initialProjectId = "",
   initialInvoiceId = "",
@@ -88,6 +93,7 @@ export function PurchasesCenter({
   projects: Project[];
   suppliers: Supplier[];
   attachments: Attachment[];
+  employeeCustodies: EmployeeCustody[];
   canManage: boolean;
   initialProjectId?: string;
   initialInvoiceId?: string;
@@ -106,6 +112,7 @@ export function PurchasesCenter({
   } | null>(null);
   const [paymentError, setPaymentError] = useState("");
   const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentSource, setPaymentSource] = useState("EXECUTIVE_DIRECTOR");
   const visible = invoices.filter(
     (invoice) =>
       (!initialInvoiceId || invoice.id === initialInvoiceId) &&
@@ -272,6 +279,7 @@ export function PurchasesCenter({
       amount: Number(body.get("amount")),
       paymentDate: body.get("paymentDate"),
       paymentSource: body.get("paymentSource"),
+      paymentAccountId: paymentSource === "EMPLOYEE_CUSTODY" ? body.get("paymentAccountId") : undefined,
       notes: body.get("notes") || undefined,
     };
     body.set("payload", JSON.stringify(payload));
@@ -566,7 +574,7 @@ export function PurchasesCenter({
                                   className="erp-back-tab !px-2 !py-1 text-[10px]"
                                   onClick={() => {
                                     setPaymentError("");
-                                    setPaying({ invoice, amountCents: 0 });
+                                    setPaymentSource("EXECUTIVE_DIRECTOR"); setPaying({ invoice, amountCents: 0 });
                                   }}
                                 >
                                   <WalletCards className="size-3.5" />
@@ -577,7 +585,7 @@ export function PurchasesCenter({
                                   className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2 py-1 text-[10px] font-bold text-white"
                                   onClick={() => {
                                     setPaymentError("");
-                                    setPaying({
+                                    setPaymentSource("EXECUTIVE_DIRECTOR"); setPaying({
                                       invoice,
                                       amountCents: remainingCents,
                                     });
@@ -605,6 +613,9 @@ export function PurchasesCenter({
                           <h2 className="mb-3 text-sm font-black">
                             تفاصيل بنود «{invoice.name}»
                           </h2>
+                          <p className="mb-3 text-xs text-slate-600">
+                            مصدر صرف الدفعة الأولى: {invoice.paymentSource === "EMPLOYEE_CUSTODY" ? `عهدة ${employeeCustodies.find((account) => account.id === invoice.paymentAccountId)?.name || "موظف"}` : invoice.paymentSource === "PETTY_CASH" ? "الخزنة الرئيسية" : "المدير التنفيذي"}
+                          </p>
                           <div className="overflow-x-auto">
                             <table className="w-full min-w-[600px] text-xs">
                               <thead className="bg-slate-100 text-slate-600">
@@ -687,10 +698,11 @@ export function PurchasesCenter({
                                           {payment.paymentDate.slice(0, 10)}
                                         </td>
                                         <td className="p-2">
-                                          {payment.paymentSource ===
-                                          "PETTY_CASH"
-                                            ? "الخزنة الرئيسية"
-                                            : "المدير التنفيذي"}
+                                          {payment.paymentSource === "EMPLOYEE_CUSTODY"
+                                            ? `عهدة ${employeeCustodies.find((account) => account.id === payment.paymentAccountId)?.name || "موظف"}`
+                                            : payment.paymentSource === "PETTY_CASH"
+                                              ? "الخزنة الرئيسية"
+                                              : "المدير التنفيذي"}
                                         </td>
                                         <td className="p-2">
                                           <MoneyValue>
@@ -821,13 +833,26 @@ export function PurchasesCenter({
                 مصدر السداد *
                 <ERPSelect
                   name="paymentSource"
-                  defaultValue="EXECUTIVE_DIRECTOR"
+                  value={paymentSource}
+                  onValueChange={setPaymentSource}
                   className={expenseInput}
                 >
                   <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
                   <option value="PETTY_CASH">الخزنة الرئيسية</option>
+                  <option value="EMPLOYEE_CUSTODY">عهدة موظف</option>
                 </ERPSelect>
               </label>
+              {paymentSource === "EMPLOYEE_CUSTODY" && (
+                <label className="grid gap-2 text-xs font-bold">
+                  عهدة الموظف *
+                  <ERPSelect name="paymentAccountId" required defaultValue="" className={expenseInput}>
+                    <option value="">اختر العهدة</option>
+                    {employeeCustodies.map((account) => (
+                      <option key={account.id} value={account.id}>{account.name} — {money(account.balanceCents)} ج.م</option>
+                    ))}
+                  </ERPSelect>
+                </label>
+              )}
               <label className="grid gap-2 text-xs font-bold">
                 ملاحظات
                 <textarea
@@ -927,11 +952,10 @@ export function PurchasesCenter({
                 <input name="reason" required className={expenseInput} />
               </label>
               <label className="grid gap-2 text-xs font-bold">
-                إثبات الإلغاء *
+                إثبات الإلغاء — اختياري
                 <input
                   name="files"
                   type="file"
-                  required
                   accept="application/pdf,image/*"
                   className={expenseInput}
                 />

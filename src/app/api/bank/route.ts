@@ -6,7 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { bankBalance } from "@/lib/bank";
 import { postManualBankJournal, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
-import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { assertMutation } from "@/lib/request-security";
+import { arabicErrorMessage } from "@/lib/api-error";
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create").default("create"), type: z.enum(["OWNER_FUNDING", "MANUAL_DEPOSIT", "MANUAL_EXPENSE"]), amount: z.coerce.number().positive().max(10_000_000_000), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), projectId: z.string().optional(), categoryKey: z.string().optional(), counterAccountKey: z.string().optional(), description: z.string().trim().min(2).max(1000), reference: z.string().trim().max(300).optional() }),
@@ -27,7 +28,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const user = await incomingUser("bank.manage"); if (!user) return json({ error: "غير مصرح" }, 403);
-  if (!isTrustedMutationOrigin(request)) return json({ error: "مصدر الطلب غير موثوق." }, 403);
+  const mutationError = assertMutation(request); if (mutationError) return mutationError;
   let operationContext: FinancialOperationContext | null = null;
   try {
     const form = await request.formData(); const payload = JSON.parse(String(form.get("payload") || "{}")); const input = schema.parse(payload.action === "reverse" ? payload : { action: "create", ...payload }); const files = await readIncomingFiles(form);
@@ -60,5 +61,5 @@ export async function POST(request: Request) {
       return transaction;
     });
     return json({ ok: true, id: result.id }, input.action === "reverse" ? 200 : 201);
-  } catch (error) { const replay = await replayAfterConflict(error, operationContext); if (replay) return replay; return json({ error: error instanceof Error ? error.message : "تعذر حفظ الحركة." }, 400); }
+  } catch (error) { const replay = await replayAfterConflict(error, operationContext); if (replay) return replay; return json({ error: arabicErrorMessage(error, "تعذر حفظ الحركة البنكية. راجع البيانات وحاول مرة أخرى.") }, 400); }
 }

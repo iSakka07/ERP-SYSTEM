@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { accessProfile } from "@/lib/access-control";
+import { currentAccess } from "@/lib/server-access";
 import { money } from "@/lib/incoming";
 import { isProjectCost, balanceForAccount, expenseTypes } from "@/lib/petty-cash";
 import { RoleDashboard } from "@/components/role-dashboard";
@@ -38,6 +37,7 @@ function auditSummary(details: string | null) {
       const value = values[key];
       if (value === undefined || value === null || value === "" || key === "type" && value === "") return [];
       if (typeof value === "boolean") return value ? [`${label}: نعم`] : [];
+      if (key === "paymentSource" && typeof value === "string") return [`${label}: ${value === "EMPLOYEE_CUSTODY" ? "عهدة موظف" : value === "PETTY_CASH" ? "الخزنة الرئيسية" : "المدير التنفيذي"}`];
       if (typeof value === "string" || typeof value === "number") return [`${label}: ${String(value).slice(0, 90)}`];
       return [];
     });
@@ -79,33 +79,30 @@ function relevantCost(account: { statements: { stage: string; statementDate: Dat
 }
 
 export default async function Home({ searchParams }: { searchParams: Promise<Search> }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  const profile = await accessProfile(session.user.id);
+  const profile = await currentAccess();
   if (!profile) redirect("/login");
   const search = await searchParams;
   const evaluationDate = new Date();
   const period = periodFrom(search);
-  const canFinancial = profile.permissions.includes("project_cost_control.view");
-  const canStock = profile.permissions.includes("warehouse.view");
-  const canPurchases = profile.permissions.includes("purchases.view");
-  const canPetty = profile.permissions.includes("pettycash.view") && !profile.isProjectScoped;
-  const scoped = profile.isProjectScoped ? { id: { in: profile.projectIds } } : {};
-  const allProjects = await prisma.project.findMany({ where: { active: true, ...scoped }, include: { company: true }, orderBy: { name: "asc" } });
+  const canFinancial = profile.can("project_cost_control.view");
+  const canStock = profile.can("warehouse.view");
+  const canPurchases = profile.can("purchases.view");
+  const canPetty = profile.can("pettycash.view");
+  const allProjects = await prisma.project.findMany({ where: { active: true, ...profile.projectWhere() }, include: { company: true }, orderBy: { name: "asc" } });
   const requestedProject = typeof search.project === "string" ? search.project : "";
   const projectId = allProjects.some((project) => project.id === requestedProject) ? requestedProject : "";
   const selectedProjects = projectId ? allProjects.filter((project) => project.id === projectId) : allProjects;
-  const projectWhere = projectId ? { projectId } : profile.isProjectScoped ? { projectId: { in: profile.projectIds } } : {};
+  const projectWhere = projectId ? { projectId } : profile.projectIdWhere();
   const warehouses = canStock ? await prisma.warehouse.findMany({ where: { active: true, OR: [{ type: { not: "PROJECT" } }, ...(profile.isProjectScoped ? [{ projectId: { in: profile.projectIds } }] : [{}])] } }) : [];
   const warehouseIds = warehouses.map((warehouse) => warehouse.id);
   const [contracts, accounts, invoices, petty, pettyAccounts, allPettyMovements, payrollRuns, inventoryItems, stockMovements] = await Promise.all([
-    (canFinancial || profile.permissions.includes("incoming.view")) ? prisma.incomingContract.findMany({ where: projectWhere, include: { memos: true, statements: { orderBy: { sequence: "asc" }, include: { materials: true } } } }) : Promise.resolve([]),
-    (canFinancial || profile.permissions.includes("expenses.view")) ? prisma.subcontractAccount.findMany({ where: projectWhere, include: { company: true, statements: { include: { payments: true } } } }) : Promise.resolve([]),
+    (canFinancial || profile.can("incoming.view")) ? prisma.incomingContract.findMany({ where: projectWhere, include: { memos: true, statements: { orderBy: { sequence: "asc" }, include: { materials: true } } } }) : Promise.resolve([]),
+    (canFinancial || profile.can("expenses.view")) ? prisma.subcontractAccount.findMany({ where: projectWhere, include: { company: true, statements: { include: { payments: true } } } }) : Promise.resolve([]),
     canFinancial || canPurchases || canStock ? prisma.purchaseInvoice.findMany({ where: { status: "POSTED", ...projectWhere }, include: { supplier: { select: { name: true } }, items: true, stockMovements: { where: { status: "POSTED", type: "RECEIPT" }, include: { lines: true } } } }) : Promise.resolve([]),
     canPetty ? prisma.pettyCashTransaction.findMany({ where: { status: "POSTED", ...(projectId ? { projectId } : {}) }, include: { category: true, project: { select: { name: true } }, recordedBy: { select: { name: true } }, attachments: { select: { id: true } } }, orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }] }) : Promise.resolve([]),
     canPetty ? prisma.pettyCashAccount.findMany({ where: { active: true }, include: { employee: { select: { name: true } } }, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
     canPetty ? prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { status: true, type: true, number: true, transactionDate: true, createdAt: true, amountCents: true, sourceAccountId: true, destinationAccountId: true } }) : Promise.resolve([]),
-    profile.permissions.includes("salaries.view") ? prisma.payrollRun.findMany({ orderBy: { month: "desc" }, take: 2 }) : Promise.resolve([]),
+    profile.can("salaries.view") ? prisma.payrollRun.findMany({ orderBy: { month: "desc" }, take: 2 }) : Promise.resolve([]),
     canStock ? prisma.inventoryItem.findMany({ where: { active: true }, select: { id: true, name: true, unit: true, minimumQuantity: true } }) : Promise.resolve([]),
     canStock && warehouseIds.length ? prisma.stockMovement.findMany({ where: { status: "POSTED", OR: [{ fromWarehouseId: { in: warehouseIds } }, { toWarehouseId: { in: warehouseIds } }] }, include: { lines: true }, orderBy: [{ movementDate: "desc" }, { createdAt: "desc" }, { id: "desc" }] }) : Promise.resolve([]),
  ]);

@@ -22,6 +22,7 @@ export type AccessContext = Omit<AccessProfile, "user"> & {
   can: (permission: string) => boolean;
   canUseProject: (projectId: string | null | undefined) => boolean;
   projectWhere: () => ReturnType<typeof projectWhere>;
+  projectIdWhere: () => { projectId?: { in: string[] } };
   requireProject: (projectId: string | null | undefined) => void;
 };
 
@@ -41,6 +42,7 @@ function toAccessContext(profile: AccessProfile): AccessContext {
     can,
     canUseProject,
     projectWhere: () => projectWhere(profile),
+    projectIdWhere: () => profile.isProjectScoped ? { projectId: { in: profile.projectIds } } : {},
     requireProject: (projectId) => {
       if (!canUseProject(projectId)) throw new ProjectAccessDeniedError();
     },

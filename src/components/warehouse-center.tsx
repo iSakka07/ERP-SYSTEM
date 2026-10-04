@@ -65,9 +65,10 @@ export function WarehouseCenter({ initial, canManage, canSeeValues = true, initi
   async function send(payload: Record<string, unknown>) {
     setBusy(true); setError("");
     try {
-      const scope = payload.action === "receipt" ? `warehouse.receipt:${String(payload.invoiceId || "")}` : null;
-      const request = () => fetch("/api/warehouse", { method: "POST", headers: { "Content-Type": "application/json", ...(scope ? financialHeaders(scope) : {}) }, body: JSON.stringify(payload) });
-      if (scope) {
+      const financial = payload.action !== "item";
+      const scope = `warehouse.${String(payload.action || "movement")}:${String(payload.invoiceId || payload.warehouseId || payload.fromWarehouseId || "new")}`;
+      const request = () => fetch("/api/warehouse", { method: "POST", headers: { "Content-Type": "application/json", ...(financial ? financialHeaders(scope) : {}) }, body: JSON.stringify(payload) });
+      if (financial) {
         const submit = async (): Promise<void> => { try { await financialResult(await request(), scope); } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("يوجد استلام بنفس الفاتورة والمخزن والكميات مسجل بالفعل. هل تريد تسجيله كاستلام مستقل؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return submit(); } throw reason; } };
         await submit();
       } else { const response = await request(); const body = await response.json(); if (!response.ok) throw new Error(body.error || "تعذر حفظ الحركة."); }

@@ -18,7 +18,7 @@ async function login() {
 }
 
 async function accounting(body) {
-  const response = await fetch(`${base}/api/accounting`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: headerCookie(), Origin: base }, body: JSON.stringify(body) });
+  const response = await fetch(`${base}/api/accounting`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: headerCookie(), Origin: base, "Idempotency-Key": randomUUID() }, body: JSON.stringify(body) });
   return { status: response.status, ...(await response.json()) };
 }
 

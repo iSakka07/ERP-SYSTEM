@@ -7,6 +7,7 @@ const base = process.env.ERP_TEST_URL || "http://localhost:3090";
 const stamp = Date.now();
 const created = [];
 let stockItemId;
+let custodyAccountId;
 
 const headers = (jar) => ({
   Cookie: [...jar].map(([key, value]) => `${key}=${value}`).join("; "),
@@ -49,7 +50,7 @@ async function login(email) {
 async function post(payload, jar, proof, files = true) {
   payload = { ...(payload.action === "invoice" ? { paymentSource: "EXECUTIVE_DIRECTOR", paidAmount: payload.items?.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0) / 100 } : {}), ...payload };
   const key = randomUUID();
-  const send = async (confirmation) => { const form = new FormData(); form.set("payload", JSON.stringify(payload)); if (files) form.append("files", new Blob([proof]), "AUTOMATED-PURCHASE-TEST.pdf"); const response = await fetch(`${base}/api/purchases`, { method: "POST", headers: { ...headers(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form }); const result = await response.json(); if (response.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: response.status, ...result }; };
+  const send = async (confirmation) => { const form = new FormData(); form.set("payload", JSON.stringify(payload)); if (files) { form.append("files", new Blob([proof]), "AUTOMATED-PURCHASE-TEST.pdf"); form.append("filesLabels", "إثبات اختبار فاتورة المشتريات"); } const response = await fetch(`${base}/api/purchases`, { method: "POST", headers: { ...headers(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form }); const result = await response.json(); if (response.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: response.status, ...result }; };
   return send();
 }
 
@@ -67,6 +68,10 @@ try {
   const supplier = await db.company.findFirstOrThrow({
     where: { type: "SUPPLIER", active: true },
   });
+  const custodyEmployee = await db.employee.findFirstOrThrow({ where: { active: true } });
+  const custodyAccount = await db.pettyCashAccount.create({ data: { name: `عهدة اختبار مشتريات ${stamp}`, type: "EMPLOYEE", employeeId: custodyEmployee.id } });
+  custodyAccountId = custodyAccount.id;
+  await db.pettyCashTransaction.create({ data: { number: `TEST-CUSTODY-FUND-${stamp}`, type: "CUSTODY_ISSUE", amountCents: 50_000, transactionDate: new Date("2026-09-15"), destinationAccountId: custodyAccount.id, description: "تمويل عهدة اختبار فاتورة مشتريات", recordedById: (await db.user.findUniqueOrThrow({ where: { email: "admin@erp.local" } })).id } });
   const warehouse = await db.warehouse.findFirstOrThrow({ where: { active: true, type: { not: "PROJECT" } } });
   const projectCost = async () => {
     const response = await fetch(`${base}/api/project-cost-control?projectId=${project.id}`, { headers: headers(admin) });
@@ -104,6 +109,19 @@ try {
   assert.equal(invoice.totalCents, 2_860_000);
   assert.equal(await projectCost(), purchasesBefore + invoice.totalCents, "posted invoice enters project cost once");
   assert.equal(invoice.items.length, 2);
+  const custodyInvoice = await post({ ...payload, name: `فاتورة من عهدة موظف ${stamp}`, paymentSource: "EMPLOYEE_CUSTODY", paymentAccountId: custodyAccount.id, paidAmount: 100, items: [{ name: "مهمات اختبار عهدة", unit: "وحدة", quantity: 1, price: 100 }] }, admin, proof);
+  assert.equal(custodyInvoice.status, 200, JSON.stringify(custodyInvoice));
+  created.push(custodyInvoice.id);
+  const savedCustodyInvoice = await db.purchaseInvoice.findUniqueOrThrow({ where: { id: custodyInvoice.id } });
+  assert.equal(savedCustodyInvoice.paymentSource, "EMPLOYEE_CUSTODY");
+  assert.equal(savedCustodyInvoice.paymentAccountId, custodyAccount.id);
+  const custodyMovement = await db.pettyCashTransaction.findFirstOrThrow({ where: { operationId: custodyInvoice.id, status: "POSTED" } });
+  assert.equal(custodyMovement.sourceAccountId, custodyAccount.id);
+  assert.equal(custodyMovement.amountCents, 10_000);
+  assert.equal(custodyMovement.type, "SETTLEMENT_PAYMENT");
+  assert.ok(await db.journalEntry.findFirst({ where: { sourceType: "PURCHASE", sourceId: custodyInvoice.id } }), "employee custody purchase creates its accounting journal");
+  assert.equal((await post({ action: "reverse", id: custodyInvoice.id, reason: "اختبار عكس فاتورة عهدة موظف" }, admin, proof)).status, 200);
+  assert.equal((await db.pettyCashTransaction.findUniqueOrThrow({ where: { id: custodyMovement.id } })).status, "REVERSED");
   assert.equal(
     await db.purchaseAttachment.count({
       where: { entityType: "invoice", entityId: response.id },
@@ -111,7 +129,7 @@ try {
     1,
   );
   const originalJournal = await db.journalEntry.findFirstOrThrow({ where: { sourceType: "PURCHASE", sourceId: response.id } });
-  const reversal = await post({ action: "reverse", id: response.id, reason: "اختبار إلغاء موثق" }, admin, proof);
+  const reversal = await post({ action: "reverse", id: response.id, reason: "اختبار إلغاء موثق" }, admin, proof, false);
   assert.equal(reversal.status, 200, JSON.stringify(reversal));
   assert.equal((await db.purchaseInvoice.findUniqueOrThrow({ where: { id: response.id } })).status, "REVERSED");
   assert.ok(await db.journalEntry.findFirst({ where: { reversalOfId: originalJournal.id } }), "reversal must balance purchase journal");
@@ -208,8 +226,13 @@ try {
     await db.auditLog.deleteMany({ where: { target: { in: [id, ...movementIds] } } });
     await db.stockMovement.deleteMany({ where: { id: { in: movementIds } } });
     await db.purchaseAttachment.deleteMany({ where: { entityId: id } });
+    await db.pettyCashTransaction.deleteMany({ where: { operationId: { in: [id, ...paymentIds] } } });
     await db.purchaseInvoice.deleteMany({ where: { id } });
   }
   if (stockItemId) await db.inventoryItem.delete({ where: { id: stockItemId } }).catch(() => undefined);
+  if (custodyAccountId) {
+    await db.pettyCashTransaction.deleteMany({ where: { OR: [{ sourceAccountId: custodyAccountId }, { destinationAccountId: custodyAccountId }] } });
+    await db.pettyCashAccount.delete({ where: { id: custodyAccountId } }).catch(() => undefined);
+  }
   await db.$disconnect();
 }

@@ -128,7 +128,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (request.nextUrl.pathname.startsWith("/api/auth")) return true;
 
       if (request.nextUrl.pathname.startsWith("/api/") && !isLoggedIn) {
-        return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        return new Response(JSON.stringify({ error: "يجب تسجيل الدخول أولًا.", code: "UNAUTHORIZED" }), {
           status: 401,
           headers: { "Content-Type": "application/json" },
         });

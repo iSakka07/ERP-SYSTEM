@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { incomingUser } from "@/lib/incoming-server";
 import { prisma } from "@/lib/prisma";
-import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { assertMutation } from "@/lib/request-security";
+import { arabicErrorMessage } from "@/lib/api-error";
 import { getProjectPlanning, planningSources } from "@/lib/project-planning";
 
 const cents = z.number().int().min(0).max(1_000_000_000_000);
@@ -19,7 +20,8 @@ export async function GET(request: Request) {
   return NextResponse.json(await getProjectPlanning(projectId));
 }
 export async function POST(request: Request) {
-  if (!isTrustedMutationOrigin(request)) return NextResponse.json({ error: "طلب غير موثوق" }, { status: 403 });
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
   const user = await incomingUser("project_cost_control.manage");
   if (!user || !["admin", "executive_director", "accountant"].includes(user.roleKey)) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
   const parsed = schema.safeParse(await request.json().catch(() => null));
@@ -73,6 +75,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(await getProjectPlanning(input.projectId));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error && !("code" in error) ? error.message : "تعارض في البيانات؛ حدّث الصفحة وحاول مجددًا." }, { status: 409 });
+    return NextResponse.json({ error: arabicErrorMessage(error, "تعارض في البيانات؛ حدّث الصفحة وحاول مجددًا.") }, { status: 409 });
   }
 }

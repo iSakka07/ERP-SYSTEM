@@ -22,7 +22,10 @@ async function login(email) {
 
 async function send(jar, key, payload, confirmation) {
   const form = new FormData(); form.set("payload", JSON.stringify(payload));
-  if (payload.action === "reverse") form.append("files", new Blob(["%PDF-1.4\nAUTOMATED TEST"], { type: "application/pdf" }), "BANK-REVERSAL-TEST.pdf");
+  if (payload.action === "reverse") {
+    form.append("files", new Blob(["%PDF-1.4\nAUTOMATED TEST"], { type: "application/pdf" }), "BANK-REVERSAL-TEST.pdf");
+    form.append("filesLabels", "إثبات اختبار إلغاء الحركة البنكية");
+  }
   const response = await fetch(`${base}/api/bank`, { method: "POST", headers: { Cookie: cookie(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form });
   return { status: response.status, replayHeader: response.headers.get("Idempotency-Replayed"), ...(await response.json()) };
 }

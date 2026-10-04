@@ -2,20 +2,21 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { balanceForAccount } from "@/lib/petty-cash";
 import { money } from "@/lib/incoming";
+import type { AccessContext } from "@/lib/server-access";
 
 export type AttentionAlert = { type: string; severity: string; title: string; detail: string; href: string; priority: number };
 
-export async function getAttentionAlerts(profile: { permissions: string[]; isProjectScoped: boolean; projectIds: string[] }, selectedProjectId?: string): Promise<AttentionAlert[]> {
-  const can = (permission: string) => profile.permissions.includes(permission);
-  const projectWhere = selectedProjectId ? { projectId: selectedProjectId } : profile.isProjectScoped ? { projectId: { in: profile.projectIds } } : {};
+export async function getAttentionAlerts(profile: AccessContext, selectedProjectId?: string): Promise<AttentionAlert[]> {
+  const can = profile.can;
+  const projectFilter = selectedProjectId ? { projectId: selectedProjectId } : profile.projectIdWhere();
   const canStock = can("warehouse.view");
   const canPetty = can("pettycash.view") && !profile.isProjectScoped;
   const warehouses = canStock ? await prisma.warehouse.findMany({ where: { active: true, OR: [{ type: { not: "PROJECT" } }, ...(profile.isProjectScoped ? [{ projectId: { in: profile.projectIds } }] : [{}])] }, select: { id: true } }) : [];
   const warehouseIds = warehouses.map((warehouse) => warehouse.id);
   const [contracts, accounts, invoices, pettyAccounts, pettyMovements, inventoryItems, stockMovements, payrollRun, payrollSetting, advances] = await Promise.all([
-    can("incoming.view") ? prisma.incomingContract.findMany({ where: projectWhere, select: { name: true, statements: { select: { stage: true, sequence: true, submittedAt: true } } } }) : Promise.resolve([]),
-    can("expenses.view") ? prisma.subcontractAccount.findMany({ where: projectWhere, select: { name: true, company: { select: { name: true } }, statements: { select: { stage: true, sequence: true, statementDate: true, netCents: true, payments: { select: { status: true, amountCents: true } } } } } }) : Promise.resolve([]),
-    canStock ? prisma.purchaseInvoice.findMany({ where: { status: "POSTED", ...projectWhere }, select: { name: true, number: true, stockMode: true, items: { select: { id: true, quantity: true } }, stockMovements: { where: { status: "POSTED", type: "RECEIPT" }, select: { lines: { select: { sourcePurchaseItemId: true, quantity: true } } } } } }) : Promise.resolve([]),
+    can("incoming.view") ? prisma.incomingContract.findMany({ where: projectFilter, select: { name: true, statements: { select: { stage: true, sequence: true, submittedAt: true } } } }) : Promise.resolve([]),
+    can("expenses.view") ? prisma.subcontractAccount.findMany({ where: projectFilter, select: { name: true, company: { select: { name: true } }, statements: { select: { stage: true, sequence: true, statementDate: true, netCents: true, payments: { select: { status: true, amountCents: true } } } } } }) : Promise.resolve([]),
+    canStock ? prisma.purchaseInvoice.findMany({ where: { status: "POSTED", ...projectFilter }, select: { name: true, number: true, stockMode: true, items: { select: { id: true, quantity: true } }, stockMovements: { where: { status: "POSTED", type: "RECEIPT" }, select: { lines: { select: { sourcePurchaseItemId: true, quantity: true } } } } } }) : Promise.resolve([]),
     canPetty ? prisma.pettyCashAccount.findMany({ where: { active: true, type: "CUSTODY" }, select: { id: true, name: true, employee: { select: { name: true } } } }) : Promise.resolve([]),
     canPetty ? prisma.pettyCashTransaction.findMany({ where: { status: "POSTED" }, select: { destinationAccountId: true, sourceAccountId: true, amountCents: true, transactionDate: true, createdAt: true, type: true, number: true, status: true } }) : Promise.resolve([]),
     canStock ? prisma.inventoryItem.findMany({ where: { active: true, minimumQuantity: { gt: 0 } }, select: { id: true, name: true, minimumQuantity: true } }) : Promise.resolve([]),

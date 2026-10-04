@@ -1,10 +1,11 @@
 import { hash } from "bcryptjs";
-import { isTrustedMutationOrigin } from "@/lib/request-security";
+import { assertMutation } from "@/lib/request-security";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { apiError } from "@/lib/api-error";
 
 const createSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -28,16 +29,13 @@ async function adminSession() {
   return session?.user && session.user.roleKey === "admin" && can(session.user, "accounts.manage") ? session : null;
 }
 
-function sameOrigin(request: Request) {
-  return isTrustedMutationOrigin(request);
-}
-
 export async function POST(request: Request) {
   const session = await adminSession();
-  if (!session) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  if (!sameOrigin(request)) return NextResponse.json({ error: "INVALID_ORIGIN" }, { status: 403 });
+  if (!session) return apiError("FORBIDDEN", 403);
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
   const parsed = createSchema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "INVALID_DATA" }, { status: 400 });
+  if (!parsed.success) return apiError("INVALID_DATA", 400);
 
   const { password, ...userData } = parsed.data;
   const passwordHash = await hash(password, 12);
@@ -61,40 +59,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
-    return NextResponse.json({ error: code === "EMAIL_EXISTS" || code === "ROLE_NOT_FOUND" ? code : "CREATE_FAILED" }, { status: code === "EMAIL_EXISTS" ? 409 : code === "ROLE_NOT_FOUND" ? 404 : 400 });
+    const errorCode = code === "EMAIL_EXISTS" || code === "ROLE_NOT_FOUND" ? code : "CREATE_FAILED";
+    return apiError(errorCode, code === "EMAIL_EXISTS" ? 409 : code === "ROLE_NOT_FOUND" ? 404 : 400);
   }
 }
 
 export async function PATCH(request: Request) {
   const session = await adminSession();
-  if (!session) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  if (!sameOrigin(request)) return NextResponse.json({ error: "INVALID_ORIGIN" }, { status: 403 });
+  if (!session) return apiError("FORBIDDEN", 403);
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
   const parsed = updateSchema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "INVALID_DATA" }, { status: 400 });
+  if (!parsed.success) return apiError("INVALID_DATA", 400);
   const data = parsed.data;
 
   if (data.type === "user-role") {
-    if (data.userId === session.user.id) return NextResponse.json({ error: "SELF_ROLE_CHANGE" }, { status: 400 });
+    if (data.userId === session.user.id) return apiError("SELF_ROLE_CHANGE", 400);
     await prisma.$transaction(async (tx) => {
       await tx.user.update({ where: { id: data.userId }, data: { roleId: data.roleId, sessionVersion: { increment: 1 } } });
       await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.role.update", target: data.userId, details: JSON.stringify({ roleId: data.roleId }) } });
     });
   }
   if (data.type === "user-active") {
-    if (data.userId === session.user.id) return NextResponse.json({ error: "SELF_DEACTIVATE" }, { status: 400 });
+    if (data.userId === session.user.id) return apiError("SELF_DEACTIVATE", 400);
     await prisma.$transaction(async (tx) => {
       await tx.user.update({ where: { id: data.userId }, data: { active: data.active, sessionVersion: { increment: 1 } } });
       await tx.auditLog.create({ data: { actorId: session.user.id, action: "account.status.update", target: data.userId, details: JSON.stringify({ active: data.active }) } });
     });
   }
   if (data.type === "user-profile") {
-    if (data.userId === session.user.id) return NextResponse.json({ error: "SELF_PROFILE_CHANGE" }, { status: 400 });
+    if (data.userId === session.user.id) return apiError("SELF_PROFILE_CHANGE", 400);
     const target = await prisma.user.findUnique({ where: { id: data.userId }, include: { role: true } });
-    if (!target || !target.role || !engineerRoles.has(target.role.key)) return NextResponse.json({ error: "ENGINEER_PROFILE_REQUIRED" }, { status: 400 });
+    if (!target || !target.role || !engineerRoles.has(target.role.key)) return apiError("ENGINEER_PROFILE_REQUIRED", 400);
     if (data.employeeId) {
       const employee = await prisma.employee.findUnique({ where: { id: data.employeeId }, include: { user: true } });
-      if (!employee) return NextResponse.json({ error: "EMPLOYEE_NOT_FOUND" }, { status: 404 });
-      if (employee.user && employee.user.id !== data.userId) return NextResponse.json({ error: "EMPLOYEE_ALREADY_LINKED" }, { status: 409 });
+      if (!employee) return apiError("EMPLOYEE_NOT_FOUND", 404);
+      if (employee.user && employee.user.id !== data.userId) return apiError("EMPLOYEE_ALREADY_LINKED", 409);
     }
     await prisma.$transaction(async (tx) => {
       const [incoming, financial] = await Promise.all([
@@ -109,15 +109,15 @@ export async function PATCH(request: Request) {
   }
   if (data.type === "role-permissions") {
     const role = await prisma.role.findUniqueOrThrow({ where: { id: data.roleId } });
-    if (role.key === "admin") return NextResponse.json({ error: "ADMIN_LOCKED" }, { status: 400 });
+    if (role.key === "admin") return apiError("ADMIN_LOCKED", 400);
     const requested = await prisma.permission.findMany({
       where: { id: { in: data.permissionIds } },
       select: { id: true, key: true },
     });
     if (requested.length !== new Set(data.permissionIds).size)
-      return NextResponse.json({ error: "INVALID_PERMISSION" }, { status: 400 });
+      return apiError("INVALID_PERMISSION", 400);
     if (requested.some((permission) => permission.key === "accounts.manage"))
-      return NextResponse.json({ error: "ADMIN_PERMISSION_LOCKED" }, { status: 400 });
+      return apiError("ADMIN_PERMISSION_LOCKED", 400);
     await prisma.$transaction(async (tx) => {
       await tx.rolePermission.deleteMany({ where: { roleId: data.roleId } });
       await tx.rolePermission.createMany({ data: requested.map(({ id: permissionId }) => ({ roleId: data.roleId, permissionId })) });
@@ -129,12 +129,13 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   const session = await adminSession();
-  if (!session) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  if (!sameOrigin(request)) return NextResponse.json({ error: "INVALID_ORIGIN" }, { status: 403 });
+  if (!session) return apiError("FORBIDDEN", 403);
+  const mutationError = assertMutation(request);
+  if (mutationError) return mutationError;
   const parsed = deleteSchema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "INVALID_DATA" }, { status: 400 });
+  if (!parsed.success) return apiError("INVALID_DATA", 400);
   const { userId } = parsed.data;
-  if (userId === session.user.id) return NextResponse.json({ error: "SELF_DELETE" }, { status: 400 });
+  if (userId === session.user.id) return apiError("SELF_DELETE", 400);
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -157,6 +158,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
-    return NextResponse.json({ error: code === "USER_NOT_FOUND" ? code : "DELETE_FAILED" }, { status: code === "USER_NOT_FOUND" ? 404 : 400 });
+    const errorCode = code === "USER_NOT_FOUND" ? code : "DELETE_FAILED";
+    return apiError(errorCode, code === "USER_NOT_FOUND" ? 404 : 400);
   }
 }

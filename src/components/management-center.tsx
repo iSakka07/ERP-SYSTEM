@@ -75,8 +75,7 @@ export function ManagementCenter({ companies, projects, engineers, canManage }: 
     const response = await fetch("/api/management", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const result = await response.json(); setBusy("");
     if (!response.ok) {
-      const errors: Record<string, string> = { INVALID_OWNER: "اختر جهة مالكة صحيحة.", INVALID_PROJECT: "اختر مشروعًا صحيحًا.", INVALID_COMPANY: "الشركة أو الجهة غير صحيحة.", INVALID_ENGINEER: "الموظف غير صحيح.", DUPLICATE_OR_INVALID: "البيانات مكررة أو غير صحيحة." };
-      setMessage(errors[result.error] || "تعذر حفظ العملية. راجع البيانات وحاول مرة أخرى."); return false;
+      setMessage(result.error || "تعذر حفظ العملية. راجع البيانات وحاول مرة أخرى."); return false;
     }
     setMessage(method === "DELETE" ? "تم المسح من القوائم مع الاحتفاظ بالتاريخ السابق." : "تم حفظ البيانات بنجاح.");
     closeModal(); router.refresh(); return true;

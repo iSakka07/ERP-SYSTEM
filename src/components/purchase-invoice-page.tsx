@@ -21,6 +21,7 @@ import {
 type Project = { id: string; name: string };
 type Supplier = { id: string; name: string };
 type Warehouse = { id: string; name: string };
+type EmployeeCustody = { id: string; name: string; balanceCents: number };
 type Row = {
   key: string;
   name: string;
@@ -49,11 +50,13 @@ export function PurchaseInvoicePage({
   projects,
   suppliers,
   warehouses,
+  employeeCustodies,
   returnHref = "/purchases",
 }: {
   projects: Project[];
   suppliers: Supplier[];
   warehouses: Warehouse[];
+  employeeCustodies: EmployeeCustody[];
   returnHref?: string;
 }) {
   const router = useRouter();
@@ -62,6 +65,7 @@ export function PurchaseInvoicePage({
   const [error, setError] = useState("");
   const noProjects = projects.length === 0;
   const [paidAmount, setPaidAmount] = useState<number | null>(null);
+  const [paymentSource, setPaymentSource] = useState("EXECUTIVE_DIRECTOR");
   const [stockMode, setStockMode] = useState<
     "WAREHOUSE" | "DIRECT_PROJECT" | "LEGACY_DIRECT"
   >("WAREHOUSE");
@@ -155,6 +159,7 @@ export function PurchaseInvoicePage({
         supplierId: data.get("supplierId") || undefined,
         invoiceDate: data.get("invoiceDate"),
         paymentSource: data.get("paymentSource"),
+        paymentAccountId: paymentSource === "EMPLOYEE_CUSTODY" ? data.get("paymentAccountId") : undefined,
         stockMode,
         paidAmount: actualPaidAmount,
         warehouseId:
@@ -310,13 +315,26 @@ export function PurchaseInvoicePage({
             <ERPSelect
               name="paymentSource"
               required
-              defaultValue="EXECUTIVE_DIRECTOR"
+              value={paymentSource}
+              onValueChange={setPaymentSource}
               className={`${expenseInput} mt-2`}
             >
               <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
               <option value="PETTY_CASH">الخزنة الرئيسية</option>
+              <option value="EMPLOYEE_CUSTODY">عهدة موظف</option>
             </ERPSelect>
           </label>
+          {paymentSource === "EMPLOYEE_CUSTODY" && (
+            <label className="text-xs font-bold">
+              عهدة الموظف *
+              <ERPSelect name="paymentAccountId" required defaultValue="" className={`${expenseInput} mt-2`}>
+                <option value="">اختر العهدة</option>
+                {employeeCustodies.map((account) => (
+                  <option key={account.id} value={account.id}>{account.name} — {money(account.balanceCents)} ج.م</option>
+                ))}
+              </ERPSelect>
+            </label>
+          )}
           <label className="text-xs font-bold md:col-span-2">
             مسار الخامات *
             <ERPSelect

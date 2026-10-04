@@ -3,7 +3,7 @@ import { centsNumber, type CentsValue } from "./money.ts";
 export const PETTY_TYPES = ["OPENING_BALANCE", "FUNDING", "DIRECT_EXPENSE", "CUSTODY_ISSUE", "CUSTODY_EXPENSE", "CUSTODY_RETURN"] as const;
 export type PettyType = (typeof PETTY_TYPES)[number];
 export const expenseTypes = new Set<string>(["DIRECT_EXPENSE", "CUSTODY_EXPENSE"]);
-export const pettyLabels: Record<string, string> = { OPENING_BALANCE: "رصيد افتتاحي", FUNDING: "تمويل من المدير التنفيذي", DIRECT_EXPENSE: "مصروف مباشر", CUSTODY_ISSUE: "تسليم عهدة", CUSTODY_EXPENSE: "مصروف عهدة", CUSTODY_RETURN: "رد عهدة", PURCHASE_PAYMENT: "سداد فاتورة مشتريات", ADJUSTMENT_IN: "تسوية زيادة الجرد", ADJUSTMENT_OUT: "تسوية عجز الجرد" };
+export const pettyLabels: Record<string, string> = { OPENING_BALANCE: "رصيد افتتاحي", FUNDING: "تمويل من المدير التنفيذي", DIRECT_EXPENSE: "مصروف مباشر", CUSTODY_ISSUE: "تسليم عهدة", CUSTODY_EXPENSE: "مصروف عهدة", CUSTODY_RETURN: "رد عهدة", EMPLOYEE_ADVANCE_PAYMENT: "صرف سلفة موظف", PURCHASE_PAYMENT: "سداد فاتورة مشتريات", SETTLEMENT_PAYMENT: "سداد وتسوية مالية", ADJUSTMENT_IN: "تسوية زيادة الجرد", ADJUSTMENT_OUT: "تسوية عجز الجرد" };
 export function cents(value: unknown, allowZero = false) {
   const raw = String(value ?? "").replace(/,/g, "").trim();
   if (!/^\d+(\.\d{1,2})?$/.test(raw)) throw new Error("أدخل مبلغًا صحيحًا بحد أقصى منزلتين عشريتين.");
