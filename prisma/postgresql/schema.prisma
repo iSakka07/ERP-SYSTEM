@@ -629,6 +629,7 @@ model PurchaseInvoice {
   notes       String?
   totalCents  Float
   paymentSource String @default("EXECUTIVE_DIRECTOR")
+  paymentAccountId String?
   stockMode    String             @default("LEGACY_DIRECT")
   warehouseId  String?
   status      String             @default("POSTED")
@@ -656,6 +657,7 @@ model PurchasePayment {
   amountCents Float
   paymentDate DateTime
   paymentSource String
+  paymentAccountId String?
   status      String         @default("POSTED")
   notes       String?
   actorId     String
@@ -666,6 +668,7 @@ model PurchasePayment {
 
   @@index([invoiceId, status, paymentDate])
   @@index([actorId, createdAt])
+  @@index([paymentAccountId])
 }
 
 model PurchaseItem {
