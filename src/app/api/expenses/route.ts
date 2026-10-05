@@ -452,7 +452,6 @@ export async function POST(request: Request) {
           id = change.id;
           entityType = "withdrawal";
         } else if (data.action === "account") {
-          if (!files.length) throw new Error("إنشاء حساب المقاول يحتاج مرفق إثبات.");
           const [company, project] = await Promise.all([
             tx.company.findUnique({ where: { id: data.companyId } }),
             tx.project.findUnique({ where: { id: data.projectId } }),

@@ -132,14 +132,14 @@ try {
     companyId: company.id,
     scope: "اختبار حصر آلي — بيانات مؤقتة فقط",
   };
-  assert.equal((await post(account, jars.manager, false)).status, 400);
+  const accountWithoutAttachment = await post(account, jars.manager, false);
+  assert.equal(accountWithoutAttachment.status, 200, JSON.stringify(accountWithoutAttachment));
+  accountId = accountWithoutAttachment.id;
   assert.equal(
     (await post(account, jars.manager, true, "https://invalid.example")).status,
     403,
   );
-  let r = await post(account, jars.manager);
-  assert.equal(r.status, 200, JSON.stringify(r));
-  accountId = r.id;
+  let r;
   const row = {
     itemKey: "paint",
     name: "نقاشة اختبار",
