@@ -773,7 +773,7 @@ export async function POST(request: Request) {
           if (updated.count !== 1)
             throw new Error("الكشف غير جاهز للصرف أو تم صرفه بالفعل.");
           const run = await tx.payrollRun.findUniqueOrThrow({ where: { id } });
-          await settleThroughMainCash(tx, { source: paymentSource, amountCents: centsNumber(run.totalCents), date: run.paidAt!, actorId: session.user.id, documentNumber: `PAYROLL-${run.id}`, description: `صرف كشف رواتب ${run.month}`, operationId: run.id });
+          await settleThroughMainCash(tx, { source: paymentSource, amountCents: centsNumber(run.totalCents), date: run.paidAt!, actorId: session.user.id, documentNumber: `PAYROLL-${run.id}`, description: `صرف كشف رواتب ${run.month}`, operationId: run.id, linkedEntityType: "PAYROLL_PAYMENT" });
           await postPayrollPayment(tx, run);
           await audit("salary.payroll.pay", id, {
             source: paymentSource,

@@ -21,7 +21,7 @@ import {
   financialResult,
 } from "@/lib/financial-submit";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
-import { isProjectCost, pettyLabels } from "@/lib/petty-cash";
+import { isProjectCost, pettyCashClassification, pettyLabels } from "@/lib/petty-cash";
 import {
   pdfColumns,
   pdfMoney,
@@ -50,6 +50,8 @@ type Movement = {
   reversedAt: string | null;
   reversalReason: string | null;
   description: string;
+  documentNumber: string | null;
+  linkedEntityType: string | null;
   project: { name: string } | null;
   category: { name: string } | null;
   recordedBy: { name: string };
@@ -248,7 +250,7 @@ export function PettyCashCenter() {
                 `${transaction.description}${cancelled ? " · ملغاة" : ""}`,
                 transaction.project?.name ||
                   (isProjectCost(transaction.type) ? "عام الشركة" : "—"),
-                transaction.category?.name || "—",
+                pettyCashClassification(transaction),
                 shownIncoming
                   ? `${pdfMoney(shownIncoming)}${cancelled ? " (ملغى)" : ""}`
                   : "—",
@@ -410,6 +412,8 @@ export function PettyCashCenter() {
       ? `تسليم العهدة إلى ${custodyEmployeeName(transaction.destinationAccountId) || accountName(transaction.destinationAccountId)}`
       : transaction.type === "CUSTODY_EXPENSE"
         ? `مصروف من عهدة ${custodyEmployeeName(transaction.sourceAccountId) || accountName(transaction.sourceAccountId)}`
+        : ["SUBCONTRACT_PAYMENT", "PURCHASE_PAYMENT", "PAYROLL_PAYMENT"].includes(transaction.linkedEntityType || "")
+          ? transaction.description.split(": ").at(-1) || pettyLabels[transaction.type] || transaction.type
         : pettyLabels[transaction.type] || transaction.type;
   const overdueCustodies = custodies.flatMap((custody) => {
     const issue = data.transactions
@@ -667,7 +671,7 @@ export function PettyCashCenter() {
                                 : "—")}
                           </td>
                           <td data-label="التصنيف">
-                            {transaction.category?.name || "—"}
+                            {pettyCashClassification(transaction)}
                           </td>
                           <td data-label="وارد" className="text-center">
                             {cancelled && originalIncoming ? (
@@ -1041,7 +1045,7 @@ export function PettyCashCenter() {
                     />
                     <Detail
                       label="التصنيف"
-                      value={original.category?.name || "—"}
+                      value={pettyCashClassification(original)}
                     />
                     <Detail label="سجلها" value={original.recordedBy.name} />
                   </dl>

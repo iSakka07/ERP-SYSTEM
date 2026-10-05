@@ -832,7 +832,7 @@ export async function POST(request: Request) {
                 cashOperationId: randomUUID(),
               },
             });
-            await settleThroughMainCash(tx, { source: data.paymentSource, amountCents, date: payment.paymentDate, actorId: user.id, projectId: st.account.projectId, documentNumber: `SUB-${payment.id}`, description: `دفعة مستخلص مقاول باطن`, operationId: payment.cashOperationId! });
+            await settleThroughMainCash(tx, { source: data.paymentSource, amountCents, date: payment.paymentDate, actorId: user.id, projectId: st.account.projectId, documentNumber: `SUB-${payment.id}`, description: `سداد وتسوية مالية — ${st.account.name} / جاري ${st.sequence}`, operationId: payment.cashOperationId!, linkedEntityType: "SUBCONTRACT_PAYMENT" });
             await postSubcontractPayment(tx, { ...payment, statement: { account: st.account } });
             id = payment.id;
             entityType = "payment";
@@ -870,7 +870,7 @@ export async function POST(request: Request) {
                 cashOperationId: randomUUID(),
               },
             });
-            await settleThroughMainCash(tx, { source: data.paymentSource, amountCents, date: payment.paymentDate, actorId: user.id, projectId: st.account.projectId, documentNumber: `SUB-${payment.id}`, description: `دفعة مستخلص مقاول باطن`, operationId: payment.cashOperationId! });
+            await settleThroughMainCash(tx, { source: data.paymentSource, amountCents, date: payment.paymentDate, actorId: user.id, projectId: st.account.projectId, documentNumber: `SUB-${payment.id}`, description: `سداد وتسوية مالية — ${st.account.name} / جاري ${st.sequence}`, operationId: payment.cashOperationId!, linkedEntityType: "SUBCONTRACT_PAYMENT" });
             await postSubcontractPayment(tx, { ...payment, statement: { account: st.account } });
             id = payment.id;
             entityType = "payment";

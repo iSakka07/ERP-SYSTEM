@@ -5,6 +5,7 @@ import { postPettyCashJournal, reversePostedJournal } from "@/lib/accounting-pos
 
 type Tx = Prisma.TransactionClient;
 export type PaymentSource = "EXECUTIVE_DIRECTOR" | "PETTY_CASH" | "EMPLOYEE_CUSTODY";
+export type CashSettlementEntityType = "SUBCONTRACT_PAYMENT" | "PURCHASE_PAYMENT" | "PAYROLL_PAYMENT";
 
 export async function fundMainCash(tx: Tx, input: { amountCents: number; date: Date; actorId: string; projectId?: string | null; documentNumber: string; description: string; operationId?: string }) {
   const main = await tx.pettyCashAccount.findFirst({ where: { type: "MAIN", active: true }, include: { employee: true } });
@@ -22,6 +23,7 @@ export async function settleThroughMainCash(tx: Tx, input: {
   source: PaymentSource; amountCents: number; date: Date; actorId: string;
   projectId?: string | null; documentNumber: string; description: string;
   operationId?: string; accountId?: string | null;
+  linkedEntityType: CashSettlementEntityType;
 }) {
   const main = await tx.pettyCashAccount.findFirst({ where: { type: "MAIN", active: true }, include: { employee: true } });
   if (!main) throw new Error("لم يتم إعداد الخزنة الرئيسية.");
@@ -36,7 +38,7 @@ export async function settleThroughMainCash(tx: Tx, input: {
   if (!sourceAccount) throw new Error("تعذر تحديد حساب الصرف.");
   if (input.source === "EXECUTIVE_DIRECTOR") {
     const id = randomUUID();
-    const funding = { id, number: `PC-FUND-${id}`, type: "FUNDING", status: "POSTED", amountCents: input.amountCents, transactionDate: input.date, sourceAccountId: null, destinationAccountId: main.id, projectId: input.projectId || null, categoryId: null, description: `تمويل من المدير التنفيذي لصرف: ${input.description}`, documentNumber: input.documentNumber, fundingSource: "EXECUTIVE_DIRECTOR", recordedById: input.actorId, operationId, linkedEntityType: "SETTLEMENT" };
+    const funding = { id, number: `PC-FUND-${id}`, type: "FUNDING", status: "POSTED", amountCents: input.amountCents, transactionDate: input.date, sourceAccountId: null, destinationAccountId: main.id, projectId: input.projectId || null, categoryId: null, description: `تمويل من المدير التنفيذي لصرف: ${input.description}`, documentNumber: input.documentNumber, fundingSource: "EXECUTIVE_DIRECTOR", recordedById: input.actorId, operationId, linkedEntityType: input.linkedEntityType };
     movements.push(funding);
     await tx.pettyCashTransaction.create({ data: funding });
     await postPettyCashJournal(tx, funding);
@@ -44,7 +46,7 @@ export async function settleThroughMainCash(tx: Tx, input: {
   if (input.source !== "EXECUTIVE_DIRECTOR" && balanceForAccount(existing, sourceAccount.id) < input.amountCents)
     throw new Error(input.source === "EMPLOYEE_CUSTODY" ? "رصيد عهدة الموظف لا يكفي لإتمام الصرف." : "رصيد الخزنة الرئيسية لا يكفي لإتمام الصرف.");
   const id = randomUUID();
-  const payout = { id, number: `PC-OUT-${id}`, type: "SETTLEMENT_PAYMENT", status: "POSTED", amountCents: input.amountCents, transactionDate: input.date, sourceAccountId: sourceAccount.id, destinationAccountId: null, projectId: input.projectId || null, categoryId: null, description: `${input.source === "EMPLOYEE_CUSTODY" ? `صرف من عهدة ${sourceAccount.employee?.name || sourceAccount.name}` : "صرف من الخزنة"}: ${input.description}`, documentNumber: input.documentNumber, fundingSource: null, recordedById: input.actorId, operationId, linkedEntityType: input.source === "EMPLOYEE_CUSTODY" ? "PURCHASE_EMPLOYEE_CUSTODY" : "SETTLEMENT" };
+  const payout = { id, number: `PC-OUT-${id}`, type: "SETTLEMENT_PAYMENT", status: "POSTED", amountCents: input.amountCents, transactionDate: input.date, sourceAccountId: sourceAccount.id, destinationAccountId: null, projectId: input.projectId || null, categoryId: null, description: `${input.source === "EMPLOYEE_CUSTODY" ? `صرف من عهدة ${sourceAccount.employee?.name || sourceAccount.name}` : "صرف من الخزنة"}: ${input.description}`, documentNumber: input.documentNumber, fundingSource: null, recordedById: input.actorId, operationId, linkedEntityType: input.linkedEntityType };
   assertAffectedBalances([...existing, ...movements, payout] as never[], [...movements, payout] as never[]);
   await tx.pettyCashTransaction.create({ data: payout });
   return { main, operationId, payoutId: id };

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { assertAffectedBalances, assertBalances, cents, balanceForAccount, isProjectCost, validatePettyInput } from "../src/lib/petty-cash.ts";
+import { assertAffectedBalances, assertBalances, cents, balanceForAccount, isProjectCost, pettyCashClassification, validatePettyInput } from "../src/lib/petty-cash.ts";
 assert.equal(cents('1,234.56'),123456);
 assert.equal(cents('0',true),0);
 assert.throws(()=>cents('0.001'));
@@ -13,6 +13,11 @@ assert.equal(balanceForAccount([{status:"POSTED",amountCents:1000,sourceAccountI
 assert.equal(isProjectCost("CUSTODY_ISSUE"),false); assert.equal(isProjectCost("CUSTODY_EXPENSE"),true);
 assert.throws(()=>validatePettyInput({type:"DIRECT_EXPENSE",amount:10,description:"x",allocation:"PROJECT",hasAttachment:true}),/مشروع/);
 assert.throws(()=>validatePettyInput({type:"FUNDING",amount:10,description:"x",hasAttachment:false}),/المرفق/);
+assert.equal(pettyCashClassification({ type: "SETTLEMENT_PAYMENT", linkedEntityType: "SUBCONTRACT_PAYMENT" }), "مستحقات مقاول باطن");
+assert.equal(pettyCashClassification({ type: "SETTLEMENT_PAYMENT", linkedEntityType: "PURCHASE_PAYMENT" }), "مشتريات");
+assert.equal(pettyCashClassification({ type: "FUNDING", documentNumber: "PAYROLL-old", description: "legacy" }), "رواتب");
+assert.equal(pettyCashClassification({ type: "DIRECT_EXPENSE", category: { name: "انتقالات" } }), "انتقالات");
+assert.equal(pettyCashClassification({ type: "CUSTODY_RETURN" }), "رد عهدة");
 // Scenario: executive funding → project expense → employee custody → partial settlement → return.
 const main = "main", custody = "custody-employee", project = "project-a";
 const scenario = [

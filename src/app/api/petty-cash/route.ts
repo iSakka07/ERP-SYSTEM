@@ -21,7 +21,22 @@ export async function GET() {
     prisma.employee.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.auditLog.findMany({ where: { action: { startsWith: "pettycash." } }, orderBy: { createdAt: "desc" }, take: 100 }),
   ]);
-  return json({ accounts: accounts.map(a => ({ ...a, balanceCents: balanceForAccount(transactions, a.id) })), categories, transactions, counts, projects, employees, audit, canManage: !!(await incomingUser("pettycash.manage")) });
+  const subcontractOperationIds = transactions
+    .filter(t => t.documentNumber?.startsWith("SUB-") && t.operationId)
+    .map(t => t.operationId as string);
+  const subcontractPayments = subcontractOperationIds.length
+    ? await prisma.subcontractPayment.findMany({
+        where: { cashOperationId: { in: subcontractOperationIds } },
+        include: { statement: { include: { account: true } } },
+      })
+    : [];
+  const enrichedTransactions = transactions.map(transaction => {
+    const payment = subcontractPayments.find(p => p.cashOperationId === transaction.operationId);
+    return payment
+      ? { ...transaction, description: `${transaction.sourceAccountId ? "صرف من الخزنة" : "تمويل من المدير التنفيذي لصرف"}: سداد وتسوية مالية — ${payment.statement.account.name} / جاري ${payment.statement.sequence}` }
+      : transaction;
+  });
+  return json({ accounts: accounts.map(a => ({ ...a, balanceCents: balanceForAccount(transactions, a.id) })), categories, transactions: enrichedTransactions, counts, projects, employees, audit, canManage: !!(await incomingUser("pettycash.manage")) });
 }
 export async function POST(req: Request) {
   const user = await incomingUser("pettycash.manage");

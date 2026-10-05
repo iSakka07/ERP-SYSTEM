@@ -295,7 +295,7 @@ export async function POST(request: Request) {
             actorId: user.id,
           },
         });
-        await settleThroughMainCash(tx, { source: data.paymentSource, accountId: data.paymentAccountId, amountCents, date: new Date(data.paymentDate), actorId: user.id, projectId: invoice.projectId, documentNumber: number, description: `دفعة مورد عن فاتورة: ${invoice.name}`, operationId: created.id });
+        await settleThroughMainCash(tx, { source: data.paymentSource, accountId: data.paymentAccountId, amountCents, date: new Date(data.paymentDate), actorId: user.id, projectId: invoice.projectId, documentNumber: number, description: `دفعة مورد عن فاتورة: ${invoice.name}`, operationId: created.id, linkedEntityType: "PURCHASE_PAYMENT" });
         await postPurchasePaymentJournal(tx, {
           id: created.id,
           amountCents,
@@ -470,7 +470,7 @@ export async function POST(request: Request) {
           items: { createMany: { data: items } },
         },
       });
-      if (paidCents > 0) await settleThroughMainCash(tx, { source: data.paymentSource, accountId: data.paymentAccountId, amountCents: paidCents, date: new Date(data.invoiceDate), actorId: user.id, projectId: data.projectId, documentNumber: number, description: `سداد فاتورة مشتريات: ${data.name}`, operationId: created.id });
+      if (paidCents > 0) await settleThroughMainCash(tx, { source: data.paymentSource, accountId: data.paymentAccountId, amountCents: paidCents, date: new Date(data.invoiceDate), actorId: user.id, projectId: data.projectId, documentNumber: number, description: `سداد فاتورة مشتريات: ${data.name}`, operationId: created.id, linkedEntityType: "PURCHASE_PAYMENT" });
       if (paidCents > 0)
         await tx.purchasePayment.create({
           data: {
