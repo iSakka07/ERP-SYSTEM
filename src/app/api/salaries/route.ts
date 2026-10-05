@@ -53,7 +53,6 @@ const salaryChangeSchema = z.object({
   amount: z.coerce.number().positive(),
   effectiveMode: z.enum(["MONTH_START", "DATE"]),
   effectiveDate: z.string(),
-  correctionRateId: z.string().min(1).optional(),
 });
 
 export async function GET() {
@@ -323,34 +322,32 @@ export async function POST(request: Request) {
           const effectiveDate = input.effectiveMode === "MONTH_START"
             ? new Date(`${z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).parse(input.effectiveDate)}-01T00:00:00.000Z`)
             : dateSchema.parse(input.effectiveDate);
-          const latestRun = await tx.payrollRun.findFirst({ orderBy: { month: "desc" }, select: { month: true } });
-          if (latestRun) {
-            const [year, month] = latestRun.month.split("-").map(Number);
-            const earliestAllowed = new Date(Date.UTC(year, month, 1)); earliestAllowed.setUTCMonth(earliestAllowed.getUTCMonth() + 1);
-            if (effectiveDate < earliestAllowed) throw new Error(`لا يمكن تعديل الراتب بتاريخ ${effectiveDate.toISOString().slice(0, 10)} لأن كشف رواتب شهر ${latestRun.month} موجود. اختر تاريخًا من ${earliestAllowed.toISOString().slice(0, 10)} أو بعده.`);
-          }
-          const latestRate = await tx.employeeSalaryRate.findFirst({ where: { employeeId: employee.id }, orderBy: { startDate: "desc" } });
-          if (input.correctionRateId) {
-            if (!latestRate || latestRate.id !== input.correctionRateId)
-              throw new Error("لا يمكن تصحيح هذا السجل لأنه ليس آخر تعديل راتب محفوظ للموظف.");
-            if (effectiveDate.getTime() !== latestRate.startDate.getTime())
-              throw new Error("تاريخ تصحيح الراتب يجب أن يطابق تاريخ آخر تعديل محفوظ.");
-            await tx.employeeSalaryRate.update({
-              where: { id: latestRate.id },
-              data: { monthlySalaryCents: value, changedById: session.user.id },
+          const rates = await tx.employeeSalaryRate.findMany({ where: { employeeId: employee.id }, orderBy: { startDate: "asc" } });
+          const existingRate = rates.find((rate) => rate.startDate.getTime() === effectiveDate.getTime());
+          const nextRate = rates.find((rate) => rate.startDate > effectiveDate);
+          const impactEnd = nextRate ? new Date(nextRate.startDate.getTime() - 86_400_000) : null;
+          const startMonth = effectiveDate.toISOString().slice(0, 7);
+          const endMonth = impactEnd?.toISOString().slice(0, 7);
+          const lockedRun = await tx.payrollRun.findFirst({
+            where: { month: { gte: startMonth, ...(endMonth ? { lte: endMonth } : {}) } },
+            orderBy: { month: "asc" },
+            select: { month: true, status: true },
+          });
+          if (lockedRun)
+            throw new Error(`لا يمكن تغيير الراتب لأنه سيؤثر على كشف شهر ${lockedRun.month} وهو ${lockedRun.status === "PAID" ? "مصروف" : "معتمد"}. أرجع الكشف أولًا ثم عدّل الراتب.`);
+          if (!rates.length) {
+            await tx.employeeSalaryRate.create({
+              data: { employeeId: employee.id, startDate: new Date("1900-01-01T00:00:00.000Z"), monthlySalaryCents: employee.monthlySalaryCents, changedById: session.user.id },
             });
+          }
+          if (existingRate) {
+            await tx.employeeSalaryRate.update({ where: { id: existingRate.id }, data: { monthlySalaryCents: value, changedById: session.user.id } });
           } else {
-            if (latestRate && effectiveDate <= latestRate.startDate)
-              throw new Error("تاريخ تعديل الراتب يجب أن يكون بعد آخر تعديل محفوظ للموظف. لتصحيح آخر تعديل استخدم خيار «تصحيح آخر تعديل راتب».");
-            if (!latestRate) {
-              await tx.employeeSalaryRate.create({
-                data: { employeeId: employee.id, startDate: new Date("1900-01-01T00:00:00.000Z"), monthlySalaryCents: employee.monthlySalaryCents, changedById: session.user.id },
-              });
-            }
             await tx.employeeSalaryRate.create({ data: { employeeId: employee.id, startDate: effectiveDate, monthlySalaryCents: value, changedById: session.user.id } });
           }
-          await tx.employee.update({ where: { id: employee.id }, data: { monthlySalaryCents: value } });
-          await audit(input.correctionRateId ? "salary.employee.rate.correct" : "salary.employee.rate.update", employee.id, { monthlySalaryCents: value, effectiveDate: effectiveDate.toISOString(), effectiveMode: input.effectiveMode, correctionRateId: input.correctionRateId || null });
+          const latestRate = await tx.employeeSalaryRate.findFirstOrThrow({ where: { employeeId: employee.id }, orderBy: { startDate: "desc" } });
+          await tx.employee.update({ where: { id: employee.id }, data: { monthlySalaryCents: latestRate.monthlySalaryCents } });
+          await audit(existingRate ? "salary.employee.rate.correct" : "salary.employee.rate.update", employee.id, { monthlySalaryCents: value, effectiveDate: effectiveDate.toISOString(), effectiveMode: input.effectiveMode, replacedRateId: existingRate?.id ?? null });
           return { id: employee.id };
         }
         if (action === "allocation") {
@@ -411,12 +408,13 @@ export async function POST(request: Request) {
             where: { id: String(payload.employeeId), active: true },
           });
           if (!employee) throw new Error("اختر موظفًا صحيحًا.");
+          const issuedAt = dateSchema.parse(payload.issuedAt);
           const amountCents = money(payload.amount);
-          const salaryCents = centsNumber(employee.monthlySalaryCents);
-          const openAdvances = await tx.employeeAdvance.aggregate({
-            where: { employeeId: employee.id, status: "OPEN" },
-            _sum: { remainingCents: true },
-          });
+          const [salaryRate, openAdvances] = await Promise.all([
+            tx.employeeSalaryRate.findFirst({ where: { employeeId: employee.id, startDate: { lte: issuedAt } }, orderBy: { startDate: "desc" } }),
+            tx.employeeAdvance.aggregate({ where: { employeeId: employee.id, status: "OPEN" }, _sum: { remainingCents: true } }),
+          ]);
+          const salaryCents = centsNumber(salaryRate?.monthlySalaryCents ?? employee.monthlySalaryCents);
           const outstandingAdvanceCents = centsNumber(openAdvances._sum.remainingCents || 0);
           assertAdvanceWithinSalary(salaryCents, outstandingAdvanceCents, amountCents);
           const repaymentMode =
@@ -433,7 +431,6 @@ export async function POST(request: Request) {
             payload.source === "PETTY_CASH"
               ? "PETTY_CASH"
               : "EXECUTIVE_DIRECTOR";
-          const issuedAt = dateSchema.parse(payload.issuedAt);
           const created = await tx.employeeAdvance.create({
             data: {
               employeeId: employee.id,

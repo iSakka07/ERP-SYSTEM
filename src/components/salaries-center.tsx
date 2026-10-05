@@ -31,7 +31,7 @@ import {
   previewDataPdf,
   usePdfDataExport,
 } from "@/components/pdf-data-export";
-import { buildPayrollDistribution, followingMonth, nextPayrollMonth } from "@/lib/salary-payroll";
+import { buildPayrollDistribution, nextPayrollMonth } from "@/lib/salary-payroll";
 
 type Employee = {
   id: string;
@@ -181,8 +181,6 @@ export function SalariesCenter({
   const notify = (message: string, tone: ERPToastTone = "info") => setToast({ message, tone });
   const currentMonth = new Date().toISOString().slice(0, 7);
   const payrollMonth = nextPayrollMonth(runs.map((run) => run.month), currentMonth);
-  const latestRunMonth = [...runs.map((run) => run.month)].sort().at(-1);
-  const earliestSalaryMonth = latestRunMonth ? followingMonth(latestRunMonth) : currentMonth;
   const currentAllocations = useMemo(
     () =>
       new Map(
@@ -377,7 +375,7 @@ export function SalariesCenter({
           ? new Date(`${String(values.effectiveDate)}-01T00:00:00.000Z`)
           : new Date(`${String(values.effectiveDate)}T00:00:00.000Z`);
         setSalaryOverrides((current) => ({ ...current, [employeeId]: { startDate: effectiveDate, monthlySalaryCents: salaryCents } }));
-        notify(`تم تعديل راتب الموظف إلى ${Number(values.amount).toLocaleString("ar-EG")} ج.م وسيظهر فورًا في جدول الموظفين النشطين.`, "success");
+        notify(`تم حفظ راتب الموظف للفترة المحددة بقيمة ${Number(values.amount).toLocaleString("ar-EG")} ج.م، وتم تحديث الجدول فورًا.`, "success");
       } else {
         notify(replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم حفظ العملية بنجاح.", replayed ? "info" : "success");
       }
@@ -499,6 +497,7 @@ export function SalariesCenter({
           advances={currentAdvances}
           bonuses={monthlyBonuses}
           deductions={monthlyDeductions}
+          salaryRates={salaryRates}
           month={month}
           setMonth={setMonth}
           canManage={canManage}
@@ -588,7 +587,7 @@ export function SalariesCenter({
           onSubmit={submit}
         />
       )}
-      {salaryEditEmployee && <SalaryEditDialog employee={salaryEditEmployee} latestRate={[...salaryRates].filter((rate) => rate.employeeId === salaryEditEmployee.id).sort((left, right) => +new Date(right.startDate) - +new Date(left.startDate))[0] ?? null} earliestMonth={earliestSalaryMonth} busy={busy} onClose={() => setSalaryEditEmployee(null)} onSubmit={submit} />}
+      {salaryEditEmployee && <SalaryEditDialog employee={salaryEditEmployee} rates={salaryRates.filter((rate) => rate.employeeId === salaryEditEmployee.id)} selectedMonth={month} lockedMonths={runs.map((run) => run.month)} busy={busy} onClose={() => setSalaryEditEmployee(null)} onSubmit={submit} />}
     </div>
   );
 }
@@ -601,6 +600,7 @@ function EmployeesTab({
   advances,
   bonuses,
   deductions,
+  salaryRates,
   month,
   setMonth,
   canManage,
@@ -618,6 +618,7 @@ function EmployeesTab({
   advances: Advance[];
   bonuses: Adjustment[];
   deductions: Adjustment[];
+  salaryRates: SalaryRate[];
   month: string;
   setMonth: (value: string) => void;
   canManage: boolean;
@@ -715,6 +716,9 @@ function EmployeesTab({
                 const employeeDeductions = deductions
                   .filter((item) => item.employee.id === employee.id)
                   .reduce((sum, item) => sum + item.amountCents, 0);
+                const employeeRateHistory = salaryRates
+                  .filter((rate) => rate.employeeId === employee.id && new Date(rate.startDate).getUTCFullYear() > 1900)
+                  .sort((left, right) => +new Date(right.startDate) - +new Date(left.startDate));
                 return (
                   <tr key={employee.id}>
                     <td data-label="الموظف" className={`font-bold ${employee.active ? "" : "text-slate-400 line-through"}`}>
@@ -750,6 +754,12 @@ function EmployeesTab({
                             </p>
                           ))}
                         </div>
+                      )}
+                      {employeeRateHistory[0] && (
+                        <p className="mt-1 text-[11px] font-medium text-slate-500">
+                          آخر تعديل: {new Date(employeeRateHistory[0].startDate).toISOString().slice(0, 10)}
+                          {employeeRateHistory.length > 1 ? ` · ${employeeRateHistory.length} تعديلات` : ""}
+                        </p>
                       )}
                     </td>
                     <td data-label="المشروع">
@@ -883,51 +893,76 @@ function EmployeeStatusDialog({
 
 function SalaryEditDialog({
   employee,
-  latestRate,
-  earliestMonth,
+  rates,
+  selectedMonth,
+  lockedMonths,
   busy,
   onClose,
   onSubmit,
 }: {
   employee: Employee;
-  latestRate: SalaryRate | null;
-  earliestMonth: string;
+  rates: SalaryRate[];
+  selectedMonth: string;
+  lockedMonths: string[];
   busy: string;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>, action: string) => Promise<void>;
 }) {
   const [effectiveMode, setEffectiveMode] = useState<"MONTH_START" | "DATE">("MONTH_START");
-  const [editMode, setEditMode] = useState<"NEW" | "CORRECT_LAST">("NEW");
-  const correctingLastRate = editMode === "CORRECT_LAST" && latestRate !== null;
-  const latestRateDate = latestRate ? new Date(latestRate.startDate).toISOString().slice(0, 10) : "";
+  const [effectiveValue, setEffectiveValue] = useState(selectedMonth);
+  const [amount, setAmount] = useState("");
+  const history = [...rates]
+    .filter((rate) => new Date(rate.startDate).getUTCFullYear() > 1900)
+    .sort((left, right) => +new Date(right.startDate) - +new Date(left.startDate));
+  const normalizedDate = effectiveMode === "MONTH_START" ? `${effectiveValue}-01` : effectiveValue;
+  const matchingRate = history.find((rate) => new Date(rate.startDate).toISOString().slice(0, 10) === normalizedDate);
+  const selectedMonthLocked = lockedMonths.includes(normalizedDate.slice(0, 7));
+  const chooseRate = (rate: SalaryRate) => {
+    const date = new Date(rate.startDate).toISOString().slice(0, 10);
+    const startsAtMonth = date.endsWith("-01");
+    setEffectiveMode(startsAtMonth ? "MONTH_START" : "DATE");
+    setEffectiveValue(startsAtMonth ? date.slice(0, 7) : date);
+    setAmount(String(rate.monthlySalaryCents / 100));
+  };
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-      <form onSubmit={(event) => onSubmit(event, "employee-salary-update")} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-        <h2 className="text-lg font-black">تعديل الراتب</h2>
-        <p className="mt-2 text-sm text-slate-600">{employee.name} · الراتب الحالي {money(employee.monthlySalaryCents)} ج.م</p>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4">
+      <form onSubmit={(event) => onSubmit(event, "employee-salary-update")} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <header className="border-b bg-gradient-to-l from-blue-50 to-white p-5">
+          <h2 className="text-lg font-black">سجل راتب {employee.name}</h2>
+          <p className="mt-1 text-sm text-slate-600">حدد الشهر أو اليوم والقيمة. التاريخ المحفوظ يُحدّث، والتاريخ الجديد يُضاف للسجل.</p>
+        </header>
         <input type="hidden" name="employeeId" value={employee.id} />
-        <div className="mt-4 grid gap-3">
-          {latestRate && <Field label="نوع العملية"><div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setEditMode("NEW")} className={`rounded-lg border px-3 py-2 text-sm font-bold ${editMode === "NEW" ? "border-blue-700 bg-blue-50 text-blue-800" : "border-slate-200 text-slate-600"}`}>تعديل جديد</button><button type="button" onClick={() => setEditMode("CORRECT_LAST")} className={`rounded-lg border px-3 py-2 text-sm font-bold ${correctingLastRate ? "border-amber-500 bg-amber-50 text-amber-900" : "border-slate-200 text-slate-600"}`}>تصحيح آخر تعديل</button></div></Field>}
-          <Field label="الراتب الشهري الجديد *"><CurrencyInput key={editMode} name="amount" defaultValue={correctingLastRate ? latestRate.monthlySalaryCents / 100 : ""} required min="0.01" /></Field>
-          {correctingLastRate ? <>
-            <input type="hidden" name="correctionRateId" value={latestRate.id} />
-            <input type="hidden" name="effectiveMode" value="DATE" />
-            <input type="hidden" name="effectiveDate" value={latestRateDate} />
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-900">سيتم تصحيح آخر سجل مؤرخ في {latestRateDate} فقط. لا يمكن تصحيح سجل يقع ضمن شهر كشف رواتب معتمد.</p>
-          </> : <>
-            <Field label="يسري التعديل *">
-              <ERPSelect name="effectiveMode" value={effectiveMode} onValueChange={(value) => setEffectiveMode(value as "MONTH_START" | "DATE")} className={expenseInput}>
-                <option value="MONTH_START">من أول الشهر الحالي (راتب الشهر كاملًا)</option>
-                <option value="DATE">من يوم تعديل الراتب (حساب نسبي)</option>
-              </ERPSelect>
+        <div className="grid gap-5 p-5 md:grid-cols-[1.05fr_.95fr]">
+          <section className="space-y-4">
+            <Field label="طريقة بدء الراتب">
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+                <button type="button" onClick={() => { setEffectiveMode("MONTH_START"); setEffectiveValue(normalizedDate.slice(0, 7)); }} className={`rounded-lg px-3 py-2 text-sm font-bold ${effectiveMode === "MONTH_START" ? "bg-white text-blue-800 shadow-sm" : "text-slate-600"}`}>شهر كامل</button>
+                <button type="button" onClick={() => { setEffectiveMode("DATE"); setEffectiveValue(normalizedDate); }} className={`rounded-lg px-3 py-2 text-sm font-bold ${effectiveMode === "DATE" ? "bg-white text-blue-800 shadow-sm" : "text-slate-600"}`}>من يوم محدد</button>
+              </div>
             </Field>
-            <Field label={effectiveMode === "MONTH_START" ? "الشهر الذي يسري منه الراتب" : "يوم بدء حساب الراتب الجديد"}>
-              <input name="effectiveDate" type={effectiveMode === "MONTH_START" ? "month" : "date"} min={effectiveMode === "MONTH_START" ? earliestMonth : `${earliestMonth}-01`} required defaultValue={effectiveMode === "MONTH_START" ? earliestMonth : `${earliestMonth}-01`} className={expenseInput} />
+            <input type="hidden" name="effectiveMode" value={effectiveMode} />
+            <Field label={effectiveMode === "MONTH_START" ? "الشهر الذي يسري منه الراتب *" : "يوم بدء الراتب *"}>
+              <input name="effectiveDate" type={effectiveMode === "MONTH_START" ? "month" : "date"} required value={effectiveValue} onChange={(event) => setEffectiveValue(event.target.value)} className={expenseInput} />
             </Field>
-          </>}
+            <Field label="الراتب الشهري *">
+              <CurrencyInput name="amount" value={amount} onValueChange={setAmount} required min="0.01" />
+            </Field>
+            {matchingRate && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">يوجد راتب محفوظ في هذا التاريخ بقيمة {money(matchingRate.monthlySalaryCents)} ج.م. الحفظ سيحدّث نفس السجل.</p>}
+            {selectedMonthLocked && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800">شهر {normalizedDate.slice(0, 7)} له كشف معتمد أو مصروف. أرجع الكشف أولًا قبل تغيير الراتب.</p>}
+            {!matchingRate && !selectedMonthLocked && <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-800">يمكن تسجيل راتب لهذا الشهر وراتب مختلف للشهر التالي؛ كل كشف يحسب القيمة السارية داخله فقط.</p>}
+          </section>
+          <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-black text-slate-900">تاريخ تعديلات الراتب</h3><span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-slate-500">{history.length} سجل</span></div>
+            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+              {history.map((rate, index) => {
+                const date = new Date(rate.startDate).toISOString().slice(0, 10);
+                return <button key={rate.id} type="button" onClick={() => chooseRate(rate)} className="flex w-full items-center justify-between gap-3 rounded-xl border bg-white p-3 text-right transition hover:border-blue-300 hover:bg-blue-50"><span><b className="block text-sm text-slate-900">{money(rate.monthlySalaryCents)} ج.م</b><small className="mt-1 block text-xs text-slate-500">يسري من {date}</small></span><span className="text-xs font-bold text-blue-700">{index === 0 ? "آخر راتب" : "تعديل"}</span></button>;
+              })}
+              {!history.length && <p className="rounded-xl border border-dashed p-4 text-center text-sm text-slate-500">لا توجد تعديلات سابقة. سيُحفظ أول تعديل هنا.</p>}
+            </div>
+          </section>
         </div>
-        <p className="mt-3 text-xs text-slate-500">التعديل الجديد يضيف سجلًا بتاريخ لاحق. أما التصحيح فيغيّر آخر سجل فقط. إذا كان كشف الشهر قد اعتُمد، يجب إرجاعه أولًا قبل أي تعديل يؤثر عليه.</p>
-        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-bold">إلغاء</button><button disabled={busy === "employee-salary-update"} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">حفظ تعديل الراتب</button></div>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t p-5"><p className="text-xs text-slate-500">الشهور المعتمدة لا تتغير إلا بعد إرجاع كشفها.</p><div className="flex gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-bold">إلغاء</button><button disabled={busy === "employee-salary-update" || selectedMonthLocked} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">حفظ الراتب</button></div></footer>
       </form>
     </div>
   );
