@@ -2,6 +2,10 @@ import "server-only";
 
 let checked = false;
 
+export function getConfiguredDatabaseUrl() {
+  return process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL || "";
+}
+
 /**
  * The one public origin through which this deployment is reachable. Auth.js
  * uses AUTH_URL to build callback URLs, so it must never be inferred from a
@@ -56,7 +60,7 @@ export function assertSecureRuntimeConfig() {
   // لا يعمل إلا إذا كان ملف SQLite نفسه داخل مجلد الاختبارات المؤقت.
   if (
     process.env.ERP_ISOLATED_TEST === "true" &&
-    (/[\\/]tmp[\\/]isolated-test-/.test(process.env.DATABASE_URL || "") ||
+    (/[\\/]tmp[\\/]isolated-test-/.test(getConfiguredDatabaseUrl()) ||
       process.env.ERP_ISOLATED_POSTGRES === "true")
   )
     return;
@@ -67,9 +71,9 @@ export function assertSecureRuntimeConfig() {
   const publicOrigin = getConfiguredPublicOrigin();
   if (!publicOrigin || publicOrigin.protocol !== "https:")
     throw new Error("إعدادات الإنتاج غير آمنة: اضبط AUTH_URL كأصل HTTPS رسمي صالح، بلا مسار أو بيانات دخول.");
-  const databaseUrl = process.env.DATABASE_URL || "";
+  const databaseUrl = getConfiguredDatabaseUrl();
   if (!new RegExp("^postgres(?:ql)?://").test(databaseUrl))
-    throw new Error("إعدادات الإنتاج غير آمنة: DATABASE_URL يجب أن يشير إلى PostgreSQL.");
+    throw new Error("إعدادات الإنتاج غير آمنة: اضبط DATABASE_URL أو POSTGRES_PRISMA_URL ليشير إلى PostgreSQL.");
   checked = true;
 }
 
