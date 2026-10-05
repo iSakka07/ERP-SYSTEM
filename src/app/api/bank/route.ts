@@ -8,6 +8,7 @@ import { postManualBankJournal, reversePostedJournal } from "@/lib/accounting-po
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
 import { assertMutation } from "@/lib/request-security";
 import { arabicErrorMessage } from "@/lib/api-error";
+import { getBankData } from "@/lib/bank-data";
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create").default("create"), type: z.enum(["OWNER_FUNDING", "MANUAL_DEPOSIT", "MANUAL_EXPENSE"]), amount: z.coerce.number().positive().max(10_000_000_000), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), projectId: z.string().optional(), categoryKey: z.string().optional(), counterAccountKey: z.string().optional(), description: z.string().trim().min(2).max(1000), reference: z.string().trim().max(300).optional() }),
@@ -16,14 +17,9 @@ const schema = z.discriminatedUnion("action", [
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status });
 
 export async function GET() {
-  if (!(await incomingUser("bank.view"))) return json({ error: "غير مصرح" }, 403);
-  const [account, transactions, projects, canManage] = await Promise.all([
-    prisma.bankAccount.findFirst({ where: { active: true }, orderBy: { createdAt: "asc" } }),
-    prisma.bankTransaction.findMany({ include: { project: { select: { id: true, name: true } }, actor: { select: { name: true } }, attachments: { select: { id: true, name: true, label: true } } }, orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }] }),
-    prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    incomingUser("bank.manage"),
-  ]);
-  return json({ account, transactions, projects, balanceCents: bankBalance(transactions), canManage: !!canManage });
+  const user = await incomingUser("bank.view");
+  if (!user) return json({ error: "غير مصرح" }, 403);
+  return json(await getBankData(user.can("bank.manage")));
 }
 
 export async function POST(request: Request) {

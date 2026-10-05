@@ -13,6 +13,7 @@ import { WorkWithdrawalsCenter } from "./work-withdrawals-center";
 import { ContractorStatementPrint } from "./contractor-statement-print";
 import { ContractorPaymentProofPrint } from "./contractor-payment-proof-print";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
+import { useConfirm } from "@/components/confirm-provider";
 import {
   Plus,
   ChevronDown,
@@ -73,6 +74,7 @@ export function ExpensesCenter({
   initialEditorAccountId?: string;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const allowed = (p: string) => permissions.includes(p);
   const [search, setSearch] = useState("");
   const [project, setProject] = useState(initialProjectId);
@@ -172,9 +174,7 @@ export function ExpensesCenter({
   }
   async function removeAccount(account: ExpenseAccount) {
     if (
-      !window.confirm(
-        `مسح «${account.name}» من القوائم؟ سيظل تاريخه المالي محفوظًا.`,
-      )
+      !await confirm({ title: "مسح حساب المقاول", description: `مسح «${account.name}» من القوائم؟ سيظل تاريخه المالي محفوظًا.`, confirmLabel: "مسح", tone: "danger" })
     )
       return;
     setBusy(true);

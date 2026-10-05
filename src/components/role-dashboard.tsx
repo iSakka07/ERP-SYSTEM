@@ -35,6 +35,7 @@ import {
   TrendingUp,
   UserRound,
   Vault,
+  WalletCards,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -74,6 +75,7 @@ type Insights = {
     liquidity: [number, number];
   };
   alerts: Alert[];
+  executiveFund?: { balance: number; received: number; settled: number };
   operations?: {
     stock: number;
     low: number;
@@ -523,6 +525,7 @@ export function RoleDashboard({
           />
         ))}
       </section>
+      {insights?.executiveFund ? <Link href="/executive-fund" className="block rounded-2xl border border-blue-200 bg-gradient-to-l from-blue-50 to-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold text-blue-700">صندوق المدير التنفيذي</p><p className="mt-2 text-2xl font-black text-slate-950" dir="ltr">{amount(insights.executiveFund.balance)}</p><p className="mt-1 text-xs text-slate-500">الرصيد النقدي الحالي مع المدير — ليس مديونية أو عهدة</p></div><span className="grid size-11 place-items-center rounded-xl bg-blue-700 text-white"><WalletCards className="size-5" /></span></div><div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">محول من الخزنة {amount(insights.executiveFund.received)}</span><span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800">مصروف أو معاد للخزنة {amount(insights.executiveFund.settled)}</span></div></Link> : null}
       {insights && <AttentionPreview alerts={insights.alerts} />}
       {!canFinancial && insights?.operations && (
         <OperationsSummary

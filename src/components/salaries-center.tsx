@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { ERPSelect } from "@/components/erp-select";
-import { ERPToast, type ERPToastTone } from "@/components/erp-toast";
+import { useToast } from "@/components/toast-provider";
+import { useConfirm } from "@/components/confirm-provider";
 import { UploadBox } from "@/components/upload-box";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
@@ -163,9 +164,10 @@ export function SalariesCenter({
   canPay: boolean;
 }) {
   const router = useRouter();
+  const { notify } = useToast();
+  const confirm = useConfirm();
   const [tab, setTab] = useState<"employees" | "payroll">("employees");
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [toast, setToast] = useState<{ message: string; tone: ERPToastTone } | null>(null);
   const [busy, setBusy] = useState("");
   const [advanceEmployee, setAdvanceEmployee] = useState<Employee | null>(null);
   const [adjustment, setAdjustment] = useState<{
@@ -178,7 +180,6 @@ export function SalariesCenter({
   } | null>(null);
   const [salaryEditEmployee, setSalaryEditEmployee] = useState<Employee | null>(null);
   const [salaryOverrides, setSalaryOverrides] = useState<Record<string, { startDate: Date; monthlySalaryCents: number }>>({});
-  const notify = (message: string, tone: ERPToastTone = "info") => setToast({ message, tone });
   const currentMonth = new Date().toISOString().slice(0, 7);
   const payrollMonth = nextPayrollMonth(runs.map((run) => run.month), currentMonth);
   const currentAllocations = useMemo(
@@ -306,7 +307,6 @@ export function SalariesCenter({
 
   async function send(form: HTMLFormElement, action: string, files = false) {
     setBusy(action);
-    setToast(null);
     const formData = new FormData(form);
     const values = Object.fromEntries(formData);
     const body = new FormData();
@@ -357,9 +357,7 @@ export function SalariesCenter({
           ).similarFinancialOperation;
           if (
             similar &&
-            window.confirm(
-              "توجد عملية رواتب مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟",
-            )
+            await confirm({ title: "عملية رواتب مشابهة", description: "توجد عملية رواتب مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟", tone: "warning" })
           ) {
             confirmSimilarFinancialOperation(scope, similar.confirmationToken);
             return submitRequest();
@@ -442,7 +440,6 @@ export function SalariesCenter({
     form.set("payload", JSON.stringify({ id, reason: reason.trim() }));
     const scope = `salary-payroll-revert-${id}`;
     setBusy(`revert-${id}`);
-    setToast(null);
     try {
       await financialResult(await fetch("/api/salaries", { method: "POST", body: form, headers: financialHeaders(scope) }), scope);
       notify(`تم إرجاع كشف شهر ${monthValue}. عادت خصومات السلف كما كانت ويمكنك الآن تعديل البيانات وإعادة إنشاء الكشف.`, "success");
@@ -486,7 +483,6 @@ export function SalariesCenter({
           كشوف المرتبات
         </button>
       </nav>
-      {toast && <ERPToast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
 
       {tab === "employees" ? (
         <EmployeesTab
@@ -1033,11 +1029,14 @@ function AdvanceDialog({
             <CurrencyInput name="installment" min="0.01" required={repaymentMode === "INSTALLMENTS"} disabled={repaymentMode !== "INSTALLMENTS"} aria-describedby="installment-help" />
             {repaymentMode === "NEXT_PAYROLL" && <p id="installment-help" className="mt-1 text-[10px] text-slate-500">مقفلة لأن كامل السلفة سيُخصم من المرتب القادم.</p>}
           </Field>
-          <Field label="مصدر الصرف">
-            <ERPSelect name="source" className={expenseInput}>
-              <option value="EXECUTIVE_DIRECTOR">المدير التنفيذي</option>
-              <option value="PETTY_CASH">الخزنة الرئيسية</option>
+          <Field label="مصدر تمويل السلفة *">
+            <ERPSelect name="source" defaultValue="EXECUTIVE_DIRECTOR" required className={expenseInput}>
+              <option value="EXECUTIVE_DIRECTOR">من المدير التنفيذي</option>
+              <option value="PETTY_CASH">من الخزنة الرئيسية</option>
             </ERPSelect>
+            <p className="mt-1 text-[10px] text-slate-500">
+              تمويل المدير التنفيذي يدخل الخزنة ثم يُصرف دون خفض رصيدها، أما تمويل الخزنة فيُخصم من رصيدها.
+            </p>
           </Field>
           <Field label="ملاحظات">
             <input name="note" maxLength={2000} className={expenseInput} />

@@ -9,6 +9,7 @@ import { pdfColumns, pdfMoney, previewDataPdf, usePdfDataExport } from "@/compon
 import { WarehouseReceiptRegister } from "@/components/warehouse-receipt-register";
 import { InventoryItemPicker, type InventoryItemOption } from "@/components/inventory-item-picker";
 import { confirmSimilarFinancialOperation, financialHeaders, financialResult } from "@/lib/financial-submit";
+import { useConfirm } from "@/components/confirm-provider";
 
 type Initial = Awaited<ReturnType<typeof import("@/lib/warehouse").warehouseSnapshot>>;
 type Tab = "stock" | "project-stock" | "receipts" | "operations" | "count" | "ledger";
@@ -22,6 +23,7 @@ const movementLabel: Record<string, string> = { RECEIPT: "استلام من مو
 
 export function WarehouseCenter({ initial, canManage, canSeeValues = true, initialTab = "stock", initialReceiptQuery = "" }: { initial: Initial; canManage: boolean; canSeeValues?: boolean; initialTab?: Tab; initialReceiptQuery?: string }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [modal, setModal] = useState<Modal>(null);
   const [selectedInvoice, setSelectedInvoice] = useState("");
@@ -69,7 +71,7 @@ export function WarehouseCenter({ initial, canManage, canSeeValues = true, initi
       const scope = `warehouse.${String(payload.action || "movement")}:${String(payload.invoiceId || payload.warehouseId || payload.fromWarehouseId || "new")}`;
       const request = () => fetch("/api/warehouse", { method: "POST", headers: { "Content-Type": "application/json", ...(financial ? financialHeaders(scope) : {}) }, body: JSON.stringify(payload) });
       if (financial) {
-        const submit = async (): Promise<void> => { try { await financialResult(await request(), scope); } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("يوجد استلام بنفس الفاتورة والمخزن والكميات مسجل بالفعل. هل تريد تسجيله كاستلام مستقل؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return submit(); } throw reason; } };
+        const submit = async (): Promise<void> => { try { await financialResult(await request(), scope); } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && await confirm({ title: "استلام مشابه", description: "يوجد استلام بنفس الفاتورة والمخزن والكميات مسجل بالفعل. هل تريد تسجيله كاستلام مستقل؟", tone: "warning" })) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return submit(); } throw reason; } };
         await submit();
       } else { const response = await request(); const body = await response.json(); if (!response.ok) throw new Error(body.error || "تعذر حفظ الحركة."); }
       setModal(null); router.refresh();

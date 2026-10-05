@@ -8,35 +8,18 @@ import { completeFinancialOperation, guardFinancialOperation, replayAfterConflic
 import { assertMutation } from "@/lib/request-security";
 import { centsNumber } from "@/lib/money";
 import { arabicErrorMessage } from "@/lib/api-error";
+import { getPettyCashData } from "@/lib/petty-cash-data";
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status });
 export async function GET() {
-  if (!(await incomingUser("pettycash.view"))) return json({ error: "غير مصرح" }, 403);
-  const [accounts, categories, transactions, counts, projects, employees, audit] = await Promise.all([
-    prisma.pettyCashAccount.findMany({ include: { employee: { select: { name: true } } }, orderBy: { createdAt: "asc" } }),
-    prisma.pettyCashCategory.findMany({ orderBy: { name: "asc" } }),
-    prisma.pettyCashTransaction.findMany({ include: { project: { select: { name: true } }, category: { select: { name: true } }, recordedBy: { select: { name: true } }, attachments: { select: { id: true, name: true, label: true } } }, orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }] }),
+  const user = await incomingUser("pettycash.view");
+  if (!user) return json({ error: "غير مصرح" }, 403);
+  const [data, counts, audit] = await Promise.all([
+    getPettyCashData(user.can("pettycash.manage")),
     prisma.pettyCashCount.findMany({ orderBy: { createdAt: "desc" } }),
-    prisma.project.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    prisma.employee.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.auditLog.findMany({ where: { action: { startsWith: "pettycash." } }, orderBy: { createdAt: "desc" }, take: 100 }),
   ]);
-  const subcontractOperationIds = transactions
-    .filter(t => t.documentNumber?.startsWith("SUB-") && t.operationId)
-    .map(t => t.operationId as string);
-  const subcontractPayments = subcontractOperationIds.length
-    ? await prisma.subcontractPayment.findMany({
-        where: { cashOperationId: { in: subcontractOperationIds } },
-        include: { statement: { include: { account: true } } },
-      })
-    : [];
-  const enrichedTransactions = transactions.map(transaction => {
-    const payment = subcontractPayments.find(p => p.cashOperationId === transaction.operationId);
-    return payment
-      ? { ...transaction, description: `${transaction.sourceAccountId ? "صرف من الخزنة" : "تمويل من المدير التنفيذي لصرف"}: سداد وتسوية مالية — ${payment.statement.account.name} / جاري ${payment.statement.sequence}` }
-      : transaction;
-  });
-  return json({ accounts: accounts.map(a => ({ ...a, balanceCents: balanceForAccount(transactions, a.id) })), categories, transactions: enrichedTransactions, counts, projects, employees, audit, canManage: !!(await incomingUser("pettycash.manage")) });
+  return json({ ...data, counts, audit });
 }
 export async function POST(req: Request) {
   const user = await incomingUser("pettycash.manage");
@@ -109,6 +92,7 @@ export async function POST(req: Request) {
         if (differenceCents > 0) destinationAccountId = count.accountId; else sourceAccountId = count.accountId;
       } else {
         if (action && action !== "transaction") throw new Error("إجراء غير معروف.");
+        if (type.startsWith("EXECUTIVE_")) throw new Error("سجل هذه الحركة من صفحة صندوق المدير التنفيذي.");
         const expense = isProjectCost(type), externalFunding = type === "EXTERNAL_FUNDING";
         const category = expense ? await tx.pettyCashCategory.findUnique({ where: { id: str("categoryId") } }) : null;
         if (expense && !category?.active) throw new Error("اختر تصنيفًا نشطًا.");

@@ -7,6 +7,8 @@ import { ERPSelect } from "@/components/erp-select";
 import { DataTable, IconAction } from "@/components/erp-ui";
 import { employeeJobPrefixes } from "@/lib/employee-codes";
 import { pdfColumns, previewDataPdf, usePdfDataExport } from "@/components/pdf-data-export";
+import { useConfirm } from "@/components/confirm-provider";
+import { useToast } from "@/components/toast-provider";
 
 type Company = { id: string; name: string; type: string; isEngineeringAuthority: boolean; workNature: string | null; phone: string | null };
 type Engineer = { id: string; employeeCode: string; name: string; jobTitle: string; phone: string | null; supervisors: { project: { id: string; name: string } }[] };
@@ -24,6 +26,8 @@ const companyGroups = [
 
 export function ManagementCenter({ companies, projects, engineers, canManage }: { companies: Company[]; projects: Project[]; engineers: Engineer[]; canManage: boolean }) {
   const router = useRouter();
+  const confirm = useConfirm();
+  const { notify } = useToast();
   const [tab, setTab] = useState<Tab>("companies");
   const [companySection, setCompanySection] = useState<(typeof companyGroups)[number]["type"]>("OWNER");
   const [modal, setModal] = useState<Modal>(null);
@@ -75,9 +79,9 @@ export function ManagementCenter({ companies, projects, engineers, canManage }: 
     const response = await fetch("/api/management", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const result = await response.json(); setBusy("");
     if (!response.ok) {
-      setMessage(result.error || "تعذر حفظ العملية. راجع البيانات وحاول مرة أخرى."); return false;
+      const error = result.error || "تعذر حفظ العملية. راجع البيانات وحاول مرة أخرى."; setMessage(error); notify(error, "error"); return false;
     }
-    setMessage(method === "DELETE" ? "تم المسح من القوائم مع الاحتفاظ بالتاريخ السابق." : "تم حفظ البيانات بنجاح.");
+    const success = method === "DELETE" ? "تم المسح من القوائم مع الاحتفاظ بالتاريخ السابق." : "تم حفظ البيانات بنجاح."; setMessage(success); notify(success, "success");
     closeModal(); router.refresh(); return true;
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -87,7 +91,7 @@ export function ManagementCenter({ companies, projects, engineers, canManage }: 
     await request(modal.item ? "PATCH" : "POST", body, `${modal.item ? "edit" : "create"}-${modal.type}`);
   }
   async function remove(entity: "company" | "project" | "engineer", id: string, name: string) {
-    if (!window.confirm(`مسح «${name}» من القوائم؟ سيظل تاريخه السابق محفوظًا.`)) return;
+    if (!await confirm({ title: "مسح من القوائم", description: `مسح «${name}» من القوائم؟ سيظل تاريخه السابق محفوظًا.`, confirmLabel: "مسح", tone: "danger" })) return;
     await request("DELETE", { entity, id }, `delete-${id}`);
   }
   const empty = (columns: number, label: string) => <tr><td colSpan={columns} className="py-12 text-center text-slate-400">{label}</td></tr>;

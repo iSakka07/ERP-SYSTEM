@@ -30,7 +30,7 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
   if (!viewer) redirect("/");
   const requested = await searchParams;
   const requestedProject = requested.project ?? "";
-  const manager = await incomingUser("incoming.manage");
+  const canManage = viewer.can("incoming.manage");
 
   const [contracts, projects] = await Promise.all([
     prisma.incomingContract.findMany({
@@ -106,8 +106,8 @@ export default async function IncomingPage({ searchParams }: { searchParams: Pro
       contracts={JSON.parse(JSON.stringify(contracts))}
       projects={JSON.parse(JSON.stringify(projects))}
       attachments={attachments}
-      canManage={Boolean(manager)}
-      isAdmin={Boolean(manager?.admin)}
+      canManage={canManage}
+      isAdmin={viewer.admin}
       initialProjectId={projects.some((project) => project.id === requestedProject) ? requestedProject : ""}
       initialOwnerId={requested.owner ?? ""}
       initialStage={requested.stage ?? ""}

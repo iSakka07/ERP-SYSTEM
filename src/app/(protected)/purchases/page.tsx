@@ -8,7 +8,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
   const viewer = await incomingUser("purchases.view");
   if (!viewer) redirect("/");
   const { project: requestedProject = "", invoiceId = "" } = await searchParams;
-  const manager = await incomingUser("purchases.manage");
+  const canManage = viewer.can("purchases.manage");
   const [invoices, projects, suppliers, attachments, custodyAccounts, pettyTransactions] = await Promise.all([
     prisma.purchaseInvoice.findMany({
       where: viewer.projectIdWhere(),
@@ -45,7 +45,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
       suppliers={suppliers}
       attachments={attachments}
       employeeCustodies={employeeCustodies}
-      canManage={Boolean(manager)}
+      canManage={canManage}
       initialProjectId={projects.some((project) => project.id === requestedProject) ? requestedProject : ""}
       initialInvoiceId={invoiceId}
     />

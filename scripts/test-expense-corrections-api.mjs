@@ -50,7 +50,7 @@ async function login(email) {
 }
 async function post(payload, jar, files = true) {
   const key = randomUUID();
-  const send = async (confirmation) => { const form = new FormData(); form.set("payload", JSON.stringify(payload)); if (files) form.append("files", new Blob([proof]), "TEST-CORRECTION-ONLY.pdf"); const response = await fetch(`${base}/api/expenses`, { method: "POST", headers: { ...headers(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form }); const result = await response.json(); if (response.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: response.status, ...result }; };
+  const send = async (confirmation) => { const form = new FormData(); form.set("payload", JSON.stringify(payload)); if (files) { form.append("files", new Blob([proof]), "TEST-CORRECTION-ONLY.pdf"); form.append("filesLabels", "إثبات اختبار تصحيح آلي"); } const response = await fetch(`${base}/api/expenses`, { method: "POST", headers: { ...headers(jar), Origin: base, "Idempotency-Key": key, ...(confirmation ? { "Duplicate-Confirmation": confirmation } : {}) }, body: form }); const result = await response.json(); if (response.status === 409 && result.code === "SIMILAR_FINANCIAL_OPERATION") return send(result.confirmationToken); return { status: response.status, ...result }; };
   return send();
 }
 const read = (id) =>
@@ -457,8 +457,9 @@ try {
       await tx.subcontractStatement.deleteMany({ where: { id: { in: ids } } });
       await tx.subcontractAccount.delete({ where: { id: accountId } });
     });
-  await db.user.deleteMany({ where: { id: { in: userIds } } });
-  await db.role.deleteMany({ where: { id: { in: roleIds } } });
+  // Financial history keeps its actor FK. Preserve those audit principals but
+  // revoke access instead of deleting identities referenced by posted entries.
+  await db.user.updateMany({ where: { id: { in: userIds } }, data: { active: false, sessionVersion: { increment: 1 } } });
   await db.$disconnect();
   console.log(
     "Only exact temporary correction test records removed; client accounts, passwords, statements and payments preserved; audit retained.",

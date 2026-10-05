@@ -11,8 +11,8 @@ export default async function WarehousePage({ searchParams }: { searchParams: Pr
   for (const [key, value] of Object.entries(params)) if (key !== "tab" && value !== undefined) for (const entry of Array.isArray(value) ? value : [value]) receiptParams.append(key, entry);
   const viewer = await incomingUser("warehouse.view");
   if (!viewer) redirect("/");
-  const manager = await incomingUser("warehouse.manage");
-  const maySeeValues = Boolean(await incomingUser("purchases.view"));
+  const canManage = viewer.can("warehouse.manage");
+  const maySeeValues = viewer.can("purchases.view");
   const snapshot = await warehouseSnapshot(viewer.isProjectScoped ? viewer.projectIds : undefined, maySeeValues);
-  return <WarehouseCenter initial={JSON.parse(JSON.stringify(snapshot))} canManage={Boolean(manager)} canSeeValues={maySeeValues} initialTab={initialTab} initialReceiptQuery={receiptParams.toString()} />;
+  return <WarehouseCenter initial={JSON.parse(JSON.stringify(snapshot))} canManage={canManage} canSeeValues={maySeeValues} initialTab={initialTab} initialReceiptQuery={receiptParams.toString()} />;
 }

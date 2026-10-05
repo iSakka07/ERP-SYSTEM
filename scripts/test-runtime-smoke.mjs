@@ -44,6 +44,15 @@ async function login(email) {
   assert.equal(session?.user?.email, email);
   return jar;
 }
+async function rejectedLogin(email, rejectedPassword) {
+  const jar = new Map();
+  const { csrfToken } = await (await request("/api/auth/csrf", jar)).json();
+  await request("/api/auth/callback/credentials", jar, {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ csrfToken, email, password: rejectedPassword, callbackUrl: base }),
+  });
+  assert.ok(!(await (await request("/api/auth/session", jar)).json())?.user);
+}
 const pdf = "%PDF-1.4\nRuntime smoke attachment";
 async function bank(jar, payload, key = randomUUID(), origin = base, attachment = false) {
   const body = new FormData();
@@ -59,20 +68,41 @@ async function bank(jar, payload, key = randomUUID(), origin = base, attachment 
 }
 
 try {
-  assert.equal((await request("/login")).status, 200);
+  const loginPage = await request("/login");
+  assert.equal(loginPage.status, 200);
+  assert.match(loginPage.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
+  assert.match(loginPage.headers.get("strict-transport-security") || "", /max-age=31536000/);
+  assert.equal(loginPage.headers.get("x-frame-options"), "DENY");
+  assert.equal(loginPage.headers.get("x-content-type-options"), "nosniff");
   const protectedPage = await request("/purchases");
   assert.ok([302, 303, 307, 308].includes(protectedPage.status));
   assert.equal(new URL(protectedPage.headers.get("location"), base).pathname, "/login");
   assert.equal((await request("/api/bank")).status, 401);
   assert.equal((await request("/brand/asgc-logo.png")).status, 200);
   assert.equal((await request("/fonts/Cairo-Regular.ttf")).status, 200);
-  assert.equal((await (await request("/api/health")).json()).status, "ok");
-  console.log("PASS public assets, health, anonymous page and API protection");
+  const correlationId = randomUUID();
+  const health = await request("/api/health", new Map(), { headers: { "x-request-id": correlationId } });
+  assert.equal((await health.json()).status, "ok");
+  assert.equal(health.headers.get("x-request-id"), correlationId);
+  console.log("PASS public assets, correlated health request, anonymous page and API protection");
+
+  await rejectedLogin("admin@erp.local", process.env.ERP_TEST_BOOTSTRAP_PASSWORD || "");
+  const existingAdmin = await db.user.findUniqueOrThrow({ where: { email: "admin@erp.local" } });
+  assert.equal(existingAdmin.active, true);
+  console.log("PASS security headers and bootstrap password cannot reset an existing administrator");
 
   const admin = await login("admin@erp.local");
   const sales = await login("sales@erp.local");
   assert.equal((await request("/api/bank", sales)).status, 403);
-  assert.ok([302, 303, 307, 308].includes((await request("/bank", sales)).status));
+  const deniedBankPage = await request("/bank", sales);
+  if ([302, 303, 307, 308].includes(deniedBankPage.status)) {
+    assert.equal(new URL(deniedBankPage.headers.get("location"), base).pathname, "/");
+  } else {
+    // Next.js may encode a redirect in a streamed Server Component response
+    // after the HTTP status has already been committed as 200.
+    assert.equal(deniedBankPage.status, 200);
+    assert.match(await deniedBankPage.text(), /NEXT_REDIRECT;replace;\/;30[378];/);
+  }
   for (const path of ["/", "/incoming", "/expenses", "/purchases", "/warehouse", "/bank", "/accounting", "/salaries", "/petty-cash", "/attachments", "/admin/accounts", "/incoming/new", "/expenses/new", "/purchases/new"]) {
     const response = await request(path, admin);
     assert.equal(response.status, 200, `admin render ${path}`);

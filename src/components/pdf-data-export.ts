@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { createPdfReportUrl, type PdfKpi, type PdfTable } from "@/components/pdf-report-document";
+import { notifyToast } from "@/components/toast-provider";
 
 export type DataPdfReport = { title: string; filters?: string; tables: PdfTable[]; kpis?: PdfKpi[] };
 let active: { path: string; callback: () => void } | null = null;
@@ -22,7 +23,7 @@ export function requestPdfDataExport() {
 
 export async function previewDataPdf(report: DataPdfReport) {
   const preview = window.open("", "_blank");
-  if (!preview) { window.alert("اسمح بالنوافذ المنبثقة لفتح معاينة PDF."); return; }
+  if (!preview) { notifyToast("اسمح بالنوافذ المنبثقة لفتح معاينة PDF.", "warning"); return; }
   preview.opener = null;
   preview.document.write("<title>ASGC ERP · جاري تجهيز التقرير</title><body style='font-family:Arial,sans-serif;padding:32px;color:#10192d'>جاري تجهيز تقرير PDF…</body>");
   preview.document.close();
@@ -34,7 +35,7 @@ export async function previewDataPdf(report: DataPdfReport) {
   } catch (error) {
     console.error(error);
     preview.close();
-    window.alert("تعذّر تجهيز ملف PDF. حاول مرة أخرى.");
+    notifyToast("تعذّر تجهيز ملف PDF. حاول مرة أخرى.", "error");
   }
 }
 

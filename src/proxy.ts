@@ -3,10 +3,23 @@ import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server
 import type { NextAuthRequest } from "next-auth";
 import { assertSecureRuntimeConfig, hasTrustedRequestHost } from "@/lib/runtime-config";
 
+const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function requestId(request: NextRequest) {
+  const supplied = request.headers.get("x-request-id");
+  return supplied && requestIdPattern.test(supplied) ? supplied : crypto.randomUUID();
+}
+
+function continueRequest(request: NextRequest) {
+  const id = requestId(request);
+  const headers = new Headers(request.headers);
+  headers.set("x-request-id", id);
+  return NextResponse.next({ request: { headers }, headers: { "x-request-id": id } });
+}
+
 const withAuth = auth((request: NextAuthRequest, event: NextFetchEvent) => {
-  void request;
   void event;
-  return NextResponse.next();
+  return continueRequest(request as NextRequest);
 });
 
 export function proxy(request: NextRequest, event: NextFetchEvent) {
@@ -16,11 +29,15 @@ export function proxy(request: NextRequest, event: NextFetchEvent) {
   // Host header. The health endpoint exposes no user data and must remain
   // reachable before the public-domain host check can succeed.
   if (request.nextUrl.pathname === "/api/health") {
-    return NextResponse.next();
+    return continueRequest(request);
   }
 
   if (!hasTrustedRequestHost(request.headers)) {
-    return NextResponse.json({ error: "UNTRUSTED_HOST" }, { status: 421 });
+    const id = requestId(request);
+    return NextResponse.json(
+      { error: "UNTRUSTED_HOST", requestId: id },
+      { status: 421, headers: { "x-request-id": id } },
+    );
   }
   return withAuth(request, event);
 }

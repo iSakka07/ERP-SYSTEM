@@ -1,9 +1,37 @@
 import { centsNumber, type CentsValue } from "./money.ts";
 
-export const PETTY_TYPES = ["OPENING_BALANCE", "FUNDING", "EXTERNAL_FUNDING", "DIRECT_EXPENSE", "CUSTODY_ISSUE", "CUSTODY_EXPENSE", "CUSTODY_RETURN"] as const;
+export const PETTY_TYPES = ["OPENING_BALANCE", "FUNDING", "EXTERNAL_FUNDING", "DIRECT_EXPENSE", "CUSTODY_ISSUE", "CUSTODY_EXPENSE", "CUSTODY_RETURN", "EXECUTIVE_ISSUE", "EXECUTIVE_EXPENSE", "EXECUTIVE_RETURN"] as const;
 export type PettyType = (typeof PETTY_TYPES)[number];
-export const expenseTypes = new Set<string>(["DIRECT_EXPENSE", "CUSTODY_EXPENSE"]);
-export const pettyLabels: Record<string, string> = { OPENING_BALANCE: "رصيد افتتاحي", FUNDING: "تمويل من المدير التنفيذي", EXTERNAL_FUNDING: "وارد خارجي", DIRECT_EXPENSE: "مصروف مباشر", CUSTODY_ISSUE: "تسليم عهدة", CUSTODY_EXPENSE: "مصروف عهدة", CUSTODY_RETURN: "رد عهدة", PURCHASE_PAYMENT: "سداد فاتورة مشتريات", SETTLEMENT_PAYMENT: "سداد وتسوية مالية", ADJUSTMENT_IN: "تسوية زيادة الجرد", ADJUSTMENT_OUT: "تسوية عجز الجرد" };
+export const expenseTypes = new Set<string>(["DIRECT_EXPENSE", "CUSTODY_EXPENSE", "EXECUTIVE_EXPENSE"]);
+export const pettyLabels: Record<string, string> = { OPENING_BALANCE: "رصيد افتتاحي", FUNDING: "تمويل من المدير التنفيذي", EXTERNAL_FUNDING: "وارد خارجي", DIRECT_EXPENSE: "مصروف مباشر", CUSTODY_ISSUE: "تسليم عهدة", CUSTODY_EXPENSE: "مصروف عهدة", CUSTODY_RETURN: "رد عهدة", EXECUTIVE_ISSUE: "تحويل لصندوق المدير التنفيذي", EXECUTIVE_EXPENSE: "مصروف من صندوق المدير التنفيذي", EXECUTIVE_RETURN: "رد من صندوق المدير التنفيذي", EMPLOYEE_ADVANCE_PAYMENT: "صرف سلفة موظف", PURCHASE_PAYMENT: "سداد فاتورة مشتريات", SETTLEMENT_PAYMENT: "سداد وتسوية مالية", ADJUSTMENT_IN: "تسوية زيادة الجرد", ADJUSTMENT_OUT: "تسوية عجز الجرد" };
+
+export function subcontractSettlementDisplay(input: {
+  sourceAccountId: string | null;
+  contractorName: string;
+  statementSequence: number;
+}) {
+  return {
+    title: `${input.sourceAccountId ? "صرف من الخزنة" : "صرف من المدير التنفيذي"} : سداد و تسوية مالية`,
+    details: `تفاصيل المقاولة: ${input.contractorName} / جاري رقم ${input.statementSequence}`,
+  };
+}
+
+export function employeeAdvanceDisplay(input: {
+  sourceAccountId: string | null;
+  employeeName: string;
+  advanceSource: "EXECUTIVE_DIRECTOR" | "PETTY_CASH";
+}) {
+  return {
+    title: input.sourceAccountId
+      ? "صرف من الخزنة : سلفة موظف"
+      : "تمويل من المدير التنفيذي : سلفة موظف",
+    details: `الموظف: ${input.employeeName} / مصدر السلفة: ${
+      input.advanceSource === "PETTY_CASH"
+        ? "الخزنة الرئيسية"
+        : "المدير التنفيذي"
+    }`,
+  };
+}
 
 export type PettyCashClassificationInput = {
   type: string;

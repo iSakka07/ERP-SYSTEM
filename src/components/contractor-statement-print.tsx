@@ -4,6 +4,7 @@ import { FileDown, X } from "lucide-react";
 import { useState } from "react";
 import { createContractorStatementInvoiceUrl } from "@/components/contractor-statement-invoice-pdf";
 import type { ExpenseAccount, ExpenseStatement } from "@/lib/expense-types";
+import { notifyToast } from "@/components/toast-provider";
 
 export function ContractorStatementPrint({ account, statement }: { account: ExpenseAccount; statement: ExpenseStatement }) {
   const [open, setOpen] = useState(false);
@@ -13,7 +14,7 @@ export function ContractorStatementPrint({ account, statement }: { account: Expe
   async function createPdf() {
     setOpen(false);
     const preview = window.open("", "_blank");
-    if (!preview) { window.alert("اسمح بالنوافذ المنبثقة لفتح معاينة PDF."); return; }
+    if (!preview) { notifyToast("اسمح بالنوافذ المنبثقة لفتح معاينة PDF.", "warning"); return; }
     preview.opener = null;
     preview.document.write("<title>جاري تجهيز مستخلص المقاول</title><body style='font-family:Arial,sans-serif;padding:32px;color:#10192d'>جاري تجهيز المستخلص…</body>");
     preview.document.close();
@@ -24,7 +25,7 @@ export function ContractorStatementPrint({ account, statement }: { account: Expe
     } catch (error) {
       console.error(error);
       preview.close();
-      window.alert("تعذّر تجهيز ملف PDF. حاول مرة أخرى.");
+      notifyToast("تعذّر تجهيز ملف PDF. حاول مرة أخرى.", "error");
     }
   }
 

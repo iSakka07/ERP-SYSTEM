@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { assertAffectedBalances, assertBalances, cents, balanceForAccount, isProjectCost, pettyCashClassification, pettyLabels, validatePettyInput } from "../src/lib/petty-cash.ts";
+import { assertAffectedBalances, assertBalances, cents, balanceForAccount, employeeAdvanceDisplay, isProjectCost, pettyCashClassification, pettyLabels, subcontractSettlementDisplay, validatePettyInput } from "../src/lib/petty-cash.ts";
 assert.equal(cents('1,234.56'),123456);
 assert.equal(cents('0',true),0);
 assert.throws(()=>cents('0.001'));
@@ -19,7 +19,28 @@ assert.equal(pettyCashClassification({ type: "FUNDING", documentNumber: "PAYROLL
 assert.equal(pettyCashClassification({ type: "DIRECT_EXPENSE", category: { name: "انتقالات" } }), "انتقالات");
 assert.equal(pettyCashClassification({ type: "CUSTODY_RETURN" }), "رد عهدة");
 assert.equal(pettyLabels.EXTERNAL_FUNDING, "وارد خارجي");
-assert.equal(pettyLabels.EMPLOYEE_ADVANCE_PAYMENT, undefined);
+assert.equal(pettyLabels.EMPLOYEE_ADVANCE_PAYMENT, "صرف سلفة موظف");
+assert.deepEqual(
+  subcontractSettlementDisplay({ sourceAccountId: null, contractorName: "المقاول الأول", statementSequence: 3 }),
+  { title: "صرف من المدير التنفيذي : سداد و تسوية مالية", details: "تفاصيل المقاولة: المقاول الأول / جاري رقم 3" },
+);
+assert.deepEqual(
+  subcontractSettlementDisplay({ sourceAccountId: "main", contractorName: "المقاول الأول", statementSequence: 3 }),
+  { title: "صرف من الخزنة : سداد و تسوية مالية", details: "تفاصيل المقاولة: المقاول الأول / جاري رقم 3" },
+);
+assert.deepEqual(
+  employeeAdvanceDisplay({ sourceAccountId: null, employeeName: "أحمد", advanceSource: "EXECUTIVE_DIRECTOR" }),
+  { title: "تمويل من المدير التنفيذي : سلفة موظف", details: "الموظف: أحمد / مصدر السلفة: المدير التنفيذي" },
+);
+assert.deepEqual(
+  employeeAdvanceDisplay({ sourceAccountId: "main", employeeName: "أحمد", advanceSource: "PETTY_CASH" }),
+  { title: "صرف من الخزنة : سلفة موظف", details: "الموظف: أحمد / مصدر السلفة: الخزنة الرئيسية" },
+);
+const advanceOpening = { status: "POSTED", amountCents: 100000, sourceAccountId: null, destinationAccountId: "main" };
+const treasuryAdvance = { status: "POSTED", amountCents: 20000, sourceAccountId: "main", destinationAccountId: null };
+assert.equal(balanceForAccount([advanceOpening, treasuryAdvance], "main"), 80000, "treasury-funded advance reduces the main cash balance");
+const executiveAdvanceFunding = { status: "POSTED", amountCents: 20000, sourceAccountId: null, destinationAccountId: "main" };
+assert.equal(balanceForAccount([advanceOpening, executiveAdvanceFunding, treasuryAdvance], "main"), 100000, "executive-funded advance enters and exits main cash without reducing its balance");
 assert.doesNotThrow(() => validatePettyInput({ type: "EXTERNAL_FUNDING", amount: 10, description: "تحصيل خارجي", hasAttachment: false, requiresAttachment: false }));
 // Scenario: executive funding → project expense → employee custody → partial settlement → return.
 const main = "main", custody = "custody-employee", project = "project-a";

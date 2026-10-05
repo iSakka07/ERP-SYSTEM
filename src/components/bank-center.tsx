@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Building2, Landmark, Paperclip, Plus, ReceiptText, X } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { ERPSelect } from "@/components/erp-select";
 import { UploadBox } from "@/components/upload-box";
 import { KpiCard, MoneyValue } from "@/components/erp-ui";
+import { useConfirm } from "@/components/confirm-provider";
 import { bankCategories, bankTypes } from "@/lib/bank";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import {
@@ -19,31 +20,13 @@ import {
   previewDataPdf,
   usePdfDataExport,
 } from "@/components/pdf-data-export";
+import type { BankData } from "@/lib/bank-data";
 
-type Data = {
-  account: { name: string } | null;
-  balanceCents: number;
-  canManage: boolean;
-  projects: { id: string; name: string }[];
-  transactions: {
-    id: string;
-    type: string;
-    amountCents: number;
-    transactionDate: string;
-    project: { name: string } | null;
-    categoryKey: string | null;
-    description: string;
-    reference: string | null;
-    status: string;
-    sourceType: string | null;
-    reversalReason: string | null;
-    actor: { name: string };
-    attachments: { id: string; name: string; label: string }[];
-  }[];
-};
+type Data = BankData;
 const today = () => new Date().toISOString().slice(0, 10);
-export function BankCenter() {
-  const [data, setData] = useState<Data | null>(null),
+export function BankCenter({ initialData }: { initialData: BankData }) {
+  const confirm = useConfirm();
+  const [data, setData] = useState<Data>(initialData),
     [type, setType] = useState("OWNER_FUNDING"),
     [open, setOpen] = useState(false),
     [error, setError] = useState(""),
@@ -55,11 +38,6 @@ export function BankCenter() {
     if (!response.ok) throw new Error(body.error || "تعذر تحميل البنك.");
     setData(body);
   };
-  useEffect(() => {
-    void Promise.resolve()
-      .then(load)
-      .catch((reason) => setError(reason.message));
-  }, []);
   usePdfDataExport(() => {
     if (!data) return;
     const incomingTypes = [
@@ -152,9 +130,7 @@ export function BankCenter() {
         ).similarFinancialOperation;
         if (
           similar &&
-          window.confirm(
-            "توجد حركة مالية مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟",
-          )
+          await confirm({ title: "حركة مالية مشابهة", description: "توجد حركة مالية مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟", tone: "warning" })
         ) {
           confirmSimilarFinancialOperation(scope, similar.confirmationToken);
           return send();
@@ -174,7 +150,6 @@ export function BankCenter() {
     event.preventDefault(); if (!reverseId) return; setBusy(true); setError("");
     try { const form = event.currentTarget; const body = new FormData(form); const payload = { action: "reverse", id: reverseId, reason: String(body.get("reason") || "") }; body.set("payload", JSON.stringify(payload)); await financialResult(await fetch("/api/bank", { method: "POST", body, headers: financialHeaders(`bank-reverse-${reverseId}`) }), `bank-reverse-${reverseId}`); await load(); setReverseId(null); } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إلغاء الحركة."); } finally { setBusy(false); }
   }
-  if (!data) return <p role="status">{error || "جارٍ تحميل دفتر البنك…"}</p>;
   const inflow = data.transactions
       .filter(
         (item) =>

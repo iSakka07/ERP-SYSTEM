@@ -5,6 +5,8 @@ import { DocumentLayout, type Movement } from "@/components/document-layout";
 import { UploadBox } from "@/components/upload-box";
 import { filteredIncomingReport, singleIncomingReport } from "@/components/incoming-pdf-report";
 import { createPdfReportUrl } from "@/components/pdf-report-document";
+import { confirmAction } from "@/components/confirm-provider";
+import { notifyToast } from "@/components/toast-provider";
 
 import { Fragment, FormEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -180,7 +182,7 @@ export function IncomingCenter({
     ].filter(Boolean).join(" · ");
     const report = single && selected ? singleIncomingReport(selected) : filteredIncomingReport(filtered, filterLabels || "كل العقود");
     const preview = window.open("", "_blank");
-    if (!preview) { window.alert("اسمح بالنوافذ المنبثقة لفتح معاينة PDF."); return; }
+    if (!preview) { notifyToast("اسمح بالنوافذ المنبثقة لفتح معاينة PDF.", "warning"); return; }
     preview.opener = null;
     preview.document.write("<title>ASGC ERP · جاري تجهيز التقرير</title><body style='font-family:Arial,sans-serif;padding:32px;color:#10192d'>جاري تجهيز تقرير PDF…</body>");
     preview.document.close();
@@ -194,7 +196,7 @@ export function IncomingCenter({
     } catch (error) {
       console.error(error);
       preview.close();
-      window.alert("تعذّر تجهيز ملف PDF. حاول مرة أخرى.");
+      notifyToast("تعذّر تجهيز ملف PDF. حاول مرة أخرى.", "error");
     } finally { setPdfWorking(false); }
   }
   const open = (e: Editor) => {
@@ -216,7 +218,7 @@ export function IncomingCenter({
     setEditor(e);
   };
   async function removeContract(contract: Contract) {
-    if (!window.confirm(`مسح «${contract.name}» من القوائم؟ سيظل تاريخه المالي محفوظًا.`)) return;
+    if (!await confirmAction({ title: "مسح العقد", description: `مسح «${contract.name}» من القوائم؟ سيظل تاريخه المالي محفوظًا.`, confirmLabel: "مسح", tone: "danger" })) return;
     setBusy(true); setMessage("");
     try {
       const response = await fetch("/api/incoming", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: contract.id }) });
@@ -236,7 +238,7 @@ export function IncomingCenter({
       estimateFiles.forEach((f) => form.append("estimateFiles", f));
       memoFiles.forEach((f) => form.append("memoFiles", f));
       const action = "action" in payload ? String(payload.action) : "unknown", record = payload as { id?: string; contractId?: string; statementId?: string }, financial = ["statement", "material", "stage"].includes(action), scope = `incoming-${action}-${record.id || record.statementId || record.contractId || "new"}`;
-      const send = async (): Promise<boolean> => { try { const response = await fetch("/api/incoming", { method: "POST", body: form, ...(financial ? { headers: financialHeaders(scope) } : {}) }); if (financial) return (await financialResult(response, scope)).replayed; const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر الحفظ."); return false; } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && window.confirm("توجد عملية وارد مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟")) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return send(); } throw reason; } };
+      const send = async (): Promise<boolean> => { try { const response = await fetch("/api/incoming", { method: "POST", body: form, ...(financial ? { headers: financialHeaders(scope) } : {}) }); if (financial) return (await financialResult(response, scope)).replayed; const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر الحفظ."); return false; } catch (reason) { const similar = (reason as { similarFinancialOperation?: { confirmationToken: string } }).similarFinancialOperation; if (similar && await confirmAction({ title: "عملية وارد مشابهة", description: "توجد عملية وارد مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟", tone: "warning" })) { confirmSimilarFinancialOperation(scope, similar.confirmationToken); return send(); } throw reason; } };
       const replayed = await send();
       setMessage(replayed ? "العملية مسجلة بالفعل ولم تتكرر." : "تم الحفظ بنجاح.");
       setEditor(null);
@@ -1373,7 +1375,7 @@ function Files({ files, compact = false, deletable = false }: { files: Attachmen
   if (compact) return <details className="relative"><summary className="erp-icon-action relative cursor-pointer list-none" aria-label={`عرض ${files.length} مرفق`}><Paperclip className="size-4" />{files.length > 1 && <span className="absolute -left-1 -top-1 grid size-4 place-items-center rounded-full bg-blue-700 text-[9px] font-bold text-white">{files.length}</span>}</summary><div className="absolute left-0 z-30 mt-2 w-64 rounded-lg border bg-white p-2">{files.map(file => <a key={file.id} className="block px-2 py-2 text-xs text-blue-700" href={`/api/incoming/attachments/${file.id}`}>{file.label}</a>)}</div></details>;
   return (
     <span className="inline-flex flex-wrap gap-2">
-      {files.map((f) => <span key={f.id} className="inline-flex items-center gap-1"><a className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 underline decoration-blue-200 underline-offset-2" href={`/api/incoming/attachments/${f.id}`} title={f.label}><Paperclip className="size-3" />{f.label} ({(f.size / 1024 / 1024).toFixed(2)} MB)</a>{deletable && <button type="button" className="text-[10px] font-bold text-rose-700 hover:underline" onClick={async () => { if (!window.confirm(`مسح ${f.label}؟`)) return; const response = await fetch(`/api/incoming/attachments/${f.id}`, { method: "DELETE" }); if (response.ok) window.location.reload(); else window.alert("تعذر مسح المرفق."); }}>مسح</button>}</span>)}
+      {files.map((f) => <span key={f.id} className="inline-flex items-center gap-1"><a className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 underline decoration-blue-200 underline-offset-2" href={`/api/incoming/attachments/${f.id}`} title={f.label}><Paperclip className="size-3" />{f.label} ({(f.size / 1024 / 1024).toFixed(2)} MB)</a>{deletable && <button type="button" className="text-[10px] font-bold text-rose-700 hover:underline" onClick={async () => { if (!await confirmAction({ description: `مسح ${f.label}؟`, confirmLabel: "مسح", tone: "danger" })) return; const response = await fetch(`/api/incoming/attachments/${f.id}`, { method: "DELETE" }); if (response.ok) window.location.reload(); else notifyToast("تعذر مسح المرفق.", "error"); }}>مسح</button>}</span>)}
     </span>
   );
 }
@@ -1381,6 +1383,6 @@ function Files({ files, compact = false, deletable = false }: { files: Attachmen
 function AttachmentLinks({ label, files, canDelete = true }: { label: string; files: Attachment[]; canDelete?: boolean }) {
   if (!files.length) return null;
   return <span className="inline-flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-    {files.map((file, index) => <span key={file.id} className="inline-flex items-center gap-1"><a className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.label}>{label}{files.length > 1 ? ` ${index + 1}` : ""}</a>{canDelete && <button type="button" className="text-rose-700" onClick={async()=>{if(!window.confirm(`مسح ${file.label}؟`))return;const response=await fetch(`/api/incoming/attachments/${file.id}`,{method:"DELETE"});if(response.ok)window.location.reload();else alert("تعذر مسح المرفق.");}}>مسح</button>}</span>)}
+    {files.map((file, index) => <span key={file.id} className="inline-flex items-center gap-1"><a className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900" href={`/api/incoming/attachments/${file.id}`} title={file.label}>{label}{files.length > 1 ? ` ${index + 1}` : ""}</a>{canDelete && <button type="button" className="text-rose-700" onClick={async()=>{if(!await confirmAction({description:`مسح ${file.label}؟`,confirmLabel:"مسح",tone:"danger"}))return;const response=await fetch(`/api/incoming/attachments/${file.id}`,{method:"DELETE"});if(response.ok)window.location.reload();else notifyToast("تعذر مسح المرفق.","error");}}>مسح</button>}</span>)}
   </span>;
 }

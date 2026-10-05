@@ -172,14 +172,14 @@ function validateJournalInput(input) {
     debitCents: line.debitCents ? centsNumber(line.debitCents) : 0,
     creditCents: line.creditCents ? centsNumber(line.creditCents) : 0,
   }));
+  if (normalizedLines.some((line) => line.debitCents < 0 || line.creditCents < 0 || (!!line.debitCents) === (!!line.creditCents))) {
+    throw new Error("كل سطر محاسبي يجب أن يكون مدينًا أو دائنًا فقط بقيمة موجبة.");
+  }
   const debit = normalizedLines.reduce((sum, line) => sum + line.debitCents, 0);
   const credit = normalizedLines.reduce((sum, line) => sum + line.creditCents, 0);
   
   if (!Number.isSafeInteger(debit) || debit < 1 || debit !== credit) {
     throw new Error("القيد المحاسبي غير متوازن.");
-  }
-  if (normalizedLines.some((line) => (!!line.debitCents) === (!!line.creditCents))) {
-    throw new Error("كل سطر محاسبي يجب أن يكون مدينًا أو دائنًا فقط.");
   }
   
   return { normalizedLines, debit, credit };
@@ -226,7 +226,7 @@ test("postJournal: zero debit should fail", () => {
   
   assert.throws(
     () => validateJournalInput(input),
-    /القيد المحاسبي غير متوازن/
+    /بقيمة موجبة/
   );
 });
 
@@ -238,11 +238,7 @@ test("postJournal: negative values should fail validation", () => {
     ],
   };
   
-  // Negative values pass centsNumber but should fail in validation
-  const result = validateJournalInput(input);
-  assert.strictEqual(result.debit, -1000);
-  assert.strictEqual(result.credit, -1000);
-  // The actual postJournal would reject debit < 1
+  assert.throws(() => validateJournalInput(input), /بقيمة موجبة/);
 });
 
 test("postJournal: line with both debit and credit should fail", () => {
@@ -550,7 +546,7 @@ test("postStockIssueJournal: missing projectId should return null", () => {
     totalCents: 10000,
   };
   
-  const shouldPost = movement.projectId && movement.totalCents;
+  const shouldPost = Boolean(movement.projectId && movement.totalCents);
   assert.strictEqual(shouldPost, false);
 });
 
@@ -560,7 +556,7 @@ test("postStockIssueJournal: zero totalCents should return null", () => {
     totalCents: 0,
   };
   
-  const shouldPost = movement.projectId && movement.totalCents;
+  const shouldPost = Boolean(movement.projectId && movement.totalCents);
   assert.strictEqual(shouldPost, false);
 });
 
@@ -739,7 +735,7 @@ test("deductionAccount: should map other deductions to SUBCONTRACTOR_DEDUCTIONS"
   const name = "خصم أداء";
   const regex = /تأمين|تامين/i;
   const isRetention = regex.test(name);
-  const account = isRetention ? "RETENTION_PAYABLE" "SUBCONTRACTOR_DEDUCTIONS";
+  const account = isRetention ? "RETENTION_PAYABLE" : "SUBCONTRACTOR_DEDUCTIONS";
   
   assert.strictEqual(account, "SUBCONTRACTOR_DEDUCTIONS");
 });

@@ -39,6 +39,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
 
         if (!user && parsed.data.email === bootstrapEmail && bootstrapPassword && parsed.data.password === bootstrapPassword && bootstrapPassword.length >= 12) {
+          const [bootstrapState, userCount] = await Promise.all([
+            prisma.systemMetadata.findUnique({ where: { key: "auth.bootstrap.completed" } }),
+            prisma.user.count(),
+          ]);
+          if (bootstrapState || userCount > 0) { recordLoginFailure(parsed.data.email, ip); return null; }
           let role = await prisma.role.findUnique({ where: { key: "admin" } });
           if (!role) {
             role = await prisma.role.create({ data: { key: "admin", name: "مدير النظام" } });
@@ -47,26 +52,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
           if (role) {
             const passwordHash = await hash(bootstrapPassword, 12);
-            const created = await prisma.user.create({ data: { name: process.env.BOOTSTRAP_ADMIN_NAME?.trim() || "مدير النظام", email: parsed.data.email, passwordHash, roleId: role.id, active: true } });
+            const created = await prisma.$transaction(async (tx) => {
+              const createdUser = await tx.user.create({ data: { name: process.env.BOOTSTRAP_ADMIN_NAME?.trim() || "مدير النظام", email: parsed.data.email, passwordHash, roleId: role.id, active: true } });
+              await tx.systemMetadata.create({ data: { key: "auth.bootstrap.completed", value: new Date().toISOString() } });
+              return createdUser;
+            });
             user = await prisma.user.findUnique({ where: { id: created.id }, include: { role: { include: { permissions: { include: { permission: true } } } }, permissionOverrides: { include: { permission: true } } } });
           }
         }
-        if (user && (!user.role || !user.active) && parsed.data.email === bootstrapEmail && bootstrapPassword && parsed.data.password === bootstrapPassword && bootstrapPassword.length >= 12) {
-          let role = await prisma.role.findUnique({ where: { key: "admin" } });
-          if (!role) role = await prisma.role.create({ data: { key: "admin", name: "مدير النظام" } });
-          const passwordHash = await hash(bootstrapPassword, 12);
-          await prisma.user.update({ where: { id: user.id }, data: { roleId: role.id, passwordHash, active: true } });
-          user = await prisma.user.findUnique({ where: { id: user.id }, include: { role: { include: { permissions: { include: { permission: true } } } }, permissionOverrides: { include: { permission: true } } } });
-        }
         if (!user?.active || !user.role) { recordLoginFailure(parsed.data.email, ip); return null; }
-        let validPassword = await compare(parsed.data.password, user.passwordHash);
-        // Allow a one-time production bootstrap password to repair an existing
-        // administrator account whose hash predates the current deployment.
-        if (!validPassword && parsed.data.email === bootstrapEmail && bootstrapPassword && parsed.data.password === bootstrapPassword && bootstrapPassword.length >= 12) {
-          const passwordHash = await hash(bootstrapPassword, 12);
-          await prisma.user.update({ where: { id: user.id }, data: { passwordHash, active: true } });
-          validPassword = true;
-        }
+        const validPassword = await compare(parsed.data.password, user.passwordHash);
         if (!validPassword) { recordLoginFailure(parsed.data.email, ip); return null; }
         clearLoginFailures(parsed.data.email);
 

@@ -81,9 +81,18 @@ try {
     assert.ok(!html.includes(alienContract.name), `${path} excludes the unassigned contract`);
   }
   const deniedDetail = await page(`/incoming/${alienContract.id}/statements/new`, jar);
-  assert.ok([302, 303, 307, 308].includes(deniedDetail.status));
-  assert.equal(new URL(deniedDetail.headers.get("location"), base).pathname, "/incoming");
-  assert.ok(!(await deniedDetail.text()).includes(alienContract.name));
+  const deniedDetailHtml = await deniedDetail.text();
+  if ([302, 303, 307, 308].includes(deniedDetail.status)) {
+    assert.equal(new URL(deniedDetail.headers.get("location"), base).pathname, "/incoming");
+  } else {
+    assert.equal(deniedDetail.status, 200);
+    assert.ok(
+      [307, 308].some((status) =>
+        deniedDetailHtml.includes("NEXT_REDIRECT;replace;/incoming;" + status + ";"),
+      ),
+    );
+  }
+  assert.ok(!deniedDetailHtml.includes(alienContract.name));
   const ownCostControl = await page(`/project-cost-control?project=${own.id}`, jar);
   assert.equal(ownCostControl.status, 200);
   assert.ok((await ownCostControl.text()).includes(own.name));

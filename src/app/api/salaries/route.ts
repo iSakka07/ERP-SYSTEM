@@ -54,6 +54,7 @@ const salaryChangeSchema = z.object({
   effectiveMode: z.enum(["MONTH_START", "DATE"]),
   effectiveDate: z.string(),
 });
+const advanceSourceSchema = z.enum(["EXECUTIVE_DIRECTOR", "PETTY_CASH"]);
 
 export async function GET() {
   const session = await currentUser("salaries.view");
@@ -427,10 +428,7 @@ export async function POST(request: Request) {
               : null;
           if (installmentCents && installmentCents > amountCents)
             throw new Error("القسط أكبر من السلفة.");
-          const source =
-            payload.source === "PETTY_CASH"
-              ? "PETTY_CASH"
-              : "EXECUTIVE_DIRECTOR";
+          const source = advanceSourceSchema.parse(payload.source);
           const created = await tx.employeeAdvance.create({
             data: {
               employeeId: employee.id,

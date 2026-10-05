@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { incomingUser } from "@/lib/incoming-server";
 import { ExpensesCenter } from "@/components/expenses-center";
@@ -8,7 +7,6 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
   if (!viewer) redirect("/");
   const params = await searchParams;
   const requestedProject = params.project ?? "";
-  const session = await auth();
   const [accounts, projects, companies, attachments] = await Promise.all([
     prisma.subcontractAccount.findMany({
       where: { active: true, ...viewer.projectIdWhere() },
@@ -49,7 +47,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
       projects={projects}
       companies={companies}
       attachments={attachments}
-      permissions={session?.user.permissions ?? []}
+      permissions={viewer.permissions}
       initialProjectId={projects.some((project) => project.id === requestedProject) ? requestedProject : ""}
       initialEditorAccountId={accounts.some((account) => account.id === params.account) ? params.account : ""}
     />

@@ -4,16 +4,17 @@ import { ReceiptText, X } from "lucide-react";
 import { useState } from "react";
 import { createContractorPaymentProofUrl } from "@/components/contractor-payment-proof-pdf";
 import type { ExpenseAccount, ExpenseAttachmentInfo } from "@/lib/expense-types";
+import { notifyToast } from "@/components/toast-provider";
 
 export function ContractorPaymentProofPrint({ account, attachments }: { account: ExpenseAccount; attachments: ExpenseAttachmentInfo[] }) {
   const [open, setOpen] = useState(false); const [includeDeductions, setIncludeDeductions] = useState(true); const [working, setWorking] = useState(false);
   const paymentCount = account.statements.reduce((sum, statement) => sum + statement.payments.filter((payment) => payment.status !== "REVERSED").length, 0);
   async function print() {
     setWorking(true); const preview = window.open("", "_blank");
-    if (!preview) { window.alert("اسمح بالنوافذ المنبثقة لفتح معاينة PDF."); setWorking(false); return; }
+    if (!preview) { notifyToast("اسمح بالنوافذ المنبثقة لفتح معاينة PDF.", "warning"); setWorking(false); return; }
     preview.opener = null; preview.document.write("<title>جاري تجهيز كشف إثباتات الصرف</title><body style='font-family:Arial,sans-serif;padding:32px;color:#10192d'>جاري تجهيز كشف إثباتات الصرف…</body>"); preview.document.close();
     try { const url = await createContractorPaymentProofUrl(account, attachments, includeDeductions); preview.location.href = url; window.setTimeout(() => URL.revokeObjectURL(url), 120_000); setOpen(false); }
-    catch (error) { console.error(error); preview.close(); window.alert("تعذّر تجهيز ملف PDF. حاول مرة أخرى."); }
+    catch (error) { console.error(error); preview.close(); notifyToast("تعذّر تجهيز ملف PDF. حاول مرة أخرى.", "error"); }
     finally { setWorking(false); }
   }
   return <>

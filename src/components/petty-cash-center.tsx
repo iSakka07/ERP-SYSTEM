@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -15,6 +15,7 @@ import { CurrencyInput } from "@/components/currency-input";
 import { ERPSelect } from "@/components/erp-select";
 import { UploadBox } from "@/components/upload-box";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
+import { useConfirm } from "@/components/confirm-provider";
 import {
   confirmSimilarFinancialOperation,
   financialHeaders,
@@ -28,43 +29,10 @@ import {
   previewDataPdf,
   usePdfDataExport,
 } from "@/components/pdf-data-export";
+import type { PettyCashData } from "@/lib/petty-cash-data";
 
-type Named = { id: string; name: string; label?: string };
-type Category = Named & { active: boolean; requiresAttachment: boolean };
-type Account = Named & {
-  type: string;
-  employeeId: string | null;
-  balanceCents: number;
-};
-type Movement = {
-  id: string;
-  number: string;
-  type: string;
-  status: string;
-  amountCents: number;
-  projectId: string | null;
-  sourceAccountId: string | null;
-  destinationAccountId: string | null;
-  transactionDate: string;
-  createdAt: string;
-  reversedAt: string | null;
-  reversalReason: string | null;
-  description: string;
-  documentNumber: string | null;
-  linkedEntityType: string | null;
-  project: { name: string } | null;
-  category: { name: string } | null;
-  recordedBy: { name: string };
-  attachments: Named[];
-};
-type Data = {
-  accounts: Account[];
-  categories: Category[];
-  transactions: Movement[];
-  projects: Named[];
-  employees: Named[];
-  canManage: boolean;
-};
+type Movement = PettyCashData["transactions"][number];
+type Data = PettyCashData;
 type Drawer = "" | "transaction" | "reverse" | "category";
 const today = () => new Date().toISOString().slice(0, 10);
 const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -77,8 +45,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export function PettyCashCenter() {
-  const [data, setData] = useState<Data | null>(null),
+export function PettyCashCenter({ initialData }: { initialData: PettyCashData }) {
+  const confirm = useConfirm();
+  const [data, setData] = useState<Data>(initialData),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
@@ -102,13 +71,6 @@ export function PettyCashCenter() {
     if (!response.ok) throw new Error(body.error || "تعذر تحميل الدفتر.");
     setData(body);
   };
-  useEffect(() => {
-    void Promise.resolve()
-      .then(refresh)
-      .catch((reason) =>
-        setError(reason instanceof Error ? reason.message : "تعذر التحميل."),
-      );
-  }, []);
   usePdfDataExport(() => {
     if (!data) return;
     if (section === "categories") {
@@ -296,9 +258,7 @@ export function PettyCashCenter() {
         ).similarFinancialOperation;
         if (
           similar &&
-          window.confirm(
-            "توجد حركة مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟",
-          )
+          await confirm({ title: "حركة مشابهة", description: "توجد حركة مشابهة مسجلة من قبل. هل تريد إنشاءها كعملية مستقلة؟", tone: "warning" })
         ) {
           confirmSimilarFinancialOperation(scope, similar.confirmationToken);
           return send();
@@ -314,7 +274,6 @@ export function PettyCashCenter() {
       setBusy(false);
     }
   }
-  if (!data) return <p role="status">{error || "جارٍ تحميل دفتر النثريات…"}</p>;
   const main = data.accounts.find((account) => account.type === "MAIN"),
     custodies = data.accounts.filter((account) => account.type === "CUSTODY"),
     activeAccountId = accountId || main?.id || "",
@@ -655,6 +614,11 @@ export function PettyCashCenter() {
                                 </span>
                               )}
                             </div>
+                            {transaction.details && (
+                              <p className="mt-1 text-[11px] font-bold text-slate-600">
+                                {transaction.details}
+                              </p>
+                            )}
                             <p className="mt-1 text-[11px] text-slate-400">
                               {movementLabel(transaction)}
                             </p>
@@ -866,7 +830,7 @@ export function PettyCashCenter() {
                     }}
                   >
                     {Object.entries(pettyLabels)
-                      .filter(([key]) => !key.startsWith("ADJUSTMENT"))
+                      .filter(([key]) => !key.startsWith("ADJUSTMENT") && !key.startsWith("EXECUTIVE_"))
                       .map(([key, label]) => (
                         <option key={key} value={key}>
                           {label}

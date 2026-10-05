@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { BanknoteArrowUp, BookOpenCheck, Boxes, Building2, ChartNoAxesCombined, ChevronDown, ChevronLeft, FileSpreadsheet, Landmark, LayoutDashboard, Menu, Paperclip, Settings2, ShoppingCart, UserRound, UsersRound, Vault, X } from "lucide-react";
+import { BanknoteArrowUp, BookOpenCheck, Boxes, Building2, ChartNoAxesCombined, ChevronDown, ChevronLeft, FileSpreadsheet, Landmark, LayoutDashboard, Menu, Paperclip, Settings2, ShoppingCart, UserRound, UsersRound, Vault, WalletCards, X } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { can } from "@/lib/permissions";
 import { companyBrand } from "@/lib/company-brand";
@@ -23,6 +23,7 @@ const navGroups = [
   ] },
   { title: "المالية", items: [
     { label: "صندوق النثريات", icon: Vault, href: "/petty-cash", permission: "pettycash.view" },
+    { label: "صندوق المدير التنفيذي", icon: WalletCards, href: "/executive-fund", permission: "pettycash.view" },
     { label: "البنك", icon: Landmark, href: "/bank", permission: "bank.view" },
     { label: "المحاسبة", icon: BookOpenCheck, href: "/accounting", permission: "accounting.view" },
     { label: "Cost Control", beta: true, icon: ChartNoAxesCombined, href: "/cost-control", permission: "project_cost_control.view" },

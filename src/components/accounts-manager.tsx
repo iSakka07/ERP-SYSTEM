@@ -4,6 +4,8 @@ import { ERPSelect } from "@/components/erp-select";
 import { FormEvent, useMemo, useState } from "react";
 import { Check, KeyRound, LoaderCircle, Plus, ShieldCheck, Trash2, UserRoundCog, UsersRound } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useConfirm } from "@/components/confirm-provider";
+import { useToast } from "@/components/toast-provider";
 
 type Role = { id: string; key: string; name: string; permissions: { permissionId: string }[] };
 type Permission = { id: string; key: string; name: string; module: string };
@@ -17,6 +19,8 @@ const moduleNames: Record<string, string> = {
 
 export function AccountsManager({ users, roles, permissions, employees, currentUserId }: { users: User[]; roles: Role[]; permissions: Permission[]; employees: Employee[]; currentUserId: string }) {
   const router = useRouter();
+  const confirm = useConfirm();
+  const { notify } = useToast();
   const [tab, setTab] = useState<"users" | "permissions">("users");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
@@ -31,12 +35,12 @@ export function AccountsManager({ users, roles, permissions, employees, currentU
     const response = await fetch("/api/admin/accounts", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const result = await response.json();
     setBusy("");
-    if (!response.ok) { setMessage(result.error || "تعذر حفظ التغيير."); return false; }
-    setMessage("تم حفظ التغيير بنجاح."); router.refresh(); return true;
+    if (!response.ok) { const error = result.error || "تعذر حفظ التغيير."; setMessage(error); notify(error, "error"); return false; }
+    setMessage("تم حفظ التغيير بنجاح."); notify("تم حفظ التغيير بنجاح.", "success"); router.refresh(); return true;
   }
 
   async function removeUser(user: User) {
-    if (!window.confirm(`سيتم حذف حساب ${user.name} نهائيًا وإزالة ربطه بالموظف وسجلات نشاطه. هل تريد المتابعة؟`)) return;
+    if (!await confirm({ title: "إزالة الحساب", description: `سيتم حذف حساب ${user.name} نهائيًا وإزالة ربطه بالموظف وسجلات نشاطه. هل تريد المتابعة؟`, confirmLabel: "إزالة الحساب", tone: "danger" })) return;
     await request("DELETE", { userId: user.id }, `delete-${user.id}`);
   }
 

@@ -30,10 +30,12 @@ export async function postJournal(tx: Tx, input: { sourceType: string; sourceId:
   const existing = await tx.journalEntry.findFirst({ where: { sourceType: input.sourceType, sourceId: input.sourceId } });
   if (existing) return existing;
   const normalizedLines = input.lines.map((line) => ({ ...line, debitCents: line.debitCents ? centsNumber(line.debitCents) : 0, creditCents: line.creditCents ? centsNumber(line.creditCents) : 0 }));
+  if (normalizedLines.some((line) => line.debitCents < 0 || line.creditCents < 0 || (!!line.debitCents) === (!!line.creditCents))) {
+    throw new Error("كل سطر محاسبي يجب أن يكون مدينًا أو دائنًا فقط بقيمة موجبة.");
+  }
   const debit = normalizedLines.reduce((sum, line) => sum + line.debitCents, 0);
   const credit = normalizedLines.reduce((sum, line) => sum + line.creditCents, 0);
   if (!Number.isSafeInteger(debit) || debit < 1 || debit !== credit) throw new Error("القيد المحاسبي غير متوازن.");
-  if (normalizedLines.some((line) => (!!line.debitCents) === (!!line.creditCents))) throw new Error("كل سطر محاسبي يجب أن يكون مدينًا أو دائنًا فقط.");
   const accounts = await tx.accountingAccount.findMany({ where: { systemKey: { in: input.lines.map((line) => line.accountKey) }, active: true } });
   const byKey = new Map(accounts.map((account) => [account.systemKey, account]));
   if (byKey.size !== new Set(input.lines.map((line) => line.accountKey)).size) throw new Error("دليل الحسابات المحاسبي غير مكتمل.");
@@ -49,6 +51,9 @@ export async function postPettyCashJournal(tx: Tx, movement: { id: string; type:
   const expenseKey = categoryAccounts[category?.key || ""] || "GENERAL_EXPENSE";
   const common = { sourceType: "PETTY_CASH", sourceId: movement.id, entryDate: movement.transactionDate, description: movement.description, actorId: movement.recordedById, projectId: movement.projectId };
   if (["FUNDING", "EXTERNAL_FUNDING"].includes(movement.type)) return postJournal(tx, { ...common, lines: [{ accountKey: "PETTY_CASH", debitCents: movement.amountCents }, { accountKey: "OWNER_FUNDING", creditCents: movement.amountCents }] });
+  if (movement.type === "EXECUTIVE_ISSUE") return postJournal(tx, { ...common, lines: [{ accountKey: "EXECUTIVE_CASH", debitCents: movement.amountCents }, { accountKey: "PETTY_CASH", creditCents: movement.amountCents }] });
+  if (movement.type === "EXECUTIVE_EXPENSE") return postJournal(tx, { ...common, lines: [{ accountKey: expenseKey, debitCents: movement.amountCents }, { accountKey: "EXECUTIVE_CASH", creditCents: movement.amountCents }] });
+  if (movement.type === "EXECUTIVE_RETURN") return postJournal(tx, { ...common, lines: [{ accountKey: "PETTY_CASH", debitCents: movement.amountCents }, { accountKey: "EXECUTIVE_CASH", creditCents: movement.amountCents }] });
   if (movement.type === "DIRECT_EXPENSE") return postJournal(tx, { ...common, lines: [{ accountKey: expenseKey, debitCents: movement.amountCents }, { accountKey: "PETTY_CASH", creditCents: movement.amountCents }] });
   if (movement.type === "CUSTODY_ISSUE") return postJournal(tx, { ...common, lines: [{ accountKey: "EMPLOYEE_ADVANCES", debitCents: movement.amountCents }, { accountKey: "PETTY_CASH", creditCents: movement.amountCents }] });
   if (movement.type === "CUSTODY_EXPENSE") return postJournal(tx, { ...common, lines: [{ accountKey: expenseKey, debitCents: movement.amountCents }, { accountKey: "EMPLOYEE_ADVANCES", creditCents: movement.amountCents }] });

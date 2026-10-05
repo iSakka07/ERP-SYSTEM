@@ -12,6 +12,7 @@ import {
 } from "@/components/inventory-item-picker";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { MoneyValue } from "@/components/erp-ui";
+import { useConfirm } from "@/components/confirm-provider";
 import {
   confirmSimilarFinancialOperation,
   financialHeaders,
@@ -60,6 +61,7 @@ export function PurchaseInvoicePage({
   returnHref?: string;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [rows, setRows] = useState<Row[]>([blankRow()]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -207,9 +209,7 @@ export function PurchaseInvoicePage({
           ).similarFinancialOperation;
           if (
             similar &&
-            window.confirm(
-              "توجد فاتورة مشتريات مشابهة. هل تريد إنشاءها كفاتورة مستقلة؟",
-            )
+            await confirm({ title: "فاتورة مشتريات مشابهة", description: "توجد فاتورة مشتريات مشابهة. هل تريد إنشاءها كفاتورة مستقلة؟", tone: "warning" })
           ) {
             confirmSimilarFinancialOperation(scope, similar.confirmationToken);
             return send();

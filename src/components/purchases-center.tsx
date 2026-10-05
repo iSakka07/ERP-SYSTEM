@@ -16,6 +16,7 @@ import {
 import { ERPSelect } from "@/components/erp-select";
 import { expenseButton, expenseInput, money } from "@/components/expense-sheet";
 import { IconAction, KpiCard, MoneyValue } from "@/components/erp-ui";
+import { useConfirm } from "@/components/confirm-provider";
 import {
   confirmSimilarFinancialOperation,
   financialHeaders,
@@ -99,6 +100,7 @@ export function PurchasesCenter({
   initialInvoiceId?: string;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [project, setProject] = useState(initialProjectId);
   const [supplier, setSupplier] = useState("");
   const [search, setSearch] = useState("");
@@ -245,9 +247,7 @@ export function PurchasesCenter({
         ).similarFinancialOperation;
         if (
           similar &&
-          window.confirm(
-            "توجد عملية إلغاء مشابهة. هل تريد تسجيلها كعملية مستقلة؟",
-          )
+          await confirm({ title: "عملية إلغاء مشابهة", description: "توجد عملية إلغاء مشابهة. هل تريد تسجيلها كعملية مستقلة؟", tone: "warning" })
         ) {
           confirmSimilarFinancialOperation(scope, similar.confirmationToken);
           return send();
@@ -303,7 +303,7 @@ export function PurchasesCenter({
         ).similarFinancialOperation;
         if (
           similar &&
-          window.confirm("توجد دفعة مشابهة. هل تريد تسجيلها كدفعة مستقلة؟")
+          await confirm({ title: "دفعة مشابهة", description: "توجد دفعة مشابهة. هل تريد تسجيلها كدفعة مستقلة؟", tone: "warning" })
         ) {
           confirmSimilarFinancialOperation(scope, similar.confirmationToken);
           return send();

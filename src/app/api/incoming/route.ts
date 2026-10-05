@@ -60,6 +60,13 @@ const schema = z.discriminatedUnion("action", [
       .max(100),
   }),
   z.object({
+    action: z.literal("memo"),
+    contractId: text,
+    kind: z.enum(["INCREASE", "DECREASE"]),
+    value: amount,
+    reason: text,
+  }),
+  z.object({
     action: z.literal("stage"),
     id: text,
     stage: z.enum(incomingStages.map((s) => s[0])),
@@ -115,7 +122,7 @@ export async function POST(request: Request) {
     if (allFiles.length > 5 || allFiles.reduce((n, f) => n + f.size, 0) > documentLimit)
       throw new Error(`الحد الأقصى 5 مرفقات بإجمالي ${Math.round(documentLimit / 1024 / 1024)} ميجابايت لكل المستند.`);
     if (estimateFiles.length && d.action !== "contract") throw new Error("مرفق المقايسة خاص بالعقد فقط.");
-    if (["statement", "material", "stage"].includes(d.action)) {
+    if (["statement", "material", "memo", "stage"].includes(d.action)) {
       const guarded = await guardFinancialOperation(request, { actorId: user.id, operation: `incoming.${d.action}`, requestData: d, businessData: d });
       if ("response" in guarded) return guarded.response;
       operationContext = guarded.context;
@@ -341,6 +348,18 @@ export async function POST(request: Request) {
           );
           target = created.id;
         }
+      }
+      if (d.action === "memo") {
+        requireFiles();
+        const c = await contract(d.contractId);
+        const adjustedValue = financials(c).value + (d.kind === "INCREASE" ? d.value : -d.value);
+        if (adjustedValue <= 0 || c.statements.some((statement) => statement.grossCents > adjustedValue)) {
+          throw new Error("قيمة العقد بعد المذكرة يجب ألا تقل عن أي مستخلص مسجل.");
+        }
+        entityType = "memo";
+        target = (await tx.incomingMemo.create({
+          data: { contractId: c.id, kind: d.kind, amountCents: d.value, reason: d.reason },
+        })).id;
       }
       if (d.action === "stage") {
         const s = await tx.incomingStatement.findUnique({
