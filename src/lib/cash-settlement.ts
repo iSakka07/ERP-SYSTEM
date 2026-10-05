@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import { assertBalances, balanceForAccount } from "@/lib/petty-cash";
+import { assertAffectedBalances, balanceForAccount } from "@/lib/petty-cash";
 import { postPettyCashJournal, reversePostedJournal } from "@/lib/accounting-posting";
 
 type Tx = Prisma.TransactionClient;
@@ -45,7 +45,7 @@ export async function settleThroughMainCash(tx: Tx, input: {
     throw new Error(input.source === "EMPLOYEE_CUSTODY" ? "رصيد عهدة الموظف لا يكفي لإتمام الصرف." : "رصيد الخزنة الرئيسية لا يكفي لإتمام الصرف.");
   const id = randomUUID();
   const payout = { id, number: `PC-OUT-${id}`, type: "SETTLEMENT_PAYMENT", status: "POSTED", amountCents: input.amountCents, transactionDate: input.date, sourceAccountId: sourceAccount.id, destinationAccountId: null, projectId: input.projectId || null, categoryId: null, description: `${input.source === "EMPLOYEE_CUSTODY" ? `صرف من عهدة ${sourceAccount.employee?.name || sourceAccount.name}` : "صرف من الخزنة"}: ${input.description}`, documentNumber: input.documentNumber, fundingSource: null, recordedById: input.actorId, operationId, linkedEntityType: input.source === "EMPLOYEE_CUSTODY" ? "PURCHASE_EMPLOYEE_CUSTODY" : "SETTLEMENT" };
-  assertBalances([...existing, ...movements, payout] as never[]);
+  assertAffectedBalances([...existing, ...movements, payout] as never[], [...movements, payout] as never[]);
   await tx.pettyCashTransaction.create({ data: payout });
   return { main, operationId, payoutId: id };
 }

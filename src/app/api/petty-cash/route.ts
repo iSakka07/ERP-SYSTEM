@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { incomingUser, readIncomingFiles } from "@/lib/incoming-server";
-import { assertBalances, balanceForAccount, cents, isProjectCost, validatePettyInput } from "@/lib/petty-cash";
+import { assertAffectedBalances, balanceForAccount, cents, isProjectCost, validatePettyInput } from "@/lib/petty-cash";
 import { postPettyCashJournal, reversePostedJournal } from "@/lib/accounting-posting";
 import { completeFinancialOperation, guardFinancialOperation, replayAfterConflict, type FinancialOperationContext } from "@/lib/financial-idempotency";
 import { assertMutation } from "@/lib/request-security";
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
         const EXTERNAL_TYPES = ["PURCHASE_PAYMENT", "SALARY_ADVANCE", "SALARY_PAYMENT"];
         if (EXTERNAL_TYPES.includes(original.type))
           throw new Error("هذه الحركة مرتبطة بنظام فرعي. استخدم عكس العملية من مصدرها.");
-        assertBalances(movements.filter(t => t.id !== id));
+        assertAffectedBalances(movements.filter(t => t.id !== id), original);
         // إلغاء حركة الصندوق لا يقتصر على إخفائها من الرصيد: يعكس القيد الأصلي
         // في نفس المعاملة حتى لا تبقى التكلفة أو التمويل ظاهرة في المحاسبة.
         await reversePostedJournal(tx, "PETTY_CASH", original.id, new Date(), user.id, reason);
@@ -132,7 +132,7 @@ export async function POST(req: Request) {
       const transactionDate = date();
       const id = randomUUID();
       const movement = { id, number: "PC-" + id, type, amountCents, transactionDate, sourceAccountId, destinationAccountId, projectId, categoryId, description, documentNumber, fundingSource: type === "FUNDING" ? "EXECUTIVE_DIRECTOR" : null, recordedById: user.id, status: "POSTED" };
-      assertBalances([...movements, movement]);
+      assertAffectedBalances([...movements, movement], movement);
       await tx.pettyCashTransaction.create({ data: { ...movement, attachments: { create: files.map(f => ({ ...f, actorId: user.id })) } } });
       await postPettyCashJournal(tx, movement);
       await audit(action === "adjust" ? "adjust" : type.toLowerCase(), id, movement);

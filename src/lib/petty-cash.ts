@@ -19,6 +19,11 @@ export function assertBalances(transactions: CashMovement[]) {
   const ids = new Set(transactions.flatMap(t => [t.sourceAccountId, t.destinationAccountId]).filter((id): id is string => !!id));
   for (const id of ids) if (balanceForAccount(transactions, id) < 0) throw new Error("الحركة تؤدي إلى رصيد سالب في الخزنة أو العهدة.");
 }
+export function assertAffectedBalances(transactions: CashMovement[], changedMovements: CashMovement | CashMovement[]) {
+  const changed = Array.isArray(changedMovements) ? changedMovements : [changedMovements];
+  const ids = new Set(changed.flatMap(t => [t.sourceAccountId, t.destinationAccountId]).filter((id): id is string => !!id));
+  for (const id of ids) if (balanceForAccount(transactions, id) < 0) throw new Error("الحركة تؤدي إلى رصيد سالب في الخزنة أو العهدة.");
+}
 export function isProjectCost(type: string) { return expenseTypes.has(type); }
 export function validatePettyInput(input: { type: string; amount: unknown; projectId?: string | null; allocation?: string; sourceAccountId?: string | null; description?: string; hasAttachment?: boolean; requiresAttachment?: boolean }) {
   if (!PETTY_TYPES.includes(input.type as PettyType)) throw new Error("نوع الحركة غير صحيح.");

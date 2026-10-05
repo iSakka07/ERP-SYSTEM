@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { readIncomingFiles } from "@/lib/incoming-server";
-import { assertBalances } from "@/lib/petty-cash";
+import { assertAffectedBalances } from "@/lib/petty-cash";
 import { fundMainCash, settleThroughMainCash } from "@/lib/cash-settlement";
 import {
   postExecutiveAdvance,
@@ -485,7 +485,7 @@ export async function POST(request: Request) {
               operationId: created.id,
               linkedEntityType: "EMPLOYEE_ADVANCE",
             };
-            assertBalances([...movements, movement]);
+            assertAffectedBalances([...movements, movement], movement);
             await tx.pettyCashTransaction.create({
               data: {
                 ...movement,

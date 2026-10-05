@@ -37,6 +37,9 @@ try {
   await reject({type:"FUNDING",amount:100,description:tag},false);
   assert.equal((await post(forbidden,{type:"FUNDING",amount:100,description:tag})).status,403);
   assert.equal((await post(h,{type:"FUNDING",amount:100,description:tag},true,"https://untrusted.invalid")).status,403);
+  const legacyCustody=await db.pettyCashAccount.create({data:{name:`${tag}-legacy-negative`,type:"CUSTODY",employeeId:employee.id}});
+  const legacyNegativeId=randomUUID();ids.push(legacyNegativeId);
+  await db.pettyCashTransaction.create({data:{id:legacyNegativeId,number:legacyNegativeId,type:"CUSTODY_EXPENSE",amountCents:100,transactionDate:new Date(),sourceAccountId:legacyCustody.id,description:tag,recordedById:users[0]}});
   const funding=await ok({type:"FUNDING",amount:10000,description:tag});
   const issue=await ok({type:"CUSTODY_ISSUE",amount:4000,description:tag,employeeId:employee.id});
   const custody=(await db.pettyCashTransaction.findUniqueOrThrow({where:{id:issue}})).destinationAccountId;

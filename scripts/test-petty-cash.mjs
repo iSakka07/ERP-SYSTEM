@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
-import { assertBalances, cents, balanceForAccount, isProjectCost, validatePettyInput } from "../src/lib/petty-cash.ts";
+import { assertAffectedBalances, assertBalances, cents, balanceForAccount, isProjectCost, validatePettyInput } from "../src/lib/petty-cash.ts";
 assert.equal(cents('1,234.56'),123456);
 assert.equal(cents('0',true),0);
 assert.throws(()=>cents('0.001'));
 assert.throws(()=>cents('-1'));
 assert.throws(()=>assertBalances([{status:'POSTED',amountCents:1,sourceAccountId:'cash',destinationAccountId:null}]));
+const unrelatedNegative = {status:'POSTED',amountCents:100,sourceAccountId:'legacy-custody',destinationAccountId:null};
+const newFunding = {status:'POSTED',amountCents:1000,sourceAccountId:null,destinationAccountId:'cash'};
+assert.doesNotThrow(()=>assertAffectedBalances([unrelatedNegative,newFunding],newFunding),"unrelated legacy negative custody must not block funding main cash");
+assert.throws(()=>assertAffectedBalances([unrelatedNegative,newFunding],unrelatedNegative),/رصيد سالب/);
 assert.equal(balanceForAccount([{status:"POSTED",amountCents:1000,sourceAccountId:null,destinationAccountId:"cash"},{status:"POSTED",amountCents:250,sourceAccountId:"cash",destinationAccountId:null}],"cash"),750);
 assert.equal(isProjectCost("CUSTODY_ISSUE"),false); assert.equal(isProjectCost("CUSTODY_EXPENSE"),true);
 assert.throws(()=>validatePettyInput({type:"DIRECT_EXPENSE",amount:10,description:"x",allocation:"PROJECT",hasAttachment:true}),/مشروع/);
