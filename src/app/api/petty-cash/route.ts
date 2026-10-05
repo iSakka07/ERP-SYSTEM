@@ -109,7 +109,7 @@ export async function POST(req: Request) {
         if (differenceCents > 0) destinationAccountId = count.accountId; else sourceAccountId = count.accountId;
       } else {
         if (action && action !== "transaction") throw new Error("إجراء غير معروف.");
-        const expense = isProjectCost(type);
+        const expense = isProjectCost(type), externalFunding = type === "EXTERNAL_FUNDING";
         const category = expense ? await tx.pettyCashCategory.findUnique({ where: { id: str("categoryId") } }) : null;
         if (expense && !category?.active) throw new Error("اختر تصنيفًا نشطًا.");
         if (expense) {
@@ -122,10 +122,17 @@ export async function POST(req: Request) {
           categoryId = category!.id;
           documentNumber = str("documentNumber") || null;
           if (category!.requiresDocument && !documentNumber) throw new Error("رقم المستند مطلوب لهذا التصنيف.");
+        } else if (externalFunding) {
+          if (str("categoryId")) throw new Error("الوارد الخارجي لا يرتبط بتصنيف نثريات.");
+          if (str("projectId")) {
+            const project = await tx.project.findFirst({ where: { id: str("projectId"), active: true } });
+            if (!project) throw new Error("اختر مشروعًا صحيحًا.");
+            projectId = project.id;
+          }
         } else if (str("projectId") || str("categoryId")) throw new Error("التحميل والتصنيف للمصروف الفعلي فقط.");
-        amountCents = validatePettyInput({ type, amount: str("amount"), projectId, allocation: str("allocation"), description, hasAttachment: files.length > 0, requiresAttachment: category?.requiresAttachment ?? true });
+        amountCents = validatePettyInput({ type, amount: str("amount"), projectId, allocation: str("allocation"), description, hasAttachment: files.length > 0, requiresAttachment: externalFunding ? false : category?.requiresAttachment ?? true });
         if (type === "OPENING_BALANCE" && movements.some(t => t.status === "POSTED" && (t.sourceAccountId === main.id || t.destinationAccountId === main.id))) throw new Error("الرصيد الافتتاحي يسبق جميع حركات الصندوق.");
-        if (type === "FUNDING" || type === "OPENING_BALANCE") destinationAccountId = main.id;
+        if (type === "FUNDING" || type === "EXTERNAL_FUNDING" || type === "OPENING_BALANCE") destinationAccountId = main.id;
         if (type === "DIRECT_EXPENSE" || type === "CUSTODY_ISSUE") sourceAccountId = main.id;
         if (type === "CUSTODY_EXPENSE" || type === "CUSTODY_RETURN") {
           const custody = accounts.find(a => a.id === str("sourceAccountId") && a.type === "CUSTODY" && a.active);
@@ -146,7 +153,7 @@ export async function POST(req: Request) {
       }
       const transactionDate = date();
       const id = randomUUID();
-      const movement = { id, number: "PC-" + id, type, amountCents, transactionDate, sourceAccountId, destinationAccountId, projectId, categoryId, description, documentNumber, fundingSource: type === "FUNDING" ? "EXECUTIVE_DIRECTOR" : null, recordedById: user.id, status: "POSTED" };
+      const movement = { id, number: "PC-" + id, type, amountCents, transactionDate, sourceAccountId, destinationAccountId, projectId, categoryId, description, documentNumber, fundingSource: type === "FUNDING" ? "EXECUTIVE_DIRECTOR" : type === "EXTERNAL_FUNDING" ? "EXTERNAL" : null, recordedById: user.id, status: "POSTED" };
       assertAffectedBalances([...movements, movement], movement);
       await tx.pettyCashTransaction.create({ data: { ...movement, attachments: { create: files.map(f => ({ ...f, actorId: user.id })) } } });
       await postPettyCashJournal(tx, movement);

@@ -48,7 +48,7 @@ export async function postPettyCashJournal(tx: Tx, movement: { id: string; type:
   const category = movement.categoryId ? await tx.pettyCashCategory.findUnique({ where: { id: movement.categoryId } }) : null;
   const expenseKey = categoryAccounts[category?.key || ""] || "GENERAL_EXPENSE";
   const common = { sourceType: "PETTY_CASH", sourceId: movement.id, entryDate: movement.transactionDate, description: movement.description, actorId: movement.recordedById, projectId: movement.projectId };
-  if (movement.type === "FUNDING") return postJournal(tx, { ...common, lines: [{ accountKey: "PETTY_CASH", debitCents: movement.amountCents }, { accountKey: "OWNER_FUNDING", creditCents: movement.amountCents }] });
+  if (["FUNDING", "EXTERNAL_FUNDING"].includes(movement.type)) return postJournal(tx, { ...common, lines: [{ accountKey: "PETTY_CASH", debitCents: movement.amountCents }, { accountKey: "OWNER_FUNDING", creditCents: movement.amountCents }] });
   if (movement.type === "DIRECT_EXPENSE") return postJournal(tx, { ...common, lines: [{ accountKey: expenseKey, debitCents: movement.amountCents }, { accountKey: "PETTY_CASH", creditCents: movement.amountCents }] });
   if (movement.type === "CUSTODY_ISSUE") return postJournal(tx, { ...common, lines: [{ accountKey: "EMPLOYEE_ADVANCES", debitCents: movement.amountCents }, { accountKey: "PETTY_CASH", creditCents: movement.amountCents }] });
   if (movement.type === "CUSTODY_EXPENSE") return postJournal(tx, { ...common, lines: [{ accountKey: expenseKey, debitCents: movement.amountCents }, { accountKey: "EMPLOYEE_ADVANCES", creditCents: movement.amountCents }] });

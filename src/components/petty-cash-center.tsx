@@ -163,10 +163,10 @@ export function PettyCashCenter() {
       .sort((a, b) => {
         const byDate = a.transactionDate.localeCompare(b.transactionDate);
         if (byDate) return byDate;
-        const aFunding = ["OPENING_BALANCE", "FUNDING"].includes(a.type)
+        const aFunding = ["OPENING_BALANCE", "FUNDING", "EXTERNAL_FUNDING"].includes(a.type)
             ? 0
             : 1,
-          bFunding = ["OPENING_BALANCE", "FUNDING"].includes(b.type) ? 0 : 1;
+          bFunding = ["OPENING_BALANCE", "FUNDING", "EXTERNAL_FUNDING"].includes(b.type) ? 0 : 1;
         return aFunding - bFunding || a.createdAt.localeCompare(b.createdAt);
       })
       .reduce<
@@ -338,8 +338,8 @@ export function PettyCashCenter() {
     .sort((a, b) => {
       const byDate = a.transactionDate.localeCompare(b.transactionDate);
       if (byDate) return byDate;
-      const aFunding = ["OPENING_BALANCE", "FUNDING"].includes(a.type) ? 0 : 1,
-        bFunding = ["OPENING_BALANCE", "FUNDING"].includes(b.type) ? 0 : 1;
+      const aFunding = ["OPENING_BALANCE", "FUNDING", "EXTERNAL_FUNDING"].includes(a.type) ? 0 : 1,
+        bFunding = ["OPENING_BALANCE", "FUNDING", "EXTERNAL_FUNDING"].includes(b.type) ? 0 : 1;
       return aFunding - bFunding || a.createdAt.localeCompare(b.createdAt);
     });
   const ledger = accountRows.reduce<
@@ -373,7 +373,7 @@ export function PettyCashCenter() {
       (sum, row) =>
         sum +
         (row.transaction.status === "POSTED" &&
-        ["FUNDING", "OPENING_BALANCE"].includes(row.transaction.type)
+        ["FUNDING", "EXTERNAL_FUNDING", "OPENING_BALANCE"].includes(row.transaction.type)
           ? row.incoming
           : 0),
       0,
@@ -906,6 +906,17 @@ export function PettyCashCenter() {
                     التمويل.
                   </p>
                 )}
+                {type === "EXTERNAL_FUNDING" && (
+                  <>
+                    <Field label="المشروع (اختياري)">
+                      <ERPSelect name="projectId">
+                        <option value="">بدون مشروع</option>
+                        {data.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                      </ERPSelect>
+                    </Field>
+                    <p className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800">الوارد الخارجي لا يحتاج مرفقًا إلزاميًا، ويمكن ربطه بمشروع عند الحاجة.</p>
+                  </>
+                )}
                 {type === "CUSTODY_ISSUE" && (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="الموظف *">
@@ -995,7 +1006,7 @@ export function PettyCashCenter() {
                 <UploadBox
                   name="files"
                   label="إثبات الحركة"
-                  required={!expense || (category?.requiresAttachment ?? true)}
+                  required={type !== "EXTERNAL_FUNDING" && (!expense || (category?.requiresAttachment ?? true))}
                 />
               </>
             )}
